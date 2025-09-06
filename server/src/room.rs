@@ -45,6 +45,7 @@ impl Room {
                 for conn in &self.connectors {
                     let _ = conn.snapshot_tx.try_send(ServerMessage::Delta(delta.clone()));
                 }
+                self.last_snapshot = Some(snapshot);
             } else {
                 for conn in &self.connectors {
                     let _ = conn.snapshot_tx.try_send(ServerMessage::Baseline(snapshot.clone()));
@@ -81,6 +82,46 @@ impl RoomManager {
 
     pub async fn add_peer(&self, connector: ServerConnector) {
         self.room.lock().await.add_connector(connector);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tokio::sync::mpsc;
+
+    #[tokio::test]
+    async fn updates_snapshot_after_delta() {
+        let mut room = Room::new();
+
+        // Attach a dummy connector so messages are sent.
+        let (_input_tx, input_rx) = mpsc::channel(1);
+        let (snapshot_tx, mut snapshot_rx) = mpsc::channel(8);
+        room.connectors.push(ConnectorHandle { input_rx, snapshot_tx });
+
+        // First tick sends a baseline snapshot.
+        room.tick().await;
+        match snapshot_rx.try_recv().expect("no baseline message") {
+            ServerMessage::Baseline(s) => assert_eq!(s.frame, 1),
+            other => panic!("expected baseline, got {:?}", other),
+        }
+        assert_eq!(room.last_snapshot.as_ref().unwrap().frame, 1);
+
+        // Second tick sends a delta and updates the last snapshot.
+        room.tick().await;
+        match snapshot_rx.try_recv().expect("no delta message") {
+            ServerMessage::Delta(d) => assert_eq!(d.frame, 2),
+            other => panic!("expected delta, got {:?}", other),
+        }
+        assert_eq!(room.last_snapshot.as_ref().unwrap().frame, 2);
+
+        // Third tick should base its delta on the second snapshot.
+        room.tick().await;
+        match snapshot_rx.try_recv().expect("no second delta message") {
+            ServerMessage::Delta(d) => assert_eq!(d.frame, 3),
+            other => panic!("expected delta, got {:?}", other),
+        }
+        assert_eq!(room.last_snapshot.as_ref().unwrap().frame, 3);
     }
 }
 
