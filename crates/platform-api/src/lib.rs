@@ -1,7 +1,7 @@
+use anyhow::Result;
 use bevy::ecs::world::Mut;
 use bevy::prelude::*;
 use bitflags::bitflags;
-use anyhow::Result;
 
 #[derive(States, Default, Clone, Eq, PartialEq, Hash, Debug)]
 pub enum AppState {
@@ -26,13 +26,13 @@ bitflags! {
 #[derive(Clone)]
 pub struct ModuleMetadata {
     /// Unique string identifier for the module.
-    pub id: &'static str,
+    pub id: String,
     /// Human-readable name shown to players.
-    pub name: &'static str,
+    pub name: String,
     /// Semver-style version string.
-    pub version: &'static str,
+    pub version: String,
     /// Name of the author or organization.
-    pub author: &'static str,
+    pub author: String,
     /// The [`AppState`] associated with the module.
     pub state: AppState,
     /// Feature flags implemented by the module.
@@ -104,8 +104,12 @@ pub trait GameModule: Plugin + Sized {
     fn server_register(_app: &mut ServerApp) {}
 
     /// Called whenever the engine transitions into the module's state.
-    fn enter(_context: &mut ModuleContext) -> Result<()> { Ok(()) }
+    fn enter(_context: &mut ModuleContext) -> Result<()> {
+        Ok(())
+    }
 
     /// Called whenever the engine leaves the module's state.
-    fn exit(_context: &mut ModuleContext) -> Result<()> { Ok(()) }
+    fn exit(_context: &mut ModuleContext) -> Result<()> {
+        Ok(())
+    }
 }
