@@ -61,13 +61,13 @@ impl<'a> ModuleContext<'a> {
     }
 
     /// Access asset storage for the given type.
-    pub fn assets<A: Asset>(&mut self) -> Mut<Assets<A>> {
-        self.world.resource_mut::<Assets<A>>()
+    pub fn assets<A: Asset>(&mut self) -> Option<Mut<'_, Assets<A>>> {
+        self.world.get_resource_mut::<Assets<A>>()
     }
 
     /// Fetch a network resource of the provided type.
-    pub fn network<N: Resource>(&mut self) -> Mut<N> {
-        self.world.resource_mut::<N>()
+    pub fn network<N: Resource>(&mut self) -> Option<Mut<'_, N>> {
+        self.world.get_resource_mut::<N>()
     }
 
     /// Retrieve the [`Time`] resource.
@@ -76,13 +76,13 @@ impl<'a> ModuleContext<'a> {
     }
 
     /// Access an audio-related resource.
-    pub fn audio<A: Resource>(&mut self) -> Mut<A> {
-        self.world.resource_mut::<A>()
+    pub fn audio<A: Resource>(&mut self) -> Option<Mut<'_, A>> {
+        self.world.get_resource_mut::<A>()
     }
 
     /// Access a UI-related resource.
-    pub fn ui<U: Resource>(&mut self) -> Mut<U> {
-        self.world.resource_mut::<U>()
+    pub fn ui<U: Resource>(&mut self) -> Option<Mut<'_, U>> {
+        self.world.get_resource_mut::<U>()
     }
 }
 

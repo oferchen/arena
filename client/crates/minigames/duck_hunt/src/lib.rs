@@ -68,7 +68,9 @@ fn setup(world: &mut World) {
     world.insert_resource(RoundTimer(Timer::from_seconds(90.0, TimerMode::Once)));
     world.insert_resource(DuckSpawnTimer(Timer::from_seconds(2.0, TimerMode::Repeating)));
 
-    let asset_server = world.resource::<AssetServer>();
+    let Some(asset_server) = world.get_resource::<AssetServer>() else {
+        return;
+    };
     let font = asset_server.load("fonts/FiraSans-Bold.ttf");
 
     world.spawn((
