@@ -373,10 +373,10 @@ pub fn discover_modules(mut registry: ResMut<ModuleRegistry>) {
             }
         }
         registry.modules.push(ModuleMetadata {
-            id: Box::leak(manifest.id.into_boxed_str()),
-            name: Box::leak(manifest.name.into_boxed_str()),
-            version: Box::leak(manifest.version.into_boxed_str()),
-            author: Box::leak(manifest.author.into_boxed_str()),
+            id: manifest.id,
+            name: manifest.name,
+            version: manifest.version,
+            author: manifest.author,
             state,
             capabilities: caps,
             max_players: manifest.max_players,

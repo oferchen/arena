@@ -1,6 +1,8 @@
 use anyhow::Result;
 use bevy::prelude::*;
-use platform_api::{AppState, CapabilityFlags, GameModule, ModuleContext, ModuleMetadata, ServerApp};
+use platform_api::{
+    AppState, CapabilityFlags, GameModule, ModuleContext, ModuleMetadata, ServerApp,
+};
 
 #[derive(Default)]
 pub struct DuckHuntPlugin;
@@ -47,10 +49,10 @@ impl GameModule for DuckHuntPlugin {
 
     fn metadata() -> ModuleMetadata {
         ModuleMetadata {
-            id: Self::ID,
-            name: "Duck Hunt",
-            version: "0.1.0",
-            author: "Unknown",
+            id: Self::ID.to_string(),
+            name: "Duck Hunt".to_string(),
+            version: "0.1.0".to_string(),
+            author: "Unknown".to_string(),
             state: AppState::DuckHunt,
             capabilities: CapabilityFlags::LOBBY_PAD,
             max_players: 4,
