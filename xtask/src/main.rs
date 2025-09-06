@@ -18,11 +18,11 @@ fn main() -> Result<()> {
         if entry.file_type().is_file() {
             let path = entry.path();
             let file_name = path.file_name().unwrap().to_string_lossy().to_string();
-            if matches!(file_name.as_str(), "index.html" | "manifest.json") {
+            if file_name == "index.html" {
                 fs::copy(path, static_dir.join(&file_name))?;
                 continue;
             }
-            if file_name == "sw.js" {
+            if file_name == "manifest.json" || file_name == "sw.js" {
                 continue;
             }
             let data = fs::read(path)?;
@@ -42,8 +42,38 @@ fn main() -> Result<()> {
         }
     }
 
+    // rewrite manifest.json with hashed icon paths
+    let manifest_src = fs::read_to_string(web.join("manifest.json"))?;
+    let mut manifest_json: serde_json::Value = serde_json::from_str(&manifest_src)?;
+    if let Some(icons) = manifest_json
+        .get_mut("icons")
+        .and_then(|v| v.as_array_mut())
+    {
+        for icon in icons.iter_mut() {
+            if let Some(src) = icon.get_mut("src") {
+                if let Some(src_str) = src.as_str() {
+                    let file_name = Path::new(src_str)
+                        .file_name()
+                        .unwrap()
+                        .to_string_lossy()
+                        .to_string();
+                    if let Some(hashed) = manifest.get(&file_name) {
+                        *src = serde_json::Value::String(format!("/assets/{hashed}"));
+                    }
+                }
+            }
+        }
+    }
+    fs::write(
+        static_dir.join("manifest.json"),
+        serde_json::to_string_pretty(&manifest_json)?,
+    )?;
+
     let precache_json = serde_json::to_string_pretty(&precache)?;
-    fs::write(assets_dir.join("manifest.json"), serde_json::to_string_pretty(&manifest)?)?;
+    fs::write(
+        assets_dir.join("manifest.json"),
+        serde_json::to_string_pretty(&manifest)?,
+    )?;
     fs::write(assets_dir.join("precache.json"), &precache_json)?;
 
     let hash = Sha256::digest(precache_json.as_bytes());
