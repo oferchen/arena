@@ -2,6 +2,10 @@ use bevy::{input::mouse::MouseMotion, prelude::*, window::CursorGrabMode};
 use bevy_rapier3d::prelude::*;
 use platform_api::{AppState, CapabilityFlags, GameModule, ModuleContext, ModuleMetadata};
 use serde::Deserialize;
+#[cfg(target_arch = "wasm32")]
+use bevy::tasks::{AsyncComputeTaskPool, Task};
+#[cfg(target_arch = "wasm32")]
+use futures_lite::future;
 #[cfg(not(target_arch = "wasm32"))]
 use std::fs;
 #[cfg(not(target_arch = "wasm32"))]
@@ -40,6 +44,9 @@ impl Plugin for EnginePlugin {
                     .run_if(in_state(AppState::Lobby)),
             )
             .add_systems(Update, exit_to_lobby);
+
+        #[cfg(target_arch = "wasm32")]
+        app.add_systems(Update, apply_discovered_modules);
 
         #[cfg(feature = "vehicle")]
         app.add_plugins(VehiclePlugin);
@@ -354,54 +361,64 @@ struct ModuleManifest {
     max_players: u32,
 }
 
+#[cfg(target_arch = "wasm32")]
+#[derive(Resource)]
+struct ModuleDiscoveryTask(Task<Vec<ModuleMetadata>>);
+
 pub fn discover_modules(
+    #[cfg_attr(not(target_arch = "wasm32"), allow(unused_mut))]
+    mut commands: Commands,
     mut registry: ResMut<ModuleRegistry>,
     asset_server: Option<Res<AssetServer>>,
 ) {
     #[cfg(target_arch = "wasm32")]
     {
         use bevy::asset::load;
-        use futures_lite::future;
         let Some(asset_server) = asset_server else { return; };
-        let manifests: Vec<ModuleManifest> = match future::block_on(async {
+        let asset_server = asset_server.clone();
+        let task = AsyncComputeTaskPool::get().spawn(async move {
             let data: String = load(asset_server.as_ref(), "modules.json").await;
-            serde_json::from_str(&data)
-        }) {
-            Ok(m) => m,
-            Err(_) => return,
-        };
-        for manifest in manifests {
-            let state = match manifest.state.as_str() {
-                "DuckHunt" => AppState::DuckHunt,
-                _ => AppState::Lobby,
-            };
-            let mut caps = CapabilityFlags::default();
-            for cap in manifest.capabilities {
-                match cap.as_str() {
-                    "LOBBY_PAD" => caps |= CapabilityFlags::LOBBY_PAD,
-                    "NeedsPhysics" => caps |= CapabilityFlags::NEEDS_PHYSICS,
-                    "UsesHitscan" => caps |= CapabilityFlags::USES_HITSCAN,
-                    "NeedsNav" => caps |= CapabilityFlags::NEEDS_NAV,
-                    "UsesVehicles" => caps |= CapabilityFlags::USES_VEHICLES,
-                    "UsesFlight" => caps |= CapabilityFlags::USES_FLIGHT,
-                    _ => {}
-                }
+            match serde_json::from_str::<Vec<ModuleManifest>>(&data) {
+                Ok(manifests) => manifests
+                    .into_iter()
+                    .map(|manifest| {
+                        let state = match manifest.state.as_str() {
+                            "DuckHunt" => AppState::DuckHunt,
+                            _ => AppState::Lobby,
+                        };
+                        let mut caps = CapabilityFlags::default();
+                        for cap in manifest.capabilities {
+                            match cap.as_str() {
+                                "LOBBY_PAD" => caps |= CapabilityFlags::LOBBY_PAD,
+                                "NeedsPhysics" => caps |= CapabilityFlags::NEEDS_PHYSICS,
+                                "UsesHitscan" => caps |= CapabilityFlags::USES_HITSCAN,
+                                "NeedsNav" => caps |= CapabilityFlags::NEEDS_NAV,
+                                "UsesVehicles" => caps |= CapabilityFlags::USES_VEHICLES,
+                                "UsesFlight" => caps |= CapabilityFlags::USES_FLIGHT,
+                                _ => {}
+                            }
+                        }
+                        ModuleMetadata {
+                            id: manifest.id,
+                            name: manifest.name,
+                            version: manifest.version,
+                            author: manifest.author,
+                            state,
+                            capabilities: caps,
+                            max_players: manifest.max_players,
+                            icon: Handle::default(),
+                        }
+                    })
+                    .collect::<Vec<_>>(),
+                Err(_) => Vec::new(),
             }
-            registry.modules.push(ModuleMetadata {
-                id: manifest.id,
-                name: manifest.name,
-                version: manifest.version,
-                author: manifest.author,
-                state,
-                capabilities: caps,
-                max_players: manifest.max_players,
-                icon: Handle::default(),
-            });
-        }
+        });
+        commands.insert_resource(ModuleDiscoveryTask(task));
     }
     #[cfg(not(target_arch = "wasm32"))]
     {
         let _ = asset_server;
+        let _ = commands;
         let modules_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../assets/modules");
         let Ok(entries) = fs::read_dir(modules_dir) else {
             return;
@@ -449,6 +466,22 @@ pub fn discover_modules(
         }
     }
 }
+
+
+#[cfg(target_arch = "wasm32")]
+fn apply_discovered_modules(
+    mut commands: Commands,
+    mut registry: ResMut<ModuleRegistry>,
+    mut task: Option<ResMut<ModuleDiscoveryTask>>,
+) {
+    if let Some(mut task) = task {
+        if let Some(mods) = future::block_on(future::poll_once(&mut task.0)) {
+            registry.modules.extend(mods);
+            commands.remove_resource::<ModuleDiscoveryTask>();
+        }
+    }
+}
+
 
 pub fn hotload_modules(_app: &mut App) {
     // Placeholder for future dynamic loading support
