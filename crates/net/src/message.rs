@@ -1,5 +1,6 @@
 use anyhow::{anyhow, Error};
 use serde::{Deserialize, Serialize};
+use bevy::prelude::Event;
 
 /// Input from a client for a single simulation frame.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -10,6 +11,9 @@ pub struct InputFrame {
     pub data: Vec<u8>,
 }
 
+// Allow [`InputFrame`] to be used as a Bevy event.
+impl Event for InputFrame {}
+
 /// Full state snapshot from the server.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Snapshot {
@@ -18,6 +22,9 @@ pub struct Snapshot {
     /// Raw snapshot payload.
     pub data: Vec<u8>,
 }
+
+// Allow [`Snapshot`] to be used as a Bevy event.
+impl Event for Snapshot {}
 
 /// Delta between two [`Snapshot`]s produced by [`delta_compress`].
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
