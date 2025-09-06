@@ -1,0 +1,17 @@
+[package]
+name = "net"
+version = "0.1.0"
+edition = "2021"
+
+[features]
+default = ["webrtc"]
+webrtc = ["dep:webrtc", "dep:tokio"]
+
+[dependencies]
+anyhow = "1"
+async-trait = "0.1"
+bevy = { version = "0.11", default-features = false, features = ["bevy_asset", "bevy_scene"] }
+postcard = { version = "1", features = ["alloc"] }
+serde = { version = "1", features = ["derive"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros"], optional = true }
+webrtc = { version = "0.11", optional = true }
