@@ -304,11 +304,11 @@ pub fn register_module<M: GameModule + Default + 'static>(app: &mut App) {
     let info = M::metadata();
     let state = info.state.clone();
     M::register(app);
-    app.world
-        .get_resource_mut::<ModuleRegistry>()
-        .expect("EnginePlugin must be added before registering modules")
-        .modules
-        .push(info);
+    if let Some(mut registry) = app.world.get_resource_mut::<ModuleRegistry>() {
+        registry.modules.push(info);
+    } else {
+        warn!("EnginePlugin must be added before registering modules");
+    }
     app.add_plugins(M::default());
     app.add_systems(OnEnter(state.clone()), enter_module::<M>);
     app.add_systems(OnExit(state), exit_module::<M>);
