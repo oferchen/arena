@@ -1,5 +1,5 @@
 use bevy::prelude::*;
-use platform_api::{AppState, CapabilityFlags, GameModule, ModuleContext, ModuleMetadata};
+use platform_api::{AppState, CapabilityFlags, GameModule, ModuleContext, ModuleMetadata, ServerApp};
 
 #[derive(Default)]
 pub struct DuckHuntPlugin;
@@ -55,13 +55,15 @@ impl GameModule for DuckHuntPlugin {
         }
     }
 
+    fn register(_app: &mut App) {}
+
     fn enter(ctx: &mut ModuleContext) {
-        setup(ctx.world);
+        setup(ctx.world());
     }
 
     fn exit(ctx: &mut ModuleContext) {
-        cleanup(ctx.world);
+        cleanup(ctx.world());
     }
 
-    fn server_register(_ctx: &mut ModuleContext) {}
+    fn server_register(_app: &mut ServerApp) {}
 }
