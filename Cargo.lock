@@ -5915,8 +5915,11 @@ name = "server"
 version = "0.1.0"
 dependencies = [
  "axum",
+ "bevy 0.12.1",
+ "duck_hunt",
  "lettre",
  "once_cell",
+ "platform-api",
  "sqlx",
  "tokio",
  "tower-http",
