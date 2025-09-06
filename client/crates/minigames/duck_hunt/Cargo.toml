@@ -1,0 +1,8 @@
+[package]
+name = "duck_hunt"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+bevy = "0.12"
+engine = { path = "../../engine" }
