@@ -18,8 +18,11 @@ fn main() -> Result<()> {
         if entry.file_type().is_file() {
             let path = entry.path();
             let file_name = path.file_name().unwrap().to_string_lossy().to_string();
-            if matches!(file_name.as_str(), "index.html" | "sw.js" | "manifest.json") {
+            if matches!(file_name.as_str(), "index.html" | "manifest.json") {
                 fs::copy(path, static_dir.join(&file_name))?;
+                continue;
+            }
+            if file_name == "sw.js" {
                 continue;
             }
             let data = fs::read(path)?;
@@ -39,8 +42,15 @@ fn main() -> Result<()> {
         }
     }
 
+    let precache_json = serde_json::to_string_pretty(&precache)?;
     fs::write(assets_dir.join("manifest.json"), serde_json::to_string_pretty(&manifest)?)?;
-    fs::write(assets_dir.join("precache.json"), serde_json::to_string_pretty(&precache)?)?;
+    fs::write(assets_dir.join("precache.json"), &precache_json)?;
+
+    let hash = Sha256::digest(precache_json.as_bytes());
+    let manifest_version = hex::encode(&hash)[..16].to_string();
+    let sw_src = fs::read_to_string(web.join("sw.js"))?;
+    let sw_versioned = sw_src.replace("__PRECACHE_VERSION__", &manifest_version);
+    fs::write(static_dir.join("sw.js"), sw_versioned)?;
 
     Ok(())
 }
