@@ -7,6 +7,16 @@ use std::fs;
 #[cfg(not(target_arch = "wasm32"))]
 use std::path::Path;
 
+#[cfg(feature = "vehicle")]
+pub mod vehicle;
+#[cfg(feature = "flight")]
+pub mod flight;
+
+#[cfg(feature = "vehicle")]
+use vehicle::VehiclePlugin;
+#[cfg(feature = "flight")]
+use flight::FlightPlugin;
+
 /// Stores metadata for all registered game modules.
 #[derive(Resource, Default)]
 pub struct ModuleRegistry {
@@ -30,6 +40,11 @@ impl Plugin for EnginePlugin {
                     .run_if(in_state(AppState::Lobby)),
             )
             .add_systems(Update, exit_to_lobby);
+
+        #[cfg(feature = "vehicle")]
+        app.add_plugins(VehiclePlugin);
+        #[cfg(feature = "flight")]
+        app.add_plugins(FlightPlugin);
     }
 }
 
