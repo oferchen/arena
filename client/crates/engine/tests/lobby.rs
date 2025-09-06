@@ -14,6 +14,15 @@ fn test_app() -> App {
     app
 }
 
+fn app_without_window() -> App {
+    let mut app = App::new();
+    app.add_plugins(MinimalPlugins);
+    app.init_resource::<ModuleRegistry>();
+    app.init_resource::<Assets<Mesh>>();
+    app.init_resource::<Assets<StandardMaterial>>();
+    app
+}
+
 #[test]
 fn spawns_pads_for_modules() {
     let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../assets/modules/test_mod");
@@ -65,4 +74,13 @@ fn shows_empty_state_when_registry_empty() {
     }
     assert!(found_msg, "missing empty-state message");
     assert!(found_link, "missing docs link");
+}
+
+#[test]
+fn setup_lobby_handles_missing_window() {
+    let mut app = app_without_window();
+    app.world.run_system_once(setup_lobby);
+
+    // no entities should be spawned without a window
+    assert_eq!(app.world.iter_entities().count(), 0);
 }

@@ -83,9 +83,13 @@ pub fn setup_lobby(
     asset_server: Option<Res<AssetServer>>,
     mut windows: Query<&mut Window>,
 ) {
-    let mut window = windows.single_mut();
-    window.cursor.grab_mode = CursorGrabMode::Locked;
-    window.cursor.visible = false;
+    if let Ok(mut window) = windows.get_single_mut() {
+        window.cursor.grab_mode = CursorGrabMode::Locked;
+        window.cursor.visible = false;
+    } else {
+        warn!("no window available");
+        return;
+    }
 
     commands
         .spawn((
@@ -235,16 +239,20 @@ fn exit_to_lobby(
     mut windows: Query<&mut Window>,
 ) {
     if keys.just_pressed(KeyCode::Escape) {
-        let mut window = windows.single_mut();
-        let locked = window.cursor.grab_mode == CursorGrabMode::Locked;
-        if locked {
-            window.cursor.grab_mode = CursorGrabMode::None;
-            window.cursor.visible = true;
+        if let Ok(mut window) = windows.get_single_mut() {
+            let locked = window.cursor.grab_mode == CursorGrabMode::Locked;
+            if locked {
+                window.cursor.grab_mode = CursorGrabMode::None;
+                window.cursor.visible = true;
+            } else {
+                window.cursor.grab_mode = CursorGrabMode::Locked;
+                window.cursor.visible = false;
+            }
+            next_state.set(AppState::Lobby);
         } else {
-            window.cursor.grab_mode = CursorGrabMode::Locked;
-            window.cursor.visible = false;
+            warn!("no window available");
+            return;
         }
-        next_state.set(AppState::Lobby);
     }
 }
 
