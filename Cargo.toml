@@ -4,5 +4,6 @@ members = [
     "server",
     "client",
     "crates/net",
-    "xtask"
+    "crates/platform-api",
+    "xtask",
 ]
