@@ -12,15 +12,14 @@ use axum::{
     routing::{get, get_service, post},
     Json, Router,
 };
-use duck_hunt::DuckHuntPlugin;
-use platform_api::ServerApp;
-use server::{email::EmailService, ServerAppExt};
+use crate::email::EmailService;
 use net::server::ServerConnector;
 use webrtc::peer_connection::sdp::session_description::RTCSessionDescription;
 use webrtc::peer_connection::sdp::sdp_type::RTCSdpType;
 use serde::{Deserialize, Serialize};
 
 mod room;
+mod email;
 use sqlx::PgPool;
 use tower_http::{services::ServeDir, set_header::SetResponseHeaderLayer};
 
@@ -137,8 +136,6 @@ async fn setup() -> Result<AppState> {
 async fn run() -> Result<()> {
     let state = Arc::new(setup().await?);
 
-    let mut _game_app = ServerApp::new();
-    _game_app.add_game_module::<DuckHuntPlugin>();
 
     let assets_service =
         get_service(ServeDir::new("assets")).layer(SetResponseHeaderLayer::if_not_present(
