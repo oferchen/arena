@@ -1,15 +1,16 @@
 use std::{net::SocketAddr, sync::Arc};
 
+use anyhow::Result;
+
 use axum::{
-    Router,
     extract::{
         State,
         ws::{WebSocket, WebSocketUpgrade},
     },
-    http::{HeaderName, HeaderValue, StatusCode, header::CACHE_CONTROL},
+    http::{header::CACHE_CONTROL, HeaderName, HeaderValue, StatusCode},
     response::IntoResponse,
     routing::{get, get_service, post},
-    Json,
+    Json, Router,
 };
 use duck_hunt::DuckHuntPlugin;
 use platform_api::ServerApp;
@@ -108,23 +109,33 @@ async fn shutdown_signal() {
     }
 }
 
-#[tokio::main]
-async fn main() {
-    let database_url =
-        std::env::var("DATABASE_URL").expect("DATABASE_URL environment variable not set");
-    let db = PgPool::connect(&database_url)
-        .await
-        .expect("failed to connect to database");
+fn get_env(name: &str) -> Result<String> {
+    std::env::var(name).map_err(|e| {
+        log::error!("{name} environment variable not set: {e}");
+        e.into()
+    })
+}
+
+async fn setup() -> Result<AppState> {
+    let database_url = get_env("DATABASE_URL")?;
+    let db = PgPool::connect(&database_url).await.map_err(|e| {
+        log::error!("failed to connect to database: {e}");
+        e
+    })?;
 
     let email = Arc::new(EmailService::new(
-        &std::env::var("SMTP_SERVER").expect("SMTP_SERVER not set"),
-        &std::env::var("SMTP_USERNAME").expect("SMTP_USERNAME not set"),
-        &std::env::var("SMTP_PASSWORD").expect("SMTP_PASSWORD not set"),
-        &std::env::var("EMAIL_FROM").expect("EMAIL_FROM not set"),
+        &get_env("SMTP_SERVER")?,
+        &get_env("SMTP_USERNAME")?,
+        &get_env("SMTP_PASSWORD")?,
+        &get_env("EMAIL_FROM")?,
     ));
 
     let rooms = room::RoomManager::new();
-    let state = Arc::new(AppState { db, email, rooms });
+    Ok(AppState { db, email, rooms })
+}
+
+async fn run() -> Result<()> {
+    let state = Arc::new(setup().await?);
 
     let mut _game_app = ServerApp::new();
     _game_app.add_game_module::<DuckHuntPlugin>();
@@ -156,10 +167,46 @@ async fn main() {
         .with_state(state);
 
     let addr = SocketAddr::from(([0, 0, 0, 0], 3000));
-    let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
+    let listener = tokio::net::TcpListener::bind(addr).await.map_err(|e| {
+        log::error!("failed to bind to address: {e}");
+        e
+    })?;
 
     axum::serve(listener, app)
         .with_graceful_shutdown(shutdown_signal())
         .await
-        .unwrap();
+        .map_err(|e| {
+            log::error!("server error: {e}");
+            e
+        })?;
+
+    Ok(())
+}
+
+#[tokio::main]
+async fn main() {
+    env_logger::init();
+    if let Err(e) = run().await {
+        log::error!("{e}");
+        std::process::exit(1);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::env;
+
+    #[tokio::test]
+    async fn setup_fails_without_env_vars() {
+        unsafe {
+            env::remove_var("DATABASE_URL");
+            env::remove_var("SMTP_SERVER");
+            env::remove_var("SMTP_USERNAME");
+            env::remove_var("SMTP_PASSWORD");
+            env::remove_var("EMAIL_FROM");
+        }
+
+        assert!(setup().await.is_err());
+    }
 }
