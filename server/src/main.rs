@@ -44,17 +44,23 @@ struct Cli {
 }
 
 impl Cli {
-    fn smtp_config(&self) -> SmtpConfig {
-        SmtpConfig {
+    fn smtp_config(&self) -> Result<SmtpConfig> {
+        let starttls = self.smtp_starttls.parse().map_err(|_| {
+            anyhow!(
+                "invalid value for --smtp-starttls: {}",
+                self.smtp_starttls
+            )
+        })?;
+        Ok(SmtpConfig {
             host: self.smtp_host.clone(),
             port: self.smtp_port,
             from: self.smtp_from.clone(),
-            starttls: self.smtp_starttls.parse().unwrap_or_default(),
+            starttls,
             smtps: self.smtp_smtps,
             timeout: self.smtp_timeout_ms,
             user: self.smtp_user.clone(),
             pass: self.smtp_pass.clone(),
-        }
+        })
     }
 }
 
@@ -216,7 +222,14 @@ async fn run(smtp: SmtpConfig) -> Result<()> {
 async fn main() {
     env_logger::init();
     let cli = Cli::parse();
-    if let Err(e) = run(cli.smtp_config()).await {
+    let smtp = match cli.smtp_config() {
+        Ok(cfg) => cfg,
+        Err(e) => {
+            log::error!("{e}");
+            std::process::exit(1);
+        }
+    };
+    if let Err(e) = run(smtp).await {
         log::error!("{e}");
         std::process::exit(1);
     }
@@ -263,6 +276,25 @@ mod tests {
         assert_eq!(cli.smtp_port, 2525);
         unsafe {
             env::remove_var("ARENA_SMTP_PORT");
+        }
+    }
+
+    #[test]
+    fn invalid_starttls_cli_value_errors() {
+        let cli =
+            Cli::try_parse_from(["prog", "--smtp-starttls", "bogus"]).unwrap();
+        assert!(cli.smtp_config().is_err());
+    }
+
+    #[test]
+    fn invalid_starttls_env_value_errors() {
+        unsafe {
+            env::set_var("ARENA_SMTP_STARTTLS", "bogus");
+        }
+        let cli = Cli::try_parse_from(["prog"]).unwrap();
+        assert!(cli.smtp_config().is_err());
+        unsafe {
+            env::remove_var("ARENA_SMTP_STARTTLS");
         }
     }
 
