@@ -35,6 +35,15 @@ pub struct SnapshotDelta {
     pub delta: Vec<u8>,
 }
 
+/// Messages from the server describing world state updates.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ServerMessage {
+    /// Full baseline snapshot.
+    Baseline(Snapshot),
+    /// Delta-compressed snapshot relative to the last baseline.
+    Delta(SnapshotDelta),
+}
+
 /// Create a [`SnapshotDelta`] by XOR'ing the bytes of `base` and `current`.
 pub fn delta_compress(
     base: &Snapshot,

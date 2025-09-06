@@ -13,3 +13,6 @@ sqlx = { version = "0.7", features = ["runtime-tokio-rustls", "postgres", "macro
 platform-api = { path = "../crates/platform-api" }
 duck_hunt = { path = "../client/crates/minigames/duck_hunt" }
 bevy = "0.12"
+net = { path = "../crates/net", features = ["webrtc"] }
+serde = { version = "1", features = ["derive"] }
+webrtc = "0.11"

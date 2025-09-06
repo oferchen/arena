@@ -8,11 +8,18 @@ use axum::{
     },
     http::{HeaderName, HeaderValue, StatusCode, header::CACHE_CONTROL},
     response::IntoResponse,
-    routing::{get, get_service},
+    routing::{get, get_service, post},
+    Json,
 };
 use duck_hunt::DuckHuntPlugin;
 use platform_api::ServerApp;
-use server::{ServerAppExt, email::EmailService};
+use server::{email::EmailService, ServerAppExt};
+use net::server::ServerConnector;
+use webrtc::peer_connection::sdp::session_description::RTCSessionDescription;
+use webrtc::peer_connection::sdp::sdp_type::RTCSdpType;
+use serde::{Deserialize, Serialize};
+
+mod room;
 use sqlx::PgPool;
 use tower_http::{services::ServeDir, set_header::SetResponseHeaderLayer};
 
@@ -20,6 +27,7 @@ use tower_http::{services::ServeDir, set_header::SetResponseHeaderLayer};
 struct AppState {
     db: PgPool,
     email: Arc<EmailService>,
+    rooms: room::RoomManager,
 }
 
 fn auth_routes() -> Router<Arc<AppState>> {
@@ -33,6 +41,43 @@ async fn ws_handler(
     ws.on_upgrade(|socket| async move {
         handle_socket(socket).await;
     })
+}
+
+#[derive(Deserialize)]
+struct SignalRequest {
+    sdp: String,
+}
+
+#[derive(Serialize)]
+struct SignalResponse {
+    sdp: String,
+}
+
+async fn signal_handler(
+    State(state): State<Arc<AppState>>,
+    Json(req): Json<SignalRequest>,
+) -> Result<Json<SignalResponse>, StatusCode> {
+    let connector = ServerConnector::new().await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let mut offer = RTCSessionDescription::default();
+    offer.sdp_type = RTCSdpType::Offer;
+    offer.sdp = req.sdp;
+    connector
+        .pc
+        .set_remote_description(offer)
+        .await
+        .map_err(|_| StatusCode::BAD_REQUEST)?;
+    let answer = connector
+        .pc
+        .create_answer(None)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    connector
+        .pc
+        .set_local_description(answer.clone())
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    state.rooms.add_peer(connector).await;
+    Ok(Json(SignalResponse { sdp: answer.sdp }))
 }
 
 async fn handle_socket(mut socket: WebSocket) {
@@ -78,7 +123,8 @@ async fn main() {
         &std::env::var("EMAIL_FROM").expect("EMAIL_FROM not set"),
     ));
 
-    let state = Arc::new(AppState { db, email });
+    let rooms = room::RoomManager::new();
+    let state = Arc::new(AppState { db, email, rooms });
 
     let mut _game_app = ServerApp::new();
     _game_app.add_game_module::<DuckHuntPlugin>();
@@ -92,6 +138,7 @@ async fn main() {
     let app = Router::new()
         .nest("/auth", auth_routes())
         .route("/ws", get(ws_handler))
+        .route("/signal", post(signal_handler))
         .nest_service("/assets", assets_service)
         .fallback_service(ServeDir::new("static"))
         .layer(SetResponseHeaderLayer::if_not_present(
