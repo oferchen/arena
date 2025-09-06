@@ -17,9 +17,10 @@ This guide covers configuration of Arena's outgoing email system.
 
 ## Authentication
 
-Set `ARENA_SMTP_USER`/`--smtp-user` and `ARENA_SMTP_PASS`/`--smtp-pass`
-to authenticate with your SMTP provider. If omitted, no authentication
-is performed.
+Arena supports basic username/password authentication. Provide
+`ARENA_SMTP_USER`/`--smtp-user` and `ARENA_SMTP_PASS`/`--smtp-pass` to
+authenticate with your SMTP provider. If these are not set, Arena
+connects without authentication.
 
 ## STARTTLS and SMTPS
 
@@ -53,6 +54,7 @@ export ARENA_SMTP_FROM=arena@example.com
 export ARENA_SMTP_STARTTLS=always
 export ARENA_SMTP_USER=mailuser
 export ARENA_SMTP_PASS=secret
+export ARENA_SMTP_TIMEOUT_MS=20000
 cargo run -p server
 ```
 
