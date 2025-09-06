@@ -26,6 +26,22 @@ Modules are regular Rust crates that plug into the server during startup.
   ```
 - Clients automatically discover the module when they connect.
 
+### Example: Null Module
+
+The `NullModule` demonstrates the minimal structure of a module. It provides empty
+hooks and can be registered on the client:
+
+```rust
+use null_module::NullModule;
+use engine::{AppExt, EnginePlugin};
+
+App::new()
+    .add_plugins(DefaultPlugins)
+    .add_plugins(EnginePlugin)
+    .add_game_module::<NullModule>()
+    .run();
+```
+
 ## Reference
 
 - `GameModule` trait: defines lifecycle hooks for initialization and per-tick updates.

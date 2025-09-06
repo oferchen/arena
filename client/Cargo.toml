@@ -8,3 +8,4 @@ edition = "2024"
 bevy = "0.12"
 engine = { path = "crates/engine" }
 duck_hunt = { path = "crates/minigames/duck_hunt" }
+null_module = { path = "../crates/minigames/null_module" }
