@@ -28,7 +28,7 @@ cargo run -p xtask
 cargo run -p server
 ```
 
-For details on the networking model see the [Netcode guide](docs/netcode.md). To extend gameplay, follow the [Module guide](docs/modules.md).
+For details on the networking model see the [Netcode guide](docs/netcode.md). To extend gameplay, follow the [Module guide](docs/modules.md) or the example [Duck Hunt module](docs/DuckHunt.md).
 
 ## Running
 
@@ -54,6 +54,7 @@ npm run prettier
 Additional resources:
 
 - [Module development](docs/modules.md)
+- [Duck Hunt module](docs/DuckHunt.md)
 - [Netcode design](docs/netcode.md)
 - [Deployment and operations](docs/ops.md)
 
@@ -64,3 +65,4 @@ Documentation lives under `docs/`:
 - [Netcode](docs/netcode.md)
 - [Operations](docs/ops.md)
 - [Modules](docs/modules.md)
+- [Duck Hunt](docs/DuckHunt.md)
