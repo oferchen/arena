@@ -1,7 +1,10 @@
 use anyhow::Result;
 use bevy::prelude::*;
 use bevy::render::mesh::shape::UVSphere;
-use net::message::{InputFrame, Snapshot};
+use net::{
+    CurrentFrame,
+    message::{InputFrame, Snapshot},
+};
 use platform_api::{
     AppState, CapabilityFlags, GameModule, ModuleContext, ModuleMetadata, ServerApp,
 };
@@ -76,7 +79,10 @@ fn setup(world: &mut World) {
 
     world.insert_resource(Score(0));
     world.insert_resource(RoundTimer(Timer::from_seconds(90.0, TimerMode::Once)));
-    world.insert_resource(DuckSpawnTimer(Timer::from_seconds(2.0, TimerMode::Repeating)));
+    world.insert_resource(DuckSpawnTimer(Timer::from_seconds(
+        2.0,
+        TimerMode::Repeating,
+    )));
 
     let Some(asset_server) = world.get_resource::<AssetServer>() else {
         return;
@@ -180,7 +186,11 @@ fn spawn_ducks(
     }
 }
 
-fn move_ducks(time: Res<Time>, mut q: Query<(Entity, &mut Transform, &mut Duck)>, mut commands: Commands) {
+fn move_ducks(
+    time: Res<Time>,
+    mut q: Query<(Entity, &mut Transform, &mut Duck)>,
+    mut commands: Commands,
+) {
     for (e, mut transform, mut duck) in &mut q {
         duck.t += time.delta_seconds() / duck.spline.duration;
         if duck.t >= 1.0 {
@@ -198,6 +208,7 @@ fn fire_weapon(
     time: Res<Time>,
     mut commands: Commands,
     mut writer: EventWriter<InputFrame>,
+    frame: Res<CurrentFrame>,
 ) {
     if buttons.just_pressed(MouseButton::Left) {
         if let Ok(cam) = camera.get_single() {
@@ -207,7 +218,10 @@ fn fire_weapon(
                 time: time.elapsed_seconds_f64() as f32,
             };
             if let Ok(data) = postcard::to_allocvec(&shot) {
-                writer.send(InputFrame { frame: 0, data });
+                writer.send(InputFrame {
+                    frame: frame.0,
+                    data,
+                });
             }
         }
         if let Some((entity, _)) = q.iter().next() {
@@ -245,4 +259,3 @@ fn update_round_timer(
         }
     }
 }
-
