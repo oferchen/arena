@@ -106,7 +106,7 @@ fn setup_channel(dc: &Arc<RTCDataChannel>) {
 /// Forward queued [`InputFrame`] events to the network channel each tick.
 pub fn send_input_frames(mut reader: EventReader<InputFrame>) {
     if let Some(dc) = DATA_CHANNEL.lock().unwrap().clone() {
-        for frame in reader.iter() {
+        for frame in reader.read() {
             let bytes = match postcard::to_allocvec(frame) {
                 Ok(b) => b,
                 Err(_) => continue,

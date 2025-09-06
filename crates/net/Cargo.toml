@@ -10,7 +10,7 @@ webrtc = ["dep:webrtc", "dep:tokio"]
 [dependencies]
 anyhow = "1"
 async-trait = "0.1"
-bevy = { version = "0.11", default-features = false, features = ["bevy_asset", "bevy_scene"] }
+bevy = { version = "0.12", default-features = false, features = ["bevy_asset", "bevy_scene"] }
 postcard = { version = "1", features = ["alloc"] }
 serde = { version = "1", features = ["derive"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros"], optional = true }
