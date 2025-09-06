@@ -1,0 +1,65 @@
+# Email
+
+This guide covers configuration of Arena's outgoing email system.
+
+## Environment variables and CLI flags
+
+| Env var               | CLI flag          | Description                               | Default           |
+| --------------------- | ----------------- | ----------------------------------------- | ----------------- |
+| `ARENA_SMTP_HOST`     | `--smtp-host`     | SMTP server hostname                      | `localhost`       |
+| `ARENA_SMTP_PORT`     | `--smtp-port`     | SMTP server port                          | `25`              |
+| `ARENA_SMTP_FROM`     | `--smtp-from`     | Sender address for all mail               | `arena@localhost` |
+| `ARENA_SMTP_STARTTLS` | `--smtp-starttls` | STARTTLS mode (`auto`, `always`, `never`) | `auto`            |
+| `ARENA_SMTP_SMTPS`    | `--smtp-smtps`    | Use SMTPS (implicit TLS)                  | `false`           |
+| `ARENA_SMTP_TIMEOUT`  | `--smtp-timeout`  | Connection timeout in milliseconds        | `10000`           |
+
+## Authentication
+
+Arena currently does not implement SMTP authentication. If your mail
+provider requires credentials, run Arena behind a local relay (such as
+Postfix or Exim) that handles authentication to the upstream server.
+
+## STARTTLS and SMTPS
+
+Set `ARENA_SMTP_STARTTLS`/`--smtp-starttls` to control STARTTLS usage:
+
+- `auto` – opportunistically upgrade to TLS if the server supports it
+- `always` – require STARTTLS, failing if unsupported
+- `never` – disable STARTTLS
+
+If your provider uses SMTPS (implicit TLS, typically port `465`), enable
+`ARENA_SMTP_SMTPS=true` or `--smtp-smtps`.
+
+## Retry behaviour
+
+Failed deliveries are retried up to five times with exponential
+backoff starting at one second (1s, 2s, 4s, 8s). After the final
+attempt a warning is logged.
+
+## Test endpoint
+
+POST `/admin/mail/test` sends a test message to the configured
+`ARENA_SMTP_FROM` address. A `200` response indicates the message was
+queued successfully.
+
+## Sample configuration
+
+```bash
+export ARENA_SMTP_HOST=smtp.example.com
+export ARENA_SMTP_PORT=587
+export ARENA_SMTP_FROM=arena@example.com
+export ARENA_SMTP_STARTTLS=always
+
+cargo run -p server
+```
+
+## Troubleshooting
+
+- **Connection refused** – verify `ARENA_SMTP_HOST` and `ARENA_SMTP_PORT`
+  and that the server allows connections from your host.
+- **TLS handshake failures** – ensure STARTTLS/SMTPS settings match the
+  server's requirements and that system CA certificates are up to date.
+- **Authentication required** – configure a local relay capable of
+  authenticating to the upstream SMTP provider.
+- **Persistent failures** – check server logs for retry warnings and use
+  `/admin/mail/test` to verify connectivity.

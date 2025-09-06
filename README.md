@@ -28,7 +28,7 @@ cargo run -p xtask
 cargo run -p server
 ```
 
-For details on the networking model see the [Netcode guide](docs/netcode.md). To extend gameplay, follow the [Module guide](docs/modules.md) or the example [Duck Hunt module](docs/DuckHunt.md).
+For details on the networking model see the [Netcode guide](docs/netcode.md). To extend gameplay, follow the [Module guide](docs/modules.md) or the example [Duck Hunt module](docs/DuckHunt.md). Email configuration is covered in the [Email guide](docs/Email.md).
 
 ## Running
 
@@ -57,6 +57,7 @@ Additional resources:
 - [Duck Hunt module](docs/DuckHunt.md)
 - [Netcode design](docs/netcode.md)
 - [Deployment and operations](docs/ops.md)
+- [Email configuration](docs/Email.md)
 
 ## Documentation
 
@@ -66,3 +67,4 @@ Documentation lives under `docs/`:
 - [Operations](docs/ops.md)
 - [Modules](docs/modules.md)
 - [Duck Hunt](docs/DuckHunt.md)
+- [Email](docs/Email.md)

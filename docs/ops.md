@@ -16,6 +16,7 @@ This guide covers deploying Arena and operating it in production environments.
 3. Configure the server environment. Useful variables include:
    - `ARENA_PORT` – TCP port to listen on (default `3000`)
    - `ARENA_DATA_DIR` – path to persistent data
+   - `ARENA_SMTP_*` – outgoing mail settings; see [Email configuration](Email.md)
 
 ## Usage
 
