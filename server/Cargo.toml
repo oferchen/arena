@@ -16,3 +16,6 @@ bevy = "0.12"
 net = { path = "../crates/net", features = ["webrtc"] }
 serde = { version = "1", features = ["derive"] }
 webrtc = "0.11"
+anyhow = "1"
+log = "0.4"
+env_logger = "0.11"
