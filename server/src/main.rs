@@ -1,6 +1,6 @@
 use std::{net::SocketAddr, sync::Arc};
 
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 
 use crate::email::{EmailService, SmtpConfig};
 use axum::{
@@ -102,9 +102,7 @@ async fn handle_signal_socket(state: Arc<AppState>, mut socket: WebSocket) {
             if connector.pc.set_remote_description(offer).await.is_ok() {
                 if let Ok(answer) = connector.pc.create_answer(None).await {
                     let _ = connector.pc.set_local_description(answer.clone()).await;
-                    let _ = socket
-                        .send(Message::Text(answer.sdp.clone()))
-                        .await;
+                    let _ = socket.send(Message::Text(answer.sdp.clone())).await;
                     state.rooms.add_peer(connector).await;
                 }
             }
@@ -199,6 +197,10 @@ async fn run(smtp: SmtpConfig) -> Result<()> {
             HeaderName::from_static("cross-origin-resource-policy"),
             HeaderValue::from_static("same-origin"),
         ))
+        .layer(SetResponseHeaderLayer::if_not_present(
+            HeaderName::from_static("content-security-policy"),
+            HeaderValue::from_static("default-src 'self'"),
+        ))
         .with_state(state);
 
     let addr = SocketAddr::from(([0, 0, 0, 0], 3000));
@@ -238,12 +240,12 @@ async fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::env;
     use futures_util::{SinkExt, StreamExt};
     use sqlx::postgres::PgPoolOptions;
+    use std::env;
     use tokio_tungstenite::tungstenite::Message;
-    use webrtc::api::media_engine::MediaEngine;
     use webrtc::api::APIBuilder;
+    use webrtc::api::media_engine::MediaEngine;
     use webrtc::peer_connection::configuration::RTCConfiguration;
 
     #[tokio::test]
@@ -300,12 +302,16 @@ mod tests {
 
     #[tokio::test]
     async fn websocket_signaling_completes_handshake() {
-        let db = PgPoolOptions::new().connect_lazy("postgres://localhost").unwrap();
+        let db = PgPoolOptions::new()
+            .connect_lazy("postgres://localhost")
+            .unwrap();
         let email = Arc::new(EmailService::new(SmtpConfig::default()).unwrap());
         let rooms = room::RoomManager::new();
         let state = Arc::new(AppState { db, email, rooms });
 
-        let app = Router::new().route("/signal", get(signal_ws_handler)).with_state(state);
+        let app = Router::new()
+            .route("/signal", get(signal_ws_handler))
+            .with_state(state);
 
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
@@ -316,15 +322,17 @@ mod tests {
         let mut m = MediaEngine::default();
         m.register_default_codecs().unwrap();
         let api = APIBuilder::new().with_media_engine(m).build();
-        let pc = api.new_peer_connection(RTCConfiguration::default()).await.unwrap();
+        let pc = api
+            .new_peer_connection(RTCConfiguration::default())
+            .await
+            .unwrap();
         let _dc = pc.create_data_channel("data", None).await.unwrap();
         let offer = pc.create_offer(None).await.unwrap();
         pc.set_local_description(offer.clone()).await.unwrap();
 
-        let (mut ws, _) =
-            tokio_tungstenite::connect_async(format!("ws://{}/signal", addr))
-                .await
-                .unwrap();
+        let (mut ws, _) = tokio_tungstenite::connect_async(format!("ws://{}/signal", addr))
+            .await
+            .unwrap();
         ws.send(Message::Text(offer.sdp)).await.unwrap();
         let msg = ws.next().await.expect("no answer").unwrap();
         let answer_sdp = msg.into_text().unwrap();

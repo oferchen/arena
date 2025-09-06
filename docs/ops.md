@@ -28,6 +28,8 @@ This guide covers deploying Arena and operating it in production environments.
 - Monitor the process and restart on failure using a supervisor such as `systemd` or `pm2`.
 - For multiplayer features such as WebRTC DataChannels ensure the required
   headers are set; see the [netcode guide](netcode.md).
+- Responses include a default `Content-Security-Policy` header of `default-src 'self'` to
+  restrict resource loading to the same origin.
 - Modules can be added or removed without downtime; refer to the [modules
   guide](modules.md) for capability flags and packaging via
   `assets/modules/<id>/module.toml`.
