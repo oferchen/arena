@@ -47,6 +47,45 @@ impl ClientConnector {
         Ok(Self { pc, _dc: dc })
     }
 
+    /// Perform signaling over a WebSocket endpoint, exchanging an SDP offer and answer.
+    #[cfg(target_arch = "wasm32")]
+    pub async fn signal(&self, url: &str) -> Result<()> {
+        use futures_channel::oneshot;
+        use wasm_bindgen::{prelude::*, JsCast};
+        use web_sys::{BinaryType, MessageEvent, WebSocket};
+        use webrtc::peer_connection::sdp::sdp_type::RTCSdpType;
+        use webrtc::peer_connection::sdp::session_description::RTCSessionDescription;
+
+        let offer = self.pc.create_offer(None).await?;
+        self.pc.set_local_description(offer.clone()).await?;
+
+        let ws = WebSocket::new(url)?;
+        ws.set_binary_type(BinaryType::Arraybuffer);
+        let (tx, rx) = oneshot::channel::<String>();
+
+        let onmessage = Closure::wrap(Box::new(move |e: MessageEvent| {
+            if let Ok(text) = e.data().dyn_into::<js_sys::JsString>() {
+                let _ = tx.send(text.into());
+            }
+        }) as Box<dyn FnMut(_)>);
+        ws.set_onmessage(Some(onmessage.as_ref().unchecked_ref()));
+        onmessage.forget();
+
+        let ws_clone = ws.clone();
+        let onopen = Closure::wrap(Box::new(move || {
+            let _ = ws_clone.send_with_str(&offer.sdp);
+        }) as Box<dyn FnMut()>);
+        ws.set_onopen(Some(onopen.as_ref().unchecked_ref()));
+        onopen.forget();
+
+        let answer_sdp = rx.await?;
+        let mut answer = RTCSessionDescription::default();
+        answer.sdp_type = RTCSdpType::Answer;
+        answer.sdp = answer_sdp;
+        self.pc.set_remote_description(answer).await?;
+        Ok(())
+    }
+
     /// Close the underlying connection.
     pub async fn close(self) -> Result<()> {
         self.pc.close().await?;

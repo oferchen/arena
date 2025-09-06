@@ -4,10 +4,10 @@ use anyhow::Result;
 
 use crate::email::{EmailService, SmtpConfig};
 use axum::{
-    Json, Router,
+    Router,
     extract::{
         State,
-        ws::{WebSocket, WebSocketUpgrade},
+        ws::{Message, WebSocket, WebSocketUpgrade},
     },
     http::{HeaderName, HeaderValue, StatusCode, header::CACHE_CONTROL},
     response::IntoResponse,
@@ -15,7 +15,6 @@ use axum::{
 };
 use clap::Parser;
 use net::server::ServerConnector;
-use serde::{Deserialize, Serialize};
 use webrtc::peer_connection::sdp::sdp_type::RTCSdpType;
 use webrtc::peer_connection::sdp::session_description::RTCSessionDescription;
 
@@ -79,43 +78,33 @@ async fn ws_handler(
     })
 }
 
-#[derive(Deserialize)]
-struct SignalRequest {
-    sdp: String,
-}
-
-#[derive(Serialize)]
-struct SignalResponse {
-    sdp: String,
-}
-
-async fn signal_handler(
+async fn signal_ws_handler(
     State(state): State<Arc<AppState>>,
-    Json(req): Json<SignalRequest>,
-) -> Result<Json<SignalResponse>, StatusCode> {
-    let connector = ServerConnector::new()
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-    let mut offer = RTCSessionDescription::default();
-    offer.sdp_type = RTCSdpType::Offer;
-    offer.sdp = req.sdp;
-    connector
-        .pc
-        .set_remote_description(offer)
-        .await
-        .map_err(|_| StatusCode::BAD_REQUEST)?;
-    let answer = connector
-        .pc
-        .create_answer(None)
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-    connector
-        .pc
-        .set_local_description(answer.clone())
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-    state.rooms.add_peer(connector).await;
-    Ok(Json(SignalResponse { sdp: answer.sdp }))
+    ws: WebSocketUpgrade,
+) -> impl IntoResponse {
+    ws.on_upgrade(move |socket| async move {
+        handle_signal_socket(state, socket).await;
+    })
+}
+
+async fn handle_signal_socket(state: Arc<AppState>, mut socket: WebSocket) {
+    if let Some(Ok(Message::Text(sdp))) = socket.recv().await {
+        if let Ok(connector) = ServerConnector::new().await {
+            let mut offer = RTCSessionDescription::default();
+            offer.sdp_type = RTCSdpType::Offer;
+            offer.sdp = sdp;
+            if connector.pc.set_remote_description(offer).await.is_ok() {
+                if let Ok(answer) = connector.pc.create_answer(None).await {
+                    let _ = connector.pc.set_local_description(answer.clone()).await;
+                    let _ = socket
+                        .send(Message::Text(answer.sdp.clone()))
+                        .await;
+                    state.rooms.add_peer(connector).await;
+                }
+            }
+        }
+    }
+    let _ = socket.close().await;
 }
 
 async fn handle_socket(mut socket: WebSocket) {
@@ -185,7 +174,7 @@ async fn run(smtp: SmtpConfig) -> Result<()> {
     let app = Router::new()
         .nest("/auth", auth_routes())
         .route("/ws", get(ws_handler))
-        .route("/signal", post(signal_handler))
+        .route("/signal", get(signal_ws_handler))
         .route("/admin/mail/test", post(mail_test_handler))
         .nest_service("/assets", assets_service)
         .fallback_service(ServeDir::new("static"))
@@ -234,6 +223,12 @@ async fn main() {
 mod tests {
     use super::*;
     use std::env;
+    use futures_util::{SinkExt, StreamExt};
+    use sqlx::postgres::PgPoolOptions;
+    use tokio_tungstenite::tungstenite::Message;
+    use webrtc::api::media_engine::MediaEngine;
+    use webrtc::api::APIBuilder;
+    use webrtc::peer_connection::configuration::RTCConfiguration;
 
     #[tokio::test]
     async fn setup_fails_without_env_vars() {
@@ -266,5 +261,42 @@ mod tests {
         unsafe {
             env::remove_var("ARENA_SMTP_PORT");
         }
+    }
+
+    #[tokio::test]
+    async fn websocket_signaling_completes_handshake() {
+        let db = PgPoolOptions::new().connect_lazy("postgres://localhost").unwrap();
+        let email = Arc::new(EmailService::new(SmtpConfig::default()));
+        let rooms = room::RoomManager::new();
+        let state = Arc::new(AppState { db, email, rooms });
+
+        let app = Router::new().route("/signal", get(signal_ws_handler)).with_state(state);
+
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+
+        let mut m = MediaEngine::default();
+        m.register_default_codecs().unwrap();
+        let api = APIBuilder::new().with_media_engine(m).build();
+        let pc = api.new_peer_connection(RTCConfiguration::default()).await.unwrap();
+        let _dc = pc.create_data_channel("data", None).await.unwrap();
+        let offer = pc.create_offer(None).await.unwrap();
+        pc.set_local_description(offer.clone()).await.unwrap();
+
+        let (mut ws, _) =
+            tokio_tungstenite::connect_async(format!("ws://{}/signal", addr))
+                .await
+                .unwrap();
+        ws.send(Message::Text(offer.sdp)).await.unwrap();
+        let msg = ws.next().await.expect("no answer").unwrap();
+        let answer_sdp = msg.into_text().unwrap();
+        let mut answer = RTCSessionDescription::default();
+        answer.sdp_type = RTCSdpType::Answer;
+        answer.sdp = answer_sdp;
+        pc.set_remote_description(answer).await.unwrap();
+        assert!(pc.remote_description().await.is_some());
     }
 }

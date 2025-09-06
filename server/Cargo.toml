@@ -20,3 +20,7 @@ clap = { version = "4", features = ["derive", "env"] }
 duck_hunt_server = { path = "../crates/minigames/duck_hunt" }
 glam = "0.24"
 postcard = { version = "1", features = ["alloc"] }
+
+[dev-dependencies]
+tokio-tungstenite = "0.21"
+futures-util = "0.3"
