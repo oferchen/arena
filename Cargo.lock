@@ -5920,11 +5920,14 @@ dependencies = [
  "bevy 0.12.1",
  "duck_hunt",
  "lettre",
+ "net",
  "once_cell",
  "platform-api",
+ "serde",
  "sqlx",
  "tokio",
  "tower-http",
+ "webrtc",
 ]
 
 [[package]]

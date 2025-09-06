@@ -10,13 +10,16 @@ use webrtc::data_channel::RTCDataChannel;
 use webrtc::peer_connection::configuration::RTCConfiguration;
 use webrtc::peer_connection::RTCPeerConnection;
 
-use crate::message::{InputFrame, Snapshot};
+use crate::message::{InputFrame, ServerMessage};
 
 /// Handles the server side of the WebRTC connection.
 pub struct ServerConnector {
-    pc: RTCPeerConnection,
-    _input_rx: Receiver<InputFrame>,
-    _snapshot_tx: Sender<Snapshot>,
+    /// Underlying peer connection.
+    pub pc: RTCPeerConnection,
+    /// Incoming input frames from the client.
+    pub input_rx: Receiver<InputFrame>,
+    /// Channel used to send snapshots to the client.
+    pub snapshot_tx: Sender<ServerMessage>,
 }
 
 impl ServerConnector {
@@ -45,14 +48,15 @@ impl ServerConnector {
                     })
                 }));
 
+                let dc_open = Arc::clone(&dc);
                 dc.on_open(Box::new(move || {
-                    let dc = Arc::clone(&dc);
+                    let dc = Arc::clone(&dc_open);
                     let snapshot_rx = Arc::clone(&snapshot_rx);
                     Box::pin(async move {
                         tokio::spawn(async move {
                             let mut rx = snapshot_rx.lock().await;
-                            while let Some(snapshot) = rx.recv().await {
-                                if let Ok(bytes) = postcard::to_allocvec(&snapshot) {
+                            while let Some(msg) = rx.recv().await {
+                                if let Ok(bytes) = postcard::to_allocvec(&msg) {
                                     let _ = dc.send(&Bytes::from(bytes)).await;
                                 }
                             }
@@ -62,7 +66,7 @@ impl ServerConnector {
             })
         }));
 
-        Ok(Self { pc, _input_rx: input_rx, _snapshot_tx: snapshot_tx })
+        Ok(Self { pc, input_rx, snapshot_tx })
     }
 
     /// Close the underlying connection.

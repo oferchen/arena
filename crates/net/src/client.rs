@@ -12,10 +12,11 @@ use webrtc::data_channel::RTCDataChannel;
 use webrtc::peer_connection::configuration::RTCConfiguration;
 use webrtc::peer_connection::RTCPeerConnection;
 
-use crate::message::{InputFrame, Snapshot};
+use crate::message::{apply_delta, InputFrame, ServerMessage, Snapshot};
 
 static DATA_CHANNEL: Mutex<Option<Arc<RTCDataChannel>>> = Mutex::new(None);
 static SNAPSHOT_QUEUE: Mutex<VecDeque<Snapshot>> = Mutex::new(VecDeque::new());
+static LAST_SNAPSHOT: Mutex<Option<Snapshot>> = Mutex::new(None);
 static CONNECTION_EVENTS: Mutex<VecDeque<ConnectionEvent>> =
     Mutex::new(VecDeque::new());
 
@@ -80,8 +81,22 @@ fn setup_channel(dc: &Arc<RTCDataChannel>) {
 
     dc.on_message(Box::new(|msg: DataChannelMessage| {
         if !msg.is_string {
-            if let Ok(snapshot) = postcard::from_bytes::<Snapshot>(&msg.data) {
-                SNAPSHOT_QUEUE.lock().unwrap().push_back(snapshot);
+            if let Ok(msg) = postcard::from_bytes::<ServerMessage>(&msg.data) {
+                match msg {
+                    ServerMessage::Baseline(snapshot) => {
+                        *LAST_SNAPSHOT.lock().unwrap() = Some(snapshot.clone());
+                        SNAPSHOT_QUEUE.lock().unwrap().push_back(snapshot);
+                    }
+                    ServerMessage::Delta(delta) => {
+                        let mut last = LAST_SNAPSHOT.lock().unwrap();
+                        if let Some(ref base) = *last {
+                            if let Ok(snap) = apply_delta(base, &delta) {
+                                *last = Some(snap.clone());
+                                SNAPSHOT_QUEUE.lock().unwrap().push_back(snap);
+                            }
+                        }
+                    }
+                }
             }
         }
         Box::pin(async {})
