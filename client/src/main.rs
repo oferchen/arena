@@ -1,6 +1,6 @@
 use bevy::prelude::*;
 use duck_hunt::DuckHuntPlugin;
-use engine::{AppExt, EnginePlugin};
+use engine::{AppExt, EnginePlugin, AppState};
 use bevy_egui::{egui, EguiContexts, EguiPlugin};
 use reqwest::Client;
 use serde_json::json;
@@ -36,6 +36,6 @@ fn main() {
     App::new()
         .add_plugins(DefaultPlugins)
         .add_plugins(EnginePlugin)
-        .add_minigame::<DuckHuntPlugin>()
+        .add_game_module::<DuckHuntPlugin>(AppState::DuckHunt)
         .run();
 }

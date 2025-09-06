@@ -1,4 +1,5 @@
 use bevy::prelude::*;
+pub use platform_api::{GameModule, ModuleCapability, ModuleContext, ModuleMetadata};
 
 #[derive(States, Default, Clone, Eq, PartialEq, Hash, Debug)]
 pub enum AppState {
@@ -7,25 +8,21 @@ pub enum AppState {
     DuckHunt,
 }
 
-pub struct MinigameInfo {
-    pub name: &'static str,
+pub struct GameModuleInfo {
+    pub metadata: ModuleMetadata,
     pub state: AppState,
 }
 
-pub trait Minigame: Plugin + Sized {
-    fn info() -> MinigameInfo;
-}
-
 #[derive(Resource, Default)]
-pub struct MinigameRegistry {
-    pub games: Vec<MinigameInfo>,
+pub struct GameModuleRegistry {
+    pub games: Vec<GameModuleInfo>,
 }
 
 pub struct EnginePlugin;
 
 impl Plugin for EnginePlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<MinigameRegistry>()
+        app.init_resource::<GameModuleRegistry>()
             .add_state::<AppState>()
             .add_systems(OnEnter(AppState::Lobby), setup_lobby)
             .add_systems(OnExit(AppState::Lobby), cleanup_lobby)
@@ -53,7 +50,7 @@ fn setup_lobby(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
-    registry: Res<MinigameRegistry>,
+    registry: Res<GameModuleRegistry>,
 ) {
     commands.spawn((
         Camera3dBundle {
@@ -106,16 +103,16 @@ fn cleanup_lobby(mut commands: Commands, q: Query<Entity, With<LobbyEntity>>) {
 
 fn lobby_keyboard(
     keys: Res<Input<KeyCode>>,
-    registry: Res<MinigameRegistry>,
+    registry: Res<GameModuleRegistry>,
     mut next_state: ResMut<NextState<AppState>>,
 ) {
     for (i, info) in registry.games.iter().enumerate() {
         let key = match i {
-            0 => KeyCode::Digit1,
-            1 => KeyCode::Digit2,
-            2 => KeyCode::Digit3,
-            3 => KeyCode::Digit4,
-            4 => KeyCode::Digit5,
+            0 => KeyCode::Key1,
+            1 => KeyCode::Key2,
+            2 => KeyCode::Key3,
+            3 => KeyCode::Key4,
+            4 => KeyCode::Key5,
             _ => continue,
         };
         if keys.just_pressed(key) {
@@ -130,23 +127,35 @@ fn exit_to_lobby(keys: Res<Input<KeyCode>>, mut next_state: ResMut<NextState<App
     }
 }
 
-pub fn register_minigame<M: Minigame + Default + 'static>(app: &mut App) {
-    let info = M::info();
+pub fn register_game_module<M: GameModule + Plugin + Default + 'static>(
+    app: &mut App,
+    state: AppState,
+) {
+    let metadata = M::metadata();
     app.world
-        .get_resource_mut::<MinigameRegistry>()
-        .expect("EnginePlugin must be added before registering minigames")
+        .get_resource_mut::<GameModuleRegistry>()
+        .expect("EnginePlugin must be added before registering modules")
         .games
-        .push(info);
+        .push(GameModuleInfo { metadata, state });
+    let mut ctx = ModuleContext::new(app);
+    M::register(&mut ctx);
     app.add_plugins(M::default());
 }
 
 pub trait AppExt {
-    fn add_minigame<M: Minigame + Default + 'static>(&mut self) -> &mut Self;
+    fn add_game_module<M: GameModule + Plugin + Default + 'static>(
+        &mut self,
+        state: AppState,
+    ) -> &mut Self;
 }
 
 impl AppExt for App {
-    fn add_minigame<M: Minigame + Default + 'static>(&mut self) -> &mut Self {
-        register_minigame::<M>(self);
+    fn add_game_module<M: GameModule + Plugin + Default + 'static>(
+        &mut self,
+        state: AppState,
+    ) -> &mut Self {
+        register_game_module::<M>(self, state);
         self
     }
 }
+

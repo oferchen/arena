@@ -3,5 +3,6 @@ resolver = "2"
 members = [
     "server",
     "client",
-    "crates/net"
+    "crates/net",
+    "crates/platform-api"
 ]

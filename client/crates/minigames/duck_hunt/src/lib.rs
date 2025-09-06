@@ -1,6 +1,7 @@
 use bevy::prelude::*;
-use engine::{AppState, Minigame, MinigameInfo};
+use engine::{AppState, GameModule, ModuleCapability, ModuleContext, ModuleMetadata};
 
+#[derive(Default)]
 pub struct DuckHuntPlugin;
 
 impl Plugin for DuckHuntPlugin {
@@ -35,11 +36,16 @@ fn cleanup(mut commands: Commands, q: Query<Entity, With<DuckHuntEntity>>) {
     }
 }
 
-impl Minigame for DuckHuntPlugin {
-    fn info() -> MinigameInfo {
-        MinigameInfo {
-            name: "Duck Hunt",
-            state: AppState::DuckHunt,
-        }
+impl GameModule for DuckHuntPlugin {
+    const ID: &'static str = "duck_hunt";
+
+    fn metadata() -> ModuleMetadata {
+        ModuleMetadata::new("Duck Hunt", ModuleCapability::CLIENT)
     }
+
+    fn register(_ctx: &mut ModuleContext) {}
+
+    fn enter(_ctx: &mut ModuleContext) {}
+
+    fn exit(_ctx: &mut ModuleContext) {}
 }
