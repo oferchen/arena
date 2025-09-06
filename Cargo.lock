@@ -2187,8 +2187,10 @@ version = "0.1.0"
 dependencies = [
  "bevy",
  "bevy_rapier3d",
+ "futures-lite 2.6.1",
  "platform-api",
  "serde",
+ "serde_json",
  "toml",
 ]
 

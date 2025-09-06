@@ -9,3 +9,5 @@ platform-api = { path = "../../../crates/platform-api" }
 bevy_rapier3d = { version = "0.24", default-features = false, features = ["dim3"] }
 serde = { version = "1.0", features = ["derive"] }
 toml = "0.8"
+serde_json = "1.0"
+futures-lite = "2.3"

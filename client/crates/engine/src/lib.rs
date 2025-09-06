@@ -2,7 +2,9 @@ use bevy::{input::mouse::MouseMotion, prelude::*, window::CursorGrabMode};
 use bevy_rapier3d::prelude::*;
 use platform_api::{AppState, CapabilityFlags, GameModule, ModuleContext, ModuleMetadata};
 use serde::Deserialize;
+#[cfg(not(target_arch = "wasm32"))]
 use std::fs;
+#[cfg(not(target_arch = "wasm32"))]
 use std::path::Path;
 
 /// Stores metadata for all registered game modules.
@@ -337,51 +339,99 @@ struct ModuleManifest {
     max_players: u32,
 }
 
-pub fn discover_modules(mut registry: ResMut<ModuleRegistry>) {
-    let modules_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../assets/modules");
-    let Ok(entries) = fs::read_dir(modules_dir) else {
-        return;
-    };
-    for entry in entries.flatten() {
-        let manifest_path = entry.path().join("module.toml");
-        if !manifest_path.exists() {
-            continue;
-        }
-        let Ok(contents) = fs::read_to_string(&manifest_path) else {
-            continue;
-        };
-        let manifest = match toml::from_str::<ModuleManifest>(&contents) {
+pub fn discover_modules(
+    mut registry: ResMut<ModuleRegistry>,
+    asset_server: Option<Res<AssetServer>>,
+) {
+    #[cfg(target_arch = "wasm32")]
+    {
+        use bevy::asset::load;
+        use futures_lite::future;
+        let Some(asset_server) = asset_server else { return; };
+        let manifests: Vec<ModuleManifest> = match future::block_on(async {
+            let data: String = load(asset_server.as_ref(), "modules.json").await;
+            serde_json::from_str(&data)
+        }) {
             Ok(m) => m,
-            Err(_) => {
+            Err(_) => return,
+        };
+        for manifest in manifests {
+            let state = match manifest.state.as_str() {
+                "DuckHunt" => AppState::DuckHunt,
+                _ => AppState::Lobby,
+            };
+            let mut caps = CapabilityFlags::default();
+            for cap in manifest.capabilities {
+                match cap.as_str() {
+                    "LOBBY_PAD" => caps |= CapabilityFlags::LOBBY_PAD,
+                    "NeedsPhysics" => caps |= CapabilityFlags::NEEDS_PHYSICS,
+                    "UsesHitscan" => caps |= CapabilityFlags::USES_HITSCAN,
+                    "NeedsNav" => caps |= CapabilityFlags::NEEDS_NAV,
+                    "UsesVehicles" => caps |= CapabilityFlags::USES_VEHICLES,
+                    "UsesFlight" => caps |= CapabilityFlags::USES_FLIGHT,
+                    _ => {}
+                }
+            }
+            registry.modules.push(ModuleMetadata {
+                id: manifest.id,
+                name: manifest.name,
+                version: manifest.version,
+                author: manifest.author,
+                state,
+                capabilities: caps,
+                max_players: manifest.max_players,
+                icon: Handle::default(),
+            });
+        }
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let _ = asset_server;
+        let modules_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../assets/modules");
+        let Ok(entries) = fs::read_dir(modules_dir) else {
+            return;
+        };
+        for entry in entries.flatten() {
+            let manifest_path = entry.path().join("module.toml");
+            if !manifest_path.exists() {
                 continue;
             }
-        };
-        let state = match manifest.state.as_str() {
-            "DuckHunt" => AppState::DuckHunt,
-            _ => AppState::Lobby,
-        };
-        let mut caps = CapabilityFlags::default();
-        for cap in manifest.capabilities {
-            match cap.as_str() {
-                "LOBBY_PAD" => caps |= CapabilityFlags::LOBBY_PAD,
-                "NeedsPhysics" => caps |= CapabilityFlags::NEEDS_PHYSICS,
-                "UsesHitscan" => caps |= CapabilityFlags::USES_HITSCAN,
-                "NeedsNav" => caps |= CapabilityFlags::NEEDS_NAV,
-                "UsesVehicles" => caps |= CapabilityFlags::USES_VEHICLES,
-                "UsesFlight" => caps |= CapabilityFlags::USES_FLIGHT,
-                _ => {}
+            let Ok(contents) = fs::read_to_string(&manifest_path) else {
+                continue;
+            };
+            let manifest = match toml::from_str::<ModuleManifest>(&contents) {
+                Ok(m) => m,
+                Err(_) => {
+                    continue;
+                }
+            };
+            let state = match manifest.state.as_str() {
+                "DuckHunt" => AppState::DuckHunt,
+                _ => AppState::Lobby,
+            };
+            let mut caps = CapabilityFlags::default();
+            for cap in manifest.capabilities {
+                match cap.as_str() {
+                    "LOBBY_PAD" => caps |= CapabilityFlags::LOBBY_PAD,
+                    "NeedsPhysics" => caps |= CapabilityFlags::NEEDS_PHYSICS,
+                    "UsesHitscan" => caps |= CapabilityFlags::USES_HITSCAN,
+                    "NeedsNav" => caps |= CapabilityFlags::NEEDS_NAV,
+                    "UsesVehicles" => caps |= CapabilityFlags::USES_VEHICLES,
+                    "UsesFlight" => caps |= CapabilityFlags::USES_FLIGHT,
+                    _ => {}
+                }
             }
+            registry.modules.push(ModuleMetadata {
+                id: manifest.id,
+                name: manifest.name,
+                version: manifest.version,
+                author: manifest.author,
+                state,
+                capabilities: caps,
+                max_players: manifest.max_players,
+                icon: Handle::default(),
+            });
         }
-        registry.modules.push(ModuleMetadata {
-            id: manifest.id,
-            name: manifest.name,
-            version: manifest.version,
-            author: manifest.author,
-            state,
-            capabilities: caps,
-            max_players: manifest.max_players,
-            icon: Handle::default(),
-        });
     }
 }
 
