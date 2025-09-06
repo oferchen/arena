@@ -2114,7 +2114,10 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "bevy",
+ "net",
  "platform-api",
+ "postcard",
+ "serde",
 ]
 
 [[package]]
@@ -5170,11 +5173,14 @@ dependencies = [
  "anyhow",
  "axum",
  "clap",
+ "duck_hunt_server",
  "env_logger",
+ "glam",
  "lettre",
  "log",
  "net",
  "once_cell",
+ "postcard",
  "serde",
  "sqlx",
  "tokio",

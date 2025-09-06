@@ -1,25 +1,50 @@
 use std::sync::Arc;
+use std::time::Duration as StdDuration;
 
 use tokio::sync::{mpsc::Receiver, mpsc::Sender, Mutex};
 use tokio::time::{self, Duration};
 
+use duck_hunt_server::{validate_hit, DuckState, Server as DuckServer};
+use glam::Vec3;
 use net::message::{delta_compress, InputFrame, ServerMessage, Snapshot};
 use net::server::ServerConnector;
+use serde::{Deserialize, Serialize};
 
 struct ConnectorHandle {
     input_rx: Receiver<InputFrame>,
     snapshot_tx: Sender<ServerMessage>,
 }
 
+#[derive(Serialize, Deserialize)]
+struct Shot {
+    origin: [f32; 3],
+    direction: [f32; 3],
+    time: f32,
+}
+
 struct Room {
     connectors: Vec<ConnectorHandle>,
     last_snapshot: Option<Snapshot>,
     frame: u32,
+    duck_server: DuckServer,
+    scores: Vec<u32>,
 }
 
 impl Room {
     fn new() -> Self {
-        Self { connectors: Vec::new(), last_snapshot: None, frame: 0 }
+        Self {
+            connectors: Vec::new(),
+            last_snapshot: None,
+            frame: 0,
+            duck_server: DuckServer {
+                latency: StdDuration::from_secs(0),
+                ducks: vec![DuckState {
+                    position: Vec3::new(0.0, 0.0, 5.0),
+                    velocity: Vec3::ZERO,
+                }],
+            },
+            scores: Vec::new(),
+        }
     }
 
     fn add_connector(&mut self, connector: ServerConnector) {
@@ -27,19 +52,34 @@ impl Room {
             input_rx: connector.input_rx,
             snapshot_tx: connector.snapshot_tx,
         });
+        self.scores.push(0);
     }
 
     async fn tick(&mut self) {
         self.frame = self.frame.wrapping_add(1);
         // Consume all pending input frames.
-        for conn in &mut self.connectors {
-            while let Ok(_frame) = conn.input_rx.try_recv() {
-                // Game state update would occur here.
+        for (i, conn) in self.connectors.iter_mut().enumerate() {
+            while let Ok(frame) = conn.input_rx.try_recv() {
+                if let Ok(shot) = postcard::from_bytes::<Shot>(&frame.data) {
+                    let origin = Vec3::from_array(shot.origin);
+                    let direction = Vec3::from_array(shot.direction);
+                    if validate_hit(
+                        &self.duck_server,
+                        origin,
+                        direction,
+                        StdDuration::from_secs_f32(shot.time),
+                    ) {
+                        if let Some(score) = self.scores.get_mut(i) {
+                            *score += 1;
+                        }
+                    }
+                }
             }
         }
 
-        // Build a snapshot of the world. For now the payload is empty.
-        let snapshot = Snapshot { frame: self.frame, data: Vec::new() };
+        // Build a snapshot of the world containing player scores.
+        let data = postcard::to_allocvec(&self.scores).unwrap_or_default();
+        let snapshot = Snapshot { frame: self.frame, data };
         if let Some(ref base) = self.last_snapshot {
             if let Ok(delta) = delta_compress(base, &snapshot) {
                 for conn in &self.connectors {
@@ -89,6 +129,7 @@ impl RoomManager {
 mod tests {
     use super::*;
     use tokio::sync::mpsc;
+    use net::message::apply_delta;
 
     #[tokio::test]
     async fn updates_snapshot_after_delta() {
@@ -122,6 +163,65 @@ mod tests {
             other => panic!("expected delta, got {:?}", other),
         }
         assert_eq!(room.last_snapshot.as_ref().unwrap().frame, 3);
+    }
+
+    #[tokio::test]
+    async fn multiplayer_scoring() {
+        let mut room = Room::new();
+        let (tx1, rx1) = mpsc::channel(1);
+        let (snap_tx1, mut snap_rx1) = mpsc::channel(8);
+        room.connectors.push(ConnectorHandle { input_rx: rx1, snapshot_tx: snap_tx1 });
+        let (tx2, rx2) = mpsc::channel(1);
+        let (snap_tx2, mut snap_rx2) = mpsc::channel(8);
+        room.connectors.push(ConnectorHandle { input_rx: rx2, snapshot_tx: snap_tx2 });
+        room.scores.push(0);
+        room.scores.push(0);
+
+        room.tick().await; // baseline
+        let base1 = match snap_rx1.try_recv().unwrap() {
+            ServerMessage::Baseline(b) => b,
+            _ => panic!("expected baseline"),
+        };
+        let base2 = match snap_rx2.try_recv().unwrap() {
+            ServerMessage::Baseline(b) => b,
+            _ => panic!("expected baseline"),
+        };
+
+        let shot = Shot { origin: [0.0, 0.0, 0.0], direction: [0.0, 0.0, 1.0], time: 0.0 };
+        let bytes = postcard::to_allocvec(&shot).unwrap();
+        tx1.send(InputFrame { frame: 0, data: bytes }).await.unwrap();
+        room.tick().await;
+        let delta1_p1 = match snap_rx1.try_recv().unwrap() {
+            ServerMessage::Delta(d) => d,
+            _ => panic!("expected delta"),
+        };
+        let snap1_p1 = apply_delta(&base1, &delta1_p1).unwrap();
+        let scores: Vec<u32> = postcard::from_bytes(&snap1_p1.data).unwrap();
+        assert_eq!(scores, vec![1, 0]);
+        let delta1_p2 = match snap_rx2.try_recv().unwrap() {
+            ServerMessage::Delta(d) => d,
+            _ => panic!("expected delta"),
+        };
+        let snap1_p2 = apply_delta(&base2, &delta1_p2).unwrap();
+
+        let shot = Shot { origin: [0.0, 0.0, 0.0], direction: [0.0, 0.0, 1.0], time: 0.0 };
+        let bytes = postcard::to_allocvec(&shot).unwrap();
+        tx2.send(InputFrame { frame: 0, data: bytes }).await.unwrap();
+        room.tick().await;
+        let delta2_p1 = match snap_rx1.try_recv().unwrap() {
+            ServerMessage::Delta(d) => d,
+            _ => panic!("expected delta"),
+        };
+        let snap2_p1 = apply_delta(&snap1_p1, &delta2_p1).unwrap();
+        let scores: Vec<u32> = postcard::from_bytes(&snap2_p1.data).unwrap();
+        assert_eq!(scores, vec![1, 1]);
+        let delta2_p2 = match snap_rx2.try_recv().unwrap() {
+            ServerMessage::Delta(d) => d,
+            _ => panic!("expected delta"),
+        };
+        let snap2_p2 = apply_delta(&snap1_p2, &delta2_p2).unwrap();
+        let scores: Vec<u32> = postcard::from_bytes(&snap2_p2.data).unwrap();
+        assert_eq!(scores, vec![1, 1]);
     }
 }
 
