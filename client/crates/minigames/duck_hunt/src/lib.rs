@@ -1,47 +1,67 @@
 use bevy::prelude::*;
-use platform_api::{AppState, CapabilityFlags, GameModule, ModuleMetadata};
+use platform_api::{AppState, CapabilityFlags, GameModule, ModuleContext, ModuleMetadata};
 
 #[derive(Default)]
 pub struct DuckHuntPlugin;
 
 impl Plugin for DuckHuntPlugin {
-    fn build(&self, app: &mut App) {
-        app.add_systems(OnEnter(AppState::DuckHunt), setup)
-            .add_systems(OnExit(AppState::DuckHunt), cleanup);
-    }
+    fn build(&self, _app: &mut App) {}
 }
 
 #[derive(Component)]
 struct DuckHuntEntity;
 
-fn setup(
-    mut commands: Commands,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
-) {
-    commands.spawn((Camera3dBundle::default(), DuckHuntEntity));
-    commands.spawn((
+fn setup(world: &mut World) {
+    world.spawn((Camera3dBundle::default(), DuckHuntEntity));
+    let mesh_handle = {
+        let mut meshes = world.resource_mut::<Assets<Mesh>>();
+        meshes.add(Mesh::from(shape::Cube { size: 1.0 }))
+    };
+    let material_handle = {
+        let mut materials = world.resource_mut::<Assets<StandardMaterial>>();
+        materials.add(Color::rgb(0.8, 0.8, 0.3).into())
+    };
+    world.spawn((
         PbrBundle {
-            mesh: meshes.add(Mesh::from(shape::Cube { size: 1.0 })),
-            material: materials.add(Color::rgb(0.8, 0.8, 0.3).into()),
+            mesh: mesh_handle,
+            material: material_handle,
             ..default()
         },
         DuckHuntEntity,
     ));
 }
 
-fn cleanup(mut commands: Commands, q: Query<Entity, With<DuckHuntEntity>>) {
-    for e in &q {
-        commands.entity(e).despawn_recursive();
+fn cleanup(world: &mut World) {
+    let entities: Vec<_> = {
+        let mut q = world.query_filtered::<Entity, With<DuckHuntEntity>>();
+        q.iter(world).collect()
+    };
+    for e in entities {
+        world.entity_mut(e).despawn_recursive();
     }
 }
 
 impl GameModule for DuckHuntPlugin {
+    const ID: &'static str = "duck_hunt";
+
     fn metadata() -> ModuleMetadata {
         ModuleMetadata {
+            id: Self::ID,
             name: "Duck Hunt",
+            version: "0.1.0",
+            author: "Unknown",
             state: AppState::DuckHunt,
             capabilities: CapabilityFlags::LOBBY_PAD,
         }
     }
+
+    fn enter(ctx: &mut ModuleContext) {
+        setup(ctx.world);
+    }
+
+    fn exit(ctx: &mut ModuleContext) {
+        cleanup(ctx.world);
+    }
+
+    fn server_register(_ctx: &mut ModuleContext) {}
 }

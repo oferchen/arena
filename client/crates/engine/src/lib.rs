@@ -1,8 +1,10 @@
 use bevy::prelude::*;
-use platform_api::{AppState, CapabilityFlags, GameModule, ModuleMetadata};
+use platform_api::{AppState, CapabilityFlags, GameModule, ModuleContext, ModuleMetadata};
 
+/// Stores metadata for all registered game modules.
 #[derive(Resource, Default)]
 pub struct ModuleRegistry {
+    /// Ordered collection of discovered modules.
     pub modules: Vec<ModuleMetadata>,
 }
 
@@ -118,14 +120,32 @@ fn exit_to_lobby(keys: Res<Input<KeyCode>>, mut next_state: ResMut<NextState<App
     }
 }
 
+/// Registers a [`GameModule`] and wires its lifecycle hooks.
 pub fn register_module<M: GameModule + Default + 'static>(app: &mut App) {
     let info = M::metadata();
+    let state = info.state.clone();
+    {
+        let world = &mut app.world;
+        M::server_register(&mut ModuleContext { world });
+    }
     app.world
         .get_resource_mut::<ModuleRegistry>()
         .expect("EnginePlugin must be added before registering modules")
         .modules
         .push(info);
     app.add_plugins(M::default());
+    app.add_systems(OnEnter(state.clone()), enter_module::<M>);
+    app.add_systems(OnExit(state), exit_module::<M>);
+}
+
+/// System wrapper that forwards state entry to the module.
+fn enter_module<M: GameModule>(world: &mut World) {
+    M::enter(&mut ModuleContext { world });
+}
+
+/// System wrapper that forwards state exit to the module.
+fn exit_module<M: GameModule>(world: &mut World) {
+    M::exit(&mut ModuleContext { world });
 }
 
 pub fn hotload_modules(_app: &mut App) {
