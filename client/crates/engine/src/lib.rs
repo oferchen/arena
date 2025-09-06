@@ -2,6 +2,7 @@ use bevy::{input::mouse::MouseMotion, prelude::*, window::CursorGrabMode};
 use bevy_rapier3d::prelude::*;
 use platform_api::{AppState, CapabilityFlags, GameModule, ModuleContext, ModuleMetadata};
 use serde::Deserialize;
+use bevy::ecs::schedule::common_conditions::resource_changed;
 #[cfg(target_arch = "wasm32")]
 use bevy::tasks::{AsyncComputeTaskPool, Task};
 #[cfg(target_arch = "wasm32")]
@@ -10,6 +11,16 @@ use futures_lite::future;
 use std::fs;
 #[cfg(not(target_arch = "wasm32"))]
 use std::path::Path;
+#[cfg(not(target_arch = "wasm32"))]
+use notify::{RecommendedWatcher, RecursiveMode, Watcher};
+#[cfg(not(target_arch = "wasm32"))]
+use std::sync::mpsc::Receiver;
+#[cfg(not(target_arch = "wasm32"))]
+use std::sync::mpsc;
+#[cfg(target_arch = "wasm32")]
+use wasm_bindgen_futures::spawn_local;
+#[cfg(target_arch = "wasm32")]
+use gloo_timers::future::TimeoutFuture;
 
 #[cfg(feature = "vehicle")]
 pub mod vehicle;
@@ -47,6 +58,15 @@ impl Plugin for EnginePlugin {
 
         #[cfg(target_arch = "wasm32")]
         app.add_systems(Update, apply_discovered_modules);
+
+        hotload_modules(app);
+
+        app.add_systems(
+            Update,
+            update_lobby_pads
+                .run_if(resource_changed::<ModuleRegistry>())
+                .run_if(in_state(AppState::Lobby)),
+        );
 
         #[cfg(feature = "vehicle")]
         app.add_plugins(VehiclePlugin);
@@ -369,6 +389,57 @@ struct ModuleManifest {
     max_players: u32,
 }
 
+#[cfg(not(target_arch = "wasm32"))]
+fn read_modules_from_disk() -> Vec<ModuleMetadata> {
+    let modules_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../assets/modules");
+    let Ok(entries) = fs::read_dir(modules_dir) else {
+        return Vec::new();
+    };
+    let mut mods = Vec::new();
+    for entry in entries.flatten() {
+        let manifest_path = entry.path().join("module.toml");
+        if !manifest_path.exists() {
+            continue;
+        }
+        let Ok(contents) = fs::read_to_string(&manifest_path) else {
+            continue;
+        };
+        let manifest = match toml::from_str::<ModuleManifest>(&contents) {
+            Ok(m) => m,
+            Err(_) => {
+                continue;
+            }
+        };
+        let state = match manifest.state.as_str() {
+            "DuckHunt" => AppState::DuckHunt,
+            _ => AppState::Lobby,
+        };
+        let mut caps = CapabilityFlags::default();
+        for cap in manifest.capabilities {
+            match cap.as_str() {
+                "LOBBY_PAD" => caps |= CapabilityFlags::LOBBY_PAD,
+                "NeedsPhysics" => caps |= CapabilityFlags::NEEDS_PHYSICS,
+                "UsesHitscan" => caps |= CapabilityFlags::USES_HITSCAN,
+                "NeedsNav" => caps |= CapabilityFlags::NEEDS_NAV,
+                "UsesVehicles" => caps |= CapabilityFlags::USES_VEHICLES,
+                "UsesFlight" => caps |= CapabilityFlags::USES_FLIGHT,
+                _ => {}
+            }
+        }
+        mods.push(ModuleMetadata {
+            id: manifest.id,
+            name: manifest.name,
+            version: manifest.version,
+            author: manifest.author,
+            state,
+            capabilities: caps,
+            max_players: manifest.max_players,
+            icon: Handle::default(),
+        });
+    }
+    mods
+}
+
 #[cfg(target_arch = "wasm32")]
 #[derive(Resource)]
 struct ModuleDiscoveryTask(Task<Vec<ModuleMetadata>>);
@@ -427,51 +498,7 @@ pub fn discover_modules(
     {
         let _ = asset_server;
         let _ = commands;
-        let modules_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../assets/modules");
-        let Ok(entries) = fs::read_dir(modules_dir) else {
-            return;
-        };
-        for entry in entries.flatten() {
-            let manifest_path = entry.path().join("module.toml");
-            if !manifest_path.exists() {
-                continue;
-            }
-            let Ok(contents) = fs::read_to_string(&manifest_path) else {
-                continue;
-            };
-            let manifest = match toml::from_str::<ModuleManifest>(&contents) {
-                Ok(m) => m,
-                Err(_) => {
-                    continue;
-                }
-            };
-            let state = match manifest.state.as_str() {
-                "DuckHunt" => AppState::DuckHunt,
-                _ => AppState::Lobby,
-            };
-            let mut caps = CapabilityFlags::default();
-            for cap in manifest.capabilities {
-                match cap.as_str() {
-                    "LOBBY_PAD" => caps |= CapabilityFlags::LOBBY_PAD,
-                    "NeedsPhysics" => caps |= CapabilityFlags::NEEDS_PHYSICS,
-                    "UsesHitscan" => caps |= CapabilityFlags::USES_HITSCAN,
-                    "NeedsNav" => caps |= CapabilityFlags::NEEDS_NAV,
-                    "UsesVehicles" => caps |= CapabilityFlags::USES_VEHICLES,
-                    "UsesFlight" => caps |= CapabilityFlags::USES_FLIGHT,
-                    _ => {}
-                }
-            }
-            registry.modules.push(ModuleMetadata {
-                id: manifest.id,
-                name: manifest.name,
-                version: manifest.version,
-                author: manifest.author,
-                state,
-                capabilities: caps,
-                max_players: manifest.max_players,
-                icon: Handle::default(),
-            });
-        }
+        registry.modules = read_modules_from_disk();
     }
 }
 
@@ -490,9 +517,117 @@ fn apply_discovered_modules(
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
+#[derive(Resource)]
+struct ModuleWatcher {
+    receiver: std::sync::Mutex<Receiver<notify::Result<notify::Event>>>,
+    #[allow(dead_code)]
+    watcher: RecommendedWatcher,
+}
 
-pub fn hotload_modules(_app: &mut App) {
-    // Placeholder for future dynamic loading support
+#[cfg(not(target_arch = "wasm32"))]
+fn process_module_events(
+    watcher: Res<ModuleWatcher>,
+    mut registry: ResMut<ModuleRegistry>,
+) {
+    let mut changed = false;
+    if let Ok(rx) = watcher.receiver.lock() {
+        while let Ok(_event) = rx.try_recv() {
+            changed = true;
+        }
+    }
+    if changed {
+        registry.modules = read_modules_from_disk();
+    }
+}
+
+pub fn hotload_modules(app: &mut App) {
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        use notify::Config;
+        let (tx, rx) = mpsc::channel();
+        let mut watcher =
+            RecommendedWatcher::new(tx, Config::default()).expect("watcher");
+        let modules_dir =
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../assets/modules");
+        watcher
+            .watch(&modules_dir, RecursiveMode::Recursive)
+            .expect("watch");
+        app.insert_resource(ModuleWatcher {
+            receiver: std::sync::Mutex::new(rx),
+            watcher,
+        });
+        app.add_systems(Update, process_module_events);
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    {
+        let world_ptr = app.world_mut() as *mut World;
+        spawn_local(async move {
+            loop {
+                TimeoutFuture::new(1000).await;
+                unsafe {
+                    (*world_ptr).run_system_once(discover_modules);
+                }
+            }
+        });
+    }
+}
+
+pub fn update_lobby_pads(
+    mut commands: Commands,
+    registry: Res<ModuleRegistry>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+    asset_server: Option<Res<AssetServer>>,
+    pads: Query<Entity, With<LobbyPad>>,
+) {
+    for entity in pads.iter() {
+        commands.entity(entity).despawn_recursive();
+    }
+
+    let pad_mesh = meshes.add(Mesh::from(shape::Cube { size: 1.0 }));
+    let pad_material = materials.add(Color::rgb(0.8, 0.2, 0.2).into());
+
+    for (i, info) in registry.modules.iter().enumerate() {
+        if !info.capabilities.contains(CapabilityFlags::LOBBY_PAD) {
+            continue;
+        }
+        commands
+            .spawn((
+                PbrBundle {
+                    mesh: pad_mesh.clone(),
+                    material: pad_material.clone(),
+                    transform: Transform::from_xyz(i as f32 * 3.0 - 3.0, 0.5, 0.0),
+                    ..default()
+                },
+                Collider::cuboid(0.5, 0.5, 0.5),
+                Sensor,
+                ActiveEvents::COLLISION_EVENTS,
+                LobbyPad {
+                    state: info.state.clone(),
+                },
+                LobbyEntity,
+            ))
+            .with_children(|parent| {
+                let font = asset_server
+                    .as_ref()
+                    .map(|s| s.load("fonts/FiraSans-Bold.ttf"))
+                    .unwrap_or_default();
+                parent.spawn(Text2dBundle {
+                    text: Text::from_section(
+                        format!("{} v{}", info.name, info.version),
+                        TextStyle {
+                            font,
+                            font_size: 20.0,
+                            color: Color::WHITE,
+                        },
+                    ),
+                    transform: Transform::from_xyz(0.0, 0.6, 0.0),
+                    ..default()
+                });
+            });
+    }
 }
 
 pub trait AppExt {
