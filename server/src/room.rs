@@ -70,7 +70,7 @@ impl RoomManager {
         let room = Arc::new(Mutex::new(Room::new()));
         let tick_room = Arc::clone(&room);
         tokio::spawn(async move {
-            let mut interval = time::interval(Duration::from_millis(16));
+            let mut interval = time::interval(Duration::from_secs_f64(1.0 / 60.0));
             loop {
                 interval.tick().await;
                 tick_room.lock().await.tick().await;
