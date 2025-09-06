@@ -1,12 +1,12 @@
 use lettre::address::AddressError;
 use lettre::transport::smtp::authentication::Credentials;
 use lettre::transport::smtp::client::{Tls, TlsParameters};
-use lettre::{Message, SmtpTransport, Transport};
+use lettre::{AsyncSmtpTransport, AsyncTransport, Message, Tokio1Executor};
 use once_cell::sync::Lazy;
 use std::collections::HashMap;
 use std::sync::Mutex;
-use std::sync::mpsc::{self, Sender};
 use std::time::{Duration, Instant};
+use tokio::sync::mpsc::{self, UnboundedSender};
 
 // -- Configuration ---------------------------------------------------------
 
@@ -101,12 +101,12 @@ pub enum EmailError {
 
 pub struct EmailService {
     from: String,
-    sender: Sender<Message>,
+    sender: UnboundedSender<Message>,
 }
 
 impl EmailService {
     pub fn new(config: SmtpConfig) -> Self {
-        let mut builder = SmtpTransport::builder_dangerous(&config.host)
+        let mut builder = AsyncSmtpTransport::<Tokio1Executor>::builder_dangerous(&config.host)
             .port(config.port)
             .timeout(Some(Duration::from_millis(config.timeout)));
 
@@ -132,17 +132,19 @@ impl EmailService {
         Self::new_with_transport(config.from, transport)
     }
 
-    fn new_with_transport<T>(from: String, transport: T) -> Self
-    where
-        T: Transport<Error = lettre::transport::smtp::Error> + Send + 'static,
-    {
+    fn new_with_transport(from: String, transport: AsyncSmtpTransport<Tokio1Executor>) -> Self {
         // Start periodic cleanup once
         Lazy::force(&CLEANUP);
-        let (tx, rx) = mpsc::channel::<Message>();
-        std::thread::spawn(move || {
-            for msg in rx {
-                let mailer = &transport;
-                send_with_retry(|| mailer.send(&msg).map(|_| ()).map_err(|e| e.to_string()));
+        let (tx, mut rx) = mpsc::unbounded_channel::<Message>();
+        tokio::spawn(async move {
+            while let Some(msg) = rx.recv().await {
+                let mailer = transport.clone();
+                send_with_retry(|| {
+                    let mailer = mailer.clone();
+                    let msg = msg.clone();
+                    async move { mailer.send(msg).await.map(|_| ()).map_err(|e| e.to_string()) }
+                })
+                .await;
             }
         });
         Self { from, sender: tx }
@@ -216,21 +218,22 @@ impl EmailService {
     }
 }
 
-fn send_with_retry<F, E>(mut send: F)
+async fn send_with_retry<F, Fut, E>(mut send: F)
 where
-    F: FnMut() -> Result<(), E>,
+    F: FnMut() -> Fut,
+    Fut: std::future::Future<Output = Result<(), E>>,
     E: std::fmt::Display,
 {
     let mut delay = RETRY_BASE;
     for _ in 0..MAX_RETRIES {
-        match send() {
+        match send().await {
             Ok(_) => return,
             Err(e) => {
                 log::warn!(
                     "failed to send email: {e}; retrying in {}ms",
                     delay.as_millis()
                 );
-                std::thread::sleep(delay);
+                tokio::time::sleep(delay).await;
                 delay *= 2;
             }
         }
@@ -263,8 +266,8 @@ mod tests {
         assert!(!EmailService::allowed("a@example.com").unwrap());
     }
 
-    #[test]
-    fn invalid_address() {
+    #[tokio::test]
+    async fn invalid_address() {
         clear_limits();
         let mut cfg = SmtpConfig::default();
         cfg.from = "noreply@example.com".into();
@@ -290,13 +293,16 @@ mod tests {
         guard.clear();
     }
 
-    #[test]
-    fn retries_on_failure() {
+    #[tokio::test]
+    async fn retries_on_failure() {
         let attempts = AtomicUsize::new(0);
         send_with_retry(|| {
             let n = attempts.fetch_add(1, Ordering::SeqCst);
-            if n < 2 { Err("fail") } else { Ok(()) }
-        });
+            async move {
+                if n < 2 { Err("fail") } else { Ok(()) }
+            }
+        })
+        .await;
         assert_eq!(attempts.load(Ordering::SeqCst), 3);
     }
 }
