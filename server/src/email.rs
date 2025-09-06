@@ -1,4 +1,5 @@
 use lettre::address::AddressError;
+use lettre::transport::smtp::authentication::Credentials;
 use lettre::transport::smtp::client::{Tls, TlsParameters};
 use lettre::{Message, SmtpTransport, Transport};
 use once_cell::sync::Lazy;
@@ -43,6 +44,8 @@ pub struct SmtpConfig {
     pub starttls: StartTls,
     pub smtps: bool,
     pub timeout: u64,
+    pub user: Option<String>,
+    pub pass: Option<String>,
 }
 
 impl Default for SmtpConfig {
@@ -54,6 +57,8 @@ impl Default for SmtpConfig {
             starttls: StartTls::Auto,
             smtps: false,
             timeout: 10000,
+            user: None,
+            pass: None,
         }
     }
 }
@@ -118,6 +123,10 @@ impl EmailService {
                 StartTls::Never => builder.tls(Tls::None),
             }
         };
+
+        if let (Some(user), Some(pass)) = (config.user.as_ref(), config.pass.as_ref()) {
+            builder = builder.credentials(Credentials::new(user.clone(), pass.clone()));
+        }
 
         let transport = builder.build();
         Self::new_with_transport(config.from, transport)
