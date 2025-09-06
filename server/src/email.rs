@@ -1,65 +1,146 @@
 use lettre::address::AddressError;
-use lettre::transport::smtp::authentication::Credentials;
+use lettre::transport::smtp::client::{Tls, TlsParameters};
 use lettre::{Message, SmtpTransport, Transport};
 use once_cell::sync::Lazy;
 use std::collections::HashMap;
 use std::sync::Mutex;
+use std::sync::mpsc::{self, Sender};
 use std::time::{Duration, Instant};
 
-static RATE_LIMITS: Lazy<Mutex<HashMap<String, Instant>>> = Lazy::new(|| Mutex::new(HashMap::new()));
+// -- Configuration ---------------------------------------------------------
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum StartTls {
+    Auto,
+    Always,
+    Never,
+}
+
+impl Default for StartTls {
+    fn default() -> Self {
+        StartTls::Auto
+    }
+}
+
+impl std::str::FromStr for StartTls {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "auto" => Ok(StartTls::Auto),
+            "always" => Ok(StartTls::Always),
+            "never" => Ok(StartTls::Never),
+            _ => Err(()),
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct SmtpConfig {
+    pub host: String,
+    pub port: u16,
+    pub from: String,
+    pub starttls: StartTls,
+    pub smtps: bool,
+    pub timeout: u64,
+}
+
+impl Default for SmtpConfig {
+    fn default() -> Self {
+        Self {
+            host: "localhost".into(),
+            port: 25,
+            from: "arena@localhost".into(),
+            starttls: StartTls::Auto,
+            smtps: false,
+            timeout: 10000,
+        }
+    }
+}
+
+// -- Rate limiting --------------------------------------------------------
+
+static RATE_LIMITS: Lazy<Mutex<HashMap<String, Instant>>> =
+    Lazy::new(|| Mutex::new(HashMap::new()));
 static CLEANUP: Lazy<()> = Lazy::new(|| {
-    std::thread::spawn(|| loop {
-        std::thread::sleep(CLEANUP_INTERVAL);
-        let now = Instant::now();
-        let mut map = match RATE_LIMITS.lock() {
-            Ok(m) => m,
-            Err(poison) => poison.into_inner(),
-        };
-        map.retain(|_, &mut instant| now.duration_since(instant) < RATE_LIMIT);
+    std::thread::spawn(|| {
+        loop {
+            std::thread::sleep(CLEANUP_INTERVAL);
+            let now = Instant::now();
+            let mut map = match RATE_LIMITS.lock() {
+                Ok(m) => m,
+                Err(poison) => poison.into_inner(),
+            };
+            map.retain(|_, &mut instant| now.duration_since(instant) < RATE_LIMIT);
+        }
     });
 });
 const RATE_LIMIT: Duration = Duration::from_secs(60);
 const CLEANUP_INTERVAL: Duration = Duration::from_secs(60);
 
+// retry behaviour
+const MAX_RETRIES: u32 = 5;
+#[cfg(test)]
+const RETRY_BASE: Duration = Duration::from_millis(1);
+#[cfg(not(test))]
+const RETRY_BASE: Duration = Duration::from_millis(1000);
+
 #[derive(Debug)]
 pub enum EmailError {
     RateLimited,
-    Smtp(lettre::transport::smtp::Error),
+    Smtp(String),
     Address(AddressError),
     Build(lettre::error::Error),
     LockPoisoned,
 }
 
-impl From<lettre::transport::smtp::Error> for EmailError {
-    fn from(err: lettre::transport::smtp::Error) -> Self {
-        EmailError::Smtp(err)
-    }
-}
-
 pub struct EmailService {
-    mailer: SmtpTransport,
     from: String,
+    sender: Sender<Message>,
 }
 
 impl EmailService {
-    pub fn new(smtp_server: &str, username: &str, password: &str, from: &str) -> Self {
-        let creds = Credentials::new(username.to_string(), password.to_string());
-        let mailer = SmtpTransport::relay(smtp_server)
-            .expect("invalid SMTP server")
-            .credentials(creds)
-            .build();
+    pub fn new(config: SmtpConfig) -> Self {
+        let mut builder = SmtpTransport::builder_dangerous(&config.host)
+            .port(config.port)
+            .timeout(Some(Duration::from_millis(config.timeout)));
+
+        let tls_params = TlsParameters::builder(config.host.clone())
+            .build()
+            .expect("invalid TLS params");
+
+        builder = if config.smtps {
+            builder.tls(Tls::Wrapper(tls_params))
+        } else {
+            match config.starttls {
+                StartTls::Always => builder.tls(Tls::Required(tls_params)),
+                StartTls::Auto => builder.tls(Tls::Opportunistic(tls_params)),
+                StartTls::Never => builder.tls(Tls::None),
+            }
+        };
+
+        let transport = builder.build();
+        Self::new_with_transport(config.from, transport)
+    }
+
+    fn new_with_transport<T>(from: String, transport: T) -> Self
+    where
+        T: Transport<Error = lettre::transport::smtp::Error> + Send + 'static,
+    {
         // Start periodic cleanup once
         Lazy::force(&CLEANUP);
-        Self {
-            mailer,
-            from: from.to_string(),
-        }
+        let (tx, rx) = mpsc::channel::<Message>();
+        std::thread::spawn(move || {
+            for msg in rx {
+                let mailer = &transport;
+                send_with_retry(|| mailer.send(&msg).map(|_| ()).map_err(|e| e.to_string()));
+            }
+        });
+        Self { from, sender: tx }
     }
 
     fn allowed(to: &str) -> Result<bool, EmailError> {
-        let mut map = RATE_LIMITS
-            .lock()
-            .map_err(|_| EmailError::LockPoisoned)?;
+        let mut map = RATE_LIMITS.lock().map_err(|_| EmailError::LockPoisoned)?;
         let now = Instant::now();
         let allowed = match map.get(to) {
             Some(last) if now.duration_since(*last) < RATE_LIMIT => false,
@@ -69,6 +150,12 @@ impl EmailService {
             }
         };
         Ok(allowed)
+    }
+
+    fn queue_mail(&self, email: Message) {
+        if self.sender.send(email).is_err() {
+            log::warn!("email queue disconnected");
+        }
     }
 
     fn send_mail(&self, to: &str, subject: &str, body: &str) -> Result<(), EmailError> {
@@ -83,7 +170,7 @@ impl EmailService {
             .body(body.to_string())
             .map_err(EmailError::Build)?;
 
-        self.mailer.send(&email)?;
+        self.queue_mail(email);
         Ok(())
     }
 
@@ -110,11 +197,44 @@ impl EmailService {
         let body = format!("Reset your password using the following link: {}", link);
         self.send_mail(to, subject, &body)
     }
+
+    pub fn send_test(&self, to: &str) -> Result<(), EmailError> {
+        self.send_mail(to, "Test email", "Arena test message")
+    }
+
+    pub fn from_address(&self) -> &str {
+        &self.from
+    }
 }
+
+fn send_with_retry<F, E>(mut send: F)
+where
+    F: FnMut() -> Result<(), E>,
+    E: std::fmt::Display,
+{
+    let mut delay = RETRY_BASE;
+    for _ in 0..MAX_RETRIES {
+        match send() {
+            Ok(_) => return,
+            Err(e) => {
+                log::warn!(
+                    "failed to send email: {e}; retrying in {}ms",
+                    delay.as_millis()
+                );
+                std::thread::sleep(delay);
+                delay *= 2;
+            }
+        }
+    }
+    log::warn!("giving up after {MAX_RETRIES} attempts");
+}
+
+// -- Tests ----------------------------------------------------------------
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::atomic::{AtomicUsize, Ordering};
 
     fn clear_limits() {
         let mut map = match RATE_LIMITS.lock() {
@@ -137,7 +257,9 @@ mod tests {
     #[test]
     fn invalid_address() {
         clear_limits();
-        let svc = EmailService::new("localhost", "", "", "noreply@example.com");
+        let mut cfg = SmtpConfig::default();
+        cfg.from = "noreply@example.com".into();
+        let svc = EmailService::new(cfg);
         match svc.send_registration_password("not-an-email", "pw") {
             Err(EmailError::Address(_)) => {}
             _ => panic!("expected address error"),
@@ -147,15 +269,25 @@ mod tests {
     #[test]
     fn lock_poisoned() {
         clear_limits();
-        let _ = std::panic::catch_unwind(|| {
+        let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             let _guard = RATE_LIMITS.lock().unwrap();
             panic!();
-        });
+        }));
         match EmailService::allowed("b@example.com") {
             Err(EmailError::LockPoisoned) => {}
             _ => panic!("expected lock poisoned"),
         }
         let mut guard = RATE_LIMITS.lock().unwrap_or_else(|e| e.into_inner());
         guard.clear();
+    }
+
+    #[test]
+    fn retries_on_failure() {
+        let attempts = AtomicUsize::new(0);
+        send_with_retry(|| {
+            let n = attempts.fetch_add(1, Ordering::SeqCst);
+            if n < 2 { Err("fail") } else { Ok(()) }
+        });
+        assert_eq!(attempts.load(Ordering::SeqCst), 3);
     }
 }
