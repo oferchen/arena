@@ -6,4 +6,5 @@ members = [
     "crates/net",
     "crates/platform-api",
     "xtask",
+    "crates/minigames/duck_hunt",
 ]
