@@ -1,0 +1,10 @@
+[package]
+name = "duck_hunt_server"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+path = "server.rs"
+
+[dependencies]
+glam = "0.24"
