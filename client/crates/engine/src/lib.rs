@@ -1,6 +1,9 @@
 use bevy::{input::mouse::MouseMotion, prelude::*, window::CursorGrabMode};
 use bevy_rapier3d::prelude::*;
 use platform_api::{AppState, CapabilityFlags, GameModule, ModuleContext, ModuleMetadata};
+use serde::Deserialize;
+use std::fs;
+use std::path::Path;
 
 /// Stores metadata for all registered game modules.
 #[derive(Resource, Default)]
@@ -16,6 +19,7 @@ impl Plugin for EnginePlugin {
         app.init_resource::<ModuleRegistry>()
             .add_state::<AppState>()
             .add_plugins(RapierPhysicsPlugin::<NoUserData>::default())
+            .add_systems(Startup, discover_modules)
             .add_systems(OnEnter(AppState::Lobby), setup_lobby)
             .add_systems(OnExit(AppState::Lobby), cleanup_lobby)
             .add_systems(
@@ -48,16 +52,16 @@ struct Controller {
 }
 
 #[derive(Component)]
-struct LobbyPad {
-    state: AppState,
+pub struct LobbyPad {
+    pub state: AppState,
 }
 
-fn setup_lobby(
+pub fn setup_lobby(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     registry: Res<ModuleRegistry>,
-    asset_server: Res<AssetServer>,
+    asset_server: Option<Res<AssetServer>>,
     mut windows: Query<&mut Window>,
 ) {
     let mut window = windows.single_mut();
@@ -96,40 +100,81 @@ fn setup_lobby(
     let pad_mesh = meshes.add(Mesh::from(shape::Cube { size: 1.0 }));
     let pad_material = materials.add(Color::rgb(0.8, 0.2, 0.2).into());
 
-    for (i, info) in registry.modules.iter().enumerate() {
-        if !info.capabilities.contains(CapabilityFlags::LOBBY_PAD) {
-            continue;
-        }
-        commands
-            .spawn((
-                PbrBundle {
-                    mesh: pad_mesh.clone(),
-                    material: pad_material.clone(),
-                    transform: Transform::from_xyz(i as f32 * 3.0 - 3.0, 0.5, 0.0),
-                    ..default()
-                },
-                Collider::cuboid(0.5, 0.5, 0.5),
-                Sensor,
-                ActiveEvents::COLLISION_EVENTS,
-                LobbyPad {
-                    state: info.state.clone(),
-                },
-                LobbyEntity,
-            ))
-            .with_children(|parent| {
-                parent.spawn(Text2dBundle {
-                    text: Text::from_section(
-                        format!("{} v{}", info.name, info.version),
-                        TextStyle {
-                            font: asset_server.load("fonts/FiraSans-Bold.ttf"),
-                            font_size: 20.0,
-                            color: Color::WHITE,
-                        },
-                    ),
-                    transform: Transform::from_xyz(0.0, 0.75, 0.0),
-                    ..default()
+    if registry.modules.is_empty() {
+        let font = asset_server
+            .as_ref()
+            .map(|s| s.load("fonts/FiraSans-Bold.ttf"))
+            .unwrap_or_default();
+        commands.spawn((
+            Text2dBundle {
+                text: Text::from_section(
+                    "No modules installed",
+                    TextStyle {
+                        font: font.clone(),
+                        font_size: 30.0,
+                        color: Color::WHITE,
+                    },
+                ),
+                transform: Transform::from_xyz(0.0, 1.0, 0.0),
+                ..default()
+            },
+            LobbyEntity,
+        ));
+        commands.spawn((
+            Text2dBundle {
+                text: Text::from_section(
+                    "See docs/modules.md for installation instructions",
+                    TextStyle {
+                        font,
+                        font_size: 20.0,
+                        color: Color::WHITE,
+                    },
+                ),
+                transform: Transform::from_xyz(0.0, 0.5, 0.0),
+                ..default()
+            },
+            LobbyEntity,
+        ));
+    } else {
+        for (i, info) in registry.modules.iter().enumerate() {
+            if !info.capabilities.contains(CapabilityFlags::LOBBY_PAD) {
+                continue;
+            }
+            commands
+                .spawn((
+                    PbrBundle {
+                        mesh: pad_mesh.clone(),
+                        material: pad_material.clone(),
+                        transform: Transform::from_xyz(i as f32 * 3.0 - 3.0, 0.5, 0.0),
+                        ..default()
+                    },
+                    Collider::cuboid(0.5, 0.5, 0.5),
+                    Sensor,
+                    ActiveEvents::COLLISION_EVENTS,
+                    LobbyPad {
+                        state: info.state.clone(),
+                    },
+                    LobbyEntity,
+                ))
+                .with_children(|parent| {
+                    let font = asset_server
+                        .as_ref()
+                        .map(|s| s.load("fonts/FiraSans-Bold.ttf"))
+                        .unwrap_or_default();
+                    parent.spawn(Text2dBundle {
+                        text: Text::from_section(
+                            format!("{} v{}", info.name, info.version),
+                            TextStyle {
+                                font,
+                                font_size: 20.0,
+                                color: Color::WHITE,
+                            },
+                        ),
+                        transform: Transform::from_xyz(0.0, 0.75, 0.0),
+                        ..default()
+                    });
                 });
-            });
+        }
     }
 }
 
@@ -278,6 +323,63 @@ fn enter_module<M: GameModule>(world: &mut World) {
 fn exit_module<M: GameModule>(world: &mut World) {
     let mut ctx = ModuleContext::new(world);
     M::exit(&mut ctx);
+}
+
+#[derive(Deserialize)]
+struct ModuleManifest {
+    id: String,
+    name: String,
+    version: String,
+    author: String,
+    state: String,
+    #[serde(default)]
+    capabilities: Vec<String>,
+}
+
+pub fn discover_modules(mut registry: ResMut<ModuleRegistry>) {
+    let modules_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../assets/modules");
+    let Ok(entries) = fs::read_dir(modules_dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let manifest_path = entry.path().join("module.toml");
+        if !manifest_path.exists() {
+            continue;
+        }
+        let Ok(contents) = fs::read_to_string(&manifest_path) else {
+            continue;
+        };
+        let manifest = match toml::from_str::<ModuleManifest>(&contents) {
+            Ok(m) => m,
+            Err(_) => {
+                continue;
+            }
+        };
+        let state = match manifest.state.as_str() {
+            "DuckHunt" => AppState::DuckHunt,
+            _ => AppState::Lobby,
+        };
+        let mut caps = CapabilityFlags::default();
+        for cap in manifest.capabilities {
+            match cap.as_str() {
+                "LOBBY_PAD" => caps |= CapabilityFlags::LOBBY_PAD,
+                "NeedsPhysics" => caps |= CapabilityFlags::NeedsPhysics,
+                "UsesHitscan" => caps |= CapabilityFlags::UsesHitscan,
+                "NeedsNav" => caps |= CapabilityFlags::NeedsNav,
+                "UsesVehicles" => caps |= CapabilityFlags::UsesVehicles,
+                "UsesFlight" => caps |= CapabilityFlags::UsesFlight,
+                _ => {}
+            }
+        }
+        registry.modules.push(ModuleMetadata {
+            id: Box::leak(manifest.id.into_boxed_str()),
+            name: Box::leak(manifest.name.into_boxed_str()),
+            version: Box::leak(manifest.version.into_boxed_str()),
+            author: Box::leak(manifest.author.into_boxed_str()),
+            state,
+            capabilities: caps,
+        });
+    }
 }
 
 pub fn hotload_modules(_app: &mut App) {
