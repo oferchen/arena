@@ -36,8 +36,12 @@ struct Cli {
     smtp_starttls: String,
     #[arg(long, env = "ARENA_SMTP_SMTPS", default_value_t = false)]
     smtp_smtps: bool,
-    #[arg(long, env = "ARENA_SMTP_TIMEOUT", default_value_t = 10000)]
-    smtp_timeout: u64,
+    #[arg(long, env = "ARENA_SMTP_USER")]
+    smtp_user: Option<String>,
+    #[arg(long, env = "ARENA_SMTP_PASS")]
+    smtp_pass: Option<String>,
+    #[arg(long, env = "ARENA_SMTP_TIMEOUT_MS", default_value_t = 10000)]
+    smtp_timeout_ms: u64,
 }
 
 impl Cli {
@@ -48,7 +52,9 @@ impl Cli {
             from: self.smtp_from.clone(),
             starttls: self.smtp_starttls.parse().unwrap_or_default(),
             smtps: self.smtp_smtps,
-            timeout: self.smtp_timeout,
+            timeout: self.smtp_timeout_ms,
+            user: self.smtp_user.clone(),
+            pass: self.smtp_pass.clone(),
         }
     }
 }

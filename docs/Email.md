@@ -4,20 +4,22 @@ This guide covers configuration of Arena's outgoing email system.
 
 ## Environment variables and CLI flags
 
-| Env var               | CLI flag          | Description                               | Default           |
-| --------------------- | ----------------- | ----------------------------------------- | ----------------- |
-| `ARENA_SMTP_HOST`     | `--smtp-host`     | SMTP server hostname                      | `localhost`       |
-| `ARENA_SMTP_PORT`     | `--smtp-port`     | SMTP server port                          | `25`              |
-| `ARENA_SMTP_FROM`     | `--smtp-from`     | Sender address for all mail               | `arena@localhost` |
-| `ARENA_SMTP_STARTTLS` | `--smtp-starttls` | STARTTLS mode (`auto`, `always`, `never`) | `auto`            |
-| `ARENA_SMTP_SMTPS`    | `--smtp-smtps`    | Use SMTPS (implicit TLS)                  | `false`           |
-| `ARENA_SMTP_TIMEOUT`  | `--smtp-timeout`  | Connection timeout in milliseconds        | `10000`           |
+| Env var                 | CLI flag            | Description                               | Default           |
+| ----------------------- | ------------------- | ----------------------------------------- | ----------------- |
+| `ARENA_SMTP_HOST`       | `--smtp-host`       | SMTP server hostname                      | `localhost`       |
+| `ARENA_SMTP_PORT`       | `--smtp-port`       | SMTP server port                          | `25`              |
+| `ARENA_SMTP_FROM`       | `--smtp-from`       | Sender address for all mail               | `arena@localhost` |
+| `ARENA_SMTP_STARTTLS`   | `--smtp-starttls`   | STARTTLS mode (`auto`, `always`, `never`) | `auto`            |
+| `ARENA_SMTP_SMTPS`      | `--smtp-smtps`      | Use SMTPS (implicit TLS)                  | `false`           |
+| `ARENA_SMTP_USER`       | `--smtp-user`       | SMTP username                             | -                 |
+| `ARENA_SMTP_PASS`       | `--smtp-pass`       | SMTP password                             | -                 |
+| `ARENA_SMTP_TIMEOUT_MS` | `--smtp-timeout-ms` | Connection timeout in milliseconds        | `10000`           |
 
 ## Authentication
 
-Arena currently does not implement SMTP authentication. If your mail
-provider requires credentials, run Arena behind a local relay (such as
-Postfix or Exim) that handles authentication to the upstream server.
+Set `ARENA_SMTP_USER`/`--smtp-user` and `ARENA_SMTP_PASS`/`--smtp-pass`
+to authenticate with your SMTP provider. If omitted, no authentication
+is performed.
 
 ## STARTTLS and SMTPS
 
@@ -49,7 +51,8 @@ export ARENA_SMTP_HOST=smtp.example.com
 export ARENA_SMTP_PORT=587
 export ARENA_SMTP_FROM=arena@example.com
 export ARENA_SMTP_STARTTLS=always
-
+export ARENA_SMTP_USER=mailuser
+export ARENA_SMTP_PASS=secret
 cargo run -p server
 ```
 
@@ -59,7 +62,7 @@ cargo run -p server
   and that the server allows connections from your host.
 - **TLS handshake failures** – ensure STARTTLS/SMTPS settings match the
   server's requirements and that system CA certificates are up to date.
-- **Authentication required** – configure a local relay capable of
-  authenticating to the upstream SMTP provider.
+- **Authentication required** – ensure `ARENA_SMTP_USER` and
+  `ARENA_SMTP_PASS` are set correctly.
 - **Persistent failures** – check server logs for retry warnings and use
   `/admin/mail/test` to verify connectivity.
