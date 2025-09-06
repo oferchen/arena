@@ -1,6 +1,7 @@
 # Netcode
 
-Arena uses a lockstep protocol over WebSockets to keep clients and the server in sync.
+Arena uses a lockstep protocol that transports messages over WebSockets or WebRTC
+DataChannels. The server drives a 60 Hz tick to keep clients in sync.
 
 ## Setup
 
@@ -11,15 +12,21 @@ Arena uses a lockstep protocol over WebSockets to keep clients and the server in
 2. Ensure the required headers are present so browsers can open a WebSocket:
    - `Cross-Origin-Opener-Policy: same-origin`
    - `Cross-Origin-Embedder-Policy: require-corp`
-3. Clients connect to `ws://localhost:3000/ws` during startup. For deployment details see the [operations guide](ops.md).
+3. Clients connect to `ws://localhost:3000/ws` during startup. The server then
+   negotiates WebRTC DataChannels when available. For deployment details see the
+   [operations guide](ops.md).
 
 ## Usage
 
-- Each tick the server broadcasts the authoritative state to all clients.
-- Clients submit input frames, which the server validates and distributes.
+- Every 60 Hz tick the server broadcasts the authoritative state using
+  delta-compressed snapshots.
+- Clients submit input frames and run client-side prediction, reconciling when
+  authoritative snapshots arrive.
 - Messages are encoded with `bincode` and prefixed with a one-byte message ID.
-- The protocol tolerates packet loss by resending missed state snapshots.
-- Modules can define custom message IDs; see the [modules guide](modules.md) for extending the protocol.
+- The transport layer supports WebSockets and WebRTC DataChannels and resends
+  missed snapshots to tolerate packet loss.
+- Modules can define custom message IDs; see the [modules guide](modules.md) for
+  extending the protocol.
 
 ## Reference
 
@@ -30,6 +37,7 @@ Arena uses a lockstep protocol over WebSockets to keep clients and the server in
 | `0x03`     | Chat message       |
 
 - Default port: `3000`
-- Tick rate: `60` Hz
+- Tick rate: `60` Hz
+- Snapshot compression: delta against last acknowledged state
 - Serialization: `bincode`
 - Disconnect timeout: `5` seconds
