@@ -43,7 +43,7 @@ impl ClientConnector {
         let pc = api.new_peer_connection(RTCConfiguration::default()).await?;
         let dc = pc.create_data_channel("gamedata", None).await?;
         setup_channel(&dc);
-        *DATA_CHANNEL.lock().unwrap() = Some(Arc::clone(&dc));
+        *DATA_CHANNEL.lock().unwrap_or_else(|e| e.into_inner()) = Some(Arc::clone(&dc));
         Ok(Self { pc, _dc: dc })
     }
 
@@ -58,7 +58,7 @@ fn setup_channel(dc: &Arc<RTCDataChannel>) {
     dc.on_open(Box::new(|| {
         CONNECTION_EVENTS
             .lock()
-            .unwrap()
+            .unwrap_or_else(|e| e.into_inner())
             .push_back(ConnectionEvent::Open);
         Box::pin(async {})
     }));
@@ -66,7 +66,7 @@ fn setup_channel(dc: &Arc<RTCDataChannel>) {
     dc.on_close(Box::new(|| {
         CONNECTION_EVENTS
             .lock()
-            .unwrap()
+            .unwrap_or_else(|e| e.into_inner())
             .push_back(ConnectionEvent::Closed);
         Box::pin(async {})
     }));
@@ -74,7 +74,7 @@ fn setup_channel(dc: &Arc<RTCDataChannel>) {
     dc.on_error(Box::new(|e| {
         CONNECTION_EVENTS
             .lock()
-            .unwrap()
+            .unwrap_or_else(|e| e.into_inner())
             .push_back(ConnectionEvent::Error(e.to_string()));
         Box::pin(async {})
     }));
@@ -84,15 +84,24 @@ fn setup_channel(dc: &Arc<RTCDataChannel>) {
             if let Ok(msg) = postcard::from_bytes::<ServerMessage>(&msg.data) {
                 match msg {
                     ServerMessage::Baseline(snapshot) => {
-                        *LAST_SNAPSHOT.lock().unwrap() = Some(snapshot.clone());
-                        SNAPSHOT_QUEUE.lock().unwrap().push_back(snapshot);
+                        *LAST_SNAPSHOT.lock().unwrap_or_else(|e| e.into_inner()) =
+                            Some(snapshot.clone());
+                        SNAPSHOT_QUEUE
+                            .lock()
+                            .unwrap_or_else(|e| e.into_inner())
+                            .push_back(snapshot);
                     }
                     ServerMessage::Delta(delta) => {
-                        let mut last = LAST_SNAPSHOT.lock().unwrap();
+                        let mut last = LAST_SNAPSHOT
+                            .lock()
+                            .unwrap_or_else(|e| e.into_inner());
                         if let Some(ref base) = *last {
                             if let Ok(snap) = apply_delta(base, &delta) {
                                 *last = Some(snap.clone());
-                                SNAPSHOT_QUEUE.lock().unwrap().push_back(snap);
+                                SNAPSHOT_QUEUE
+                                    .lock()
+                                    .unwrap_or_else(|e| e.into_inner())
+                                    .push_back(snap);
                             }
                         }
                     }
@@ -105,7 +114,7 @@ fn setup_channel(dc: &Arc<RTCDataChannel>) {
 
 /// Forward queued [`InputFrame`] events to the network channel each tick.
 pub fn send_input_frames(mut reader: EventReader<InputFrame>) {
-    if let Some(dc) = DATA_CHANNEL.lock().unwrap().clone() {
+    if let Some(dc) = DATA_CHANNEL.lock().unwrap_or_else(|e| e.into_inner()).clone() {
         for frame in reader.read() {
             let bytes = match postcard::to_allocvec(frame) {
                 Ok(b) => b,
@@ -121,7 +130,7 @@ pub fn send_input_frames(mut reader: EventReader<InputFrame>) {
 
 /// Apply incoming [`Snapshot`] messages by emitting events into the world.
 pub fn apply_snapshots(mut writer: EventWriter<Snapshot>) {
-    let mut queue = SNAPSHOT_QUEUE.lock().unwrap();
+    let mut queue = SNAPSHOT_QUEUE.lock().unwrap_or_else(|e| e.into_inner());
     while let Some(snapshot) = queue.pop_front() {
         writer.send(snapshot);
     }
@@ -129,8 +138,26 @@ pub fn apply_snapshots(mut writer: EventWriter<Snapshot>) {
 
 /// Emit queued connection state changes into the world.
 pub fn apply_connection_events(mut writer: EventWriter<ConnectionEvent>) {
-    let mut events = CONNECTION_EVENTS.lock().unwrap();
+    let mut events = CONNECTION_EVENTS.lock().unwrap_or_else(|e| e.into_inner());
     while let Some(ev) = events.pop_front() {
         writer.send(ev);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn connection_events_mutex_recover_from_poison() {
+        let _ = std::panic::catch_unwind(|| {
+            let _lock = CONNECTION_EVENTS.lock().unwrap();
+            panic!("poisoned");
+        });
+
+        CONNECTION_EVENTS
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .push_back(ConnectionEvent::Open);
     }
 }
