@@ -1,5 +1,6 @@
 use anyhow::Result;
 use bevy::prelude::*;
+use bevy::render::mesh::shape::UVSphere;
 use platform_api::{
     AppState, CapabilityFlags, GameModule, ModuleContext, ModuleMetadata, ServerApp,
 };
@@ -67,7 +68,9 @@ fn setup(world: &mut World) {
     world.insert_resource(RoundTimer(Timer::from_seconds(90.0, TimerMode::Once)));
     world.insert_resource(DuckSpawnTimer(Timer::from_seconds(2.0, TimerMode::Repeating)));
 
-    let font = Handle::<Font>::default();
+    let asset_server = world.resource::<AssetServer>();
+    let font = asset_server.load("fonts/FiraSans-Bold.ttf");
+
     world.spawn((
         TextBundle::from_section(
             "Score: 0\nTime: 90",
@@ -141,7 +144,10 @@ fn spawn_ducks(
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
     if timer.0.tick(time.delta()).just_finished() {
-        let mesh = meshes.add(Mesh::from(shape::Sphere { radius: 0.25 }));
+        let mesh = meshes.add(Mesh::from(UVSphere {
+            radius: 0.25,
+            ..default()
+        }));
         let material = materials.add(Color::rgb(0.2, 0.8, 0.2).into());
         commands.spawn((
             PbrBundle {
@@ -175,7 +181,7 @@ fn move_ducks(time: Res<Time>, mut q: Query<(Entity, &mut Transform, &mut Duck)>
 
 fn fire_weapon(
     buttons: Res<Input<MouseButton>>,
-    mut q: Query<(Entity, &Transform), With<Duck>>,
+    q: Query<(Entity, &Transform), With<Duck>>,
     mut commands: Commands,
     mut score: ResMut<Score>,
 ) {
