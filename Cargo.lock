@@ -2051,6 +2051,7 @@ dependencies = [
  "bevy_egui",
  "duck_hunt",
  "engine",
+ "platform-api",
  "reqwest",
  "serde",
  "serde_json",
@@ -2526,7 +2527,7 @@ name = "duck_hunt"
 version = "0.1.0"
 dependencies = [
  "bevy 0.12.1",
- "engine",
+ "platform-api",
 ]
 
 [[package]]
@@ -2676,6 +2677,7 @@ name = "engine"
 version = "0.1.0"
 dependencies = [
  "bevy 0.12.1",
+ "platform-api",
 ]
 
 [[package]]
@@ -4977,6 +4979,14 @@ name = "pkg-config"
 version = "0.3.32"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7edddbd0b52d732b21ad9a5fab5c704c14cd949e5e9a1ec5929a24fded1b904c"
+
+[[package]]
+name = "platform-api"
+version = "0.1.0"
+dependencies = [
+ "bevy 0.12.1",
+ "bitflags 2.9.4",
+]
 
 [[package]]
 name = "png"

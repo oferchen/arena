@@ -1,31 +1,16 @@
 use bevy::prelude::*;
-
-#[derive(States, Default, Clone, Eq, PartialEq, Hash, Debug)]
-pub enum AppState {
-    #[default]
-    Lobby,
-    DuckHunt,
-}
-
-pub struct MinigameInfo {
-    pub name: &'static str,
-    pub state: AppState,
-}
-
-pub trait Minigame: Plugin + Sized {
-    fn info() -> MinigameInfo;
-}
+use platform_api::{AppState, CapabilityFlags, GameModule, ModuleMetadata};
 
 #[derive(Resource, Default)]
-pub struct MinigameRegistry {
-    pub games: Vec<MinigameInfo>,
+pub struct ModuleRegistry {
+    pub modules: Vec<ModuleMetadata>,
 }
 
 pub struct EnginePlugin;
 
 impl Plugin for EnginePlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<MinigameRegistry>()
+        app.init_resource::<ModuleRegistry>()
             .add_state::<AppState>()
             .add_systems(OnEnter(AppState::Lobby), setup_lobby)
             .add_systems(OnExit(AppState::Lobby), cleanup_lobby)
@@ -53,7 +38,7 @@ fn setup_lobby(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
-    registry: Res<MinigameRegistry>,
+    registry: Res<ModuleRegistry>,
 ) {
     commands.spawn((
         Camera3dBundle {
@@ -81,7 +66,10 @@ fn setup_lobby(
     let cabinet_mesh = meshes.add(Mesh::from(shape::Cube { size: 1.0 }));
     let cabinet_material = materials.add(Color::rgb(0.8, 0.2, 0.2).into());
 
-    for (i, info) in registry.games.iter().enumerate() {
+    for (i, info) in registry.modules.iter().enumerate() {
+        if !info.capabilities.contains(CapabilityFlags::LOBBY_PAD) {
+            continue;
+        }
         commands.spawn((
             PbrBundle {
                 mesh: cabinet_mesh.clone(),
@@ -106,16 +94,16 @@ fn cleanup_lobby(mut commands: Commands, q: Query<Entity, With<LobbyEntity>>) {
 
 fn lobby_keyboard(
     keys: Res<Input<KeyCode>>,
-    registry: Res<MinigameRegistry>,
+    registry: Res<ModuleRegistry>,
     mut next_state: ResMut<NextState<AppState>>,
 ) {
-    for (i, info) in registry.games.iter().enumerate() {
+    for (i, info) in registry.modules.iter().enumerate() {
         let key = match i {
-            0 => KeyCode::Digit1,
-            1 => KeyCode::Digit2,
-            2 => KeyCode::Digit3,
-            3 => KeyCode::Digit4,
-            4 => KeyCode::Digit5,
+            0 => KeyCode::Key1,
+            1 => KeyCode::Key2,
+            2 => KeyCode::Key3,
+            3 => KeyCode::Key4,
+            4 => KeyCode::Key5,
             _ => continue,
         };
         if keys.just_pressed(key) {
@@ -130,23 +118,27 @@ fn exit_to_lobby(keys: Res<Input<KeyCode>>, mut next_state: ResMut<NextState<App
     }
 }
 
-pub fn register_minigame<M: Minigame + Default + 'static>(app: &mut App) {
-    let info = M::info();
+pub fn register_module<M: GameModule + Default + 'static>(app: &mut App) {
+    let info = M::metadata();
     app.world
-        .get_resource_mut::<MinigameRegistry>()
-        .expect("EnginePlugin must be added before registering minigames")
-        .games
+        .get_resource_mut::<ModuleRegistry>()
+        .expect("EnginePlugin must be added before registering modules")
+        .modules
         .push(info);
     app.add_plugins(M::default());
 }
 
+pub fn hotload_modules(_app: &mut App) {
+    // Placeholder for future dynamic loading support
+}
+
 pub trait AppExt {
-    fn add_minigame<M: Minigame + Default + 'static>(&mut self) -> &mut Self;
+    fn add_game_module<M: GameModule + Default + 'static>(&mut self) -> &mut Self;
 }
 
 impl AppExt for App {
-    fn add_minigame<M: Minigame + Default + 'static>(&mut self) -> &mut Self {
-        register_minigame::<M>(self);
+    fn add_game_module<M: GameModule + Default + 'static>(&mut self) -> &mut Self {
+        register_module::<M>(self);
         self
     }
 }
