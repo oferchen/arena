@@ -31,3 +31,4 @@ Modules are regular Rust crates that plug into the server during startup.
 - Capability flags: `netcode`, `ui`, and other features declared in `module.toml`.
 - Modules may send custom messages through the network layer; see the [netcode guide](netcode.md) for message types.
 - Deployment notes for modules are covered in the [operations guide](ops.md).
+- Example module: [Duck Hunt](DuckHunt.md) demonstrating networking and asset integration.
