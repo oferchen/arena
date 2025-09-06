@@ -1,7 +1,6 @@
 use anyhow::Result;
 use tokio::sync::mpsc::{self, Receiver, Sender};
 use webrtc::api::media_engine::MediaEngine;
-use webrtc::api::interceptor_registry::register_default_interceptors;
 use webrtc::api::APIBuilder;
 use webrtc::peer_connection::configuration::RTCConfiguration;
 use webrtc::peer_connection::RTCPeerConnection;
@@ -20,11 +19,7 @@ impl ServerConnector {
     pub async fn new() -> Result<Self> {
         let mut m = MediaEngine::default();
         m.register_default_codecs()?;
-        let registry = register_default_interceptors(m, None)?;
-        let api = APIBuilder::new()
-            .with_media_engine(registry.media_engine)
-            .with_interceptor_registry(registry.interceptor)
-            .build();
+        let api = APIBuilder::new().with_media_engine(m).build();
         let pc = api.new_peer_connection(RTCConfiguration::default()).await?;
         let (_snapshot_tx, _snapshot_rx) = mpsc::channel(32);
         let (_input_tx, _input_rx) = mpsc::channel(32);
