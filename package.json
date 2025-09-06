@@ -5,6 +5,7 @@
   "scripts": {
     "format": "prettier --write .",
     "lint": "prettier --check .",
+    "prettier": "prettier --check .",
     "prepare": "husky install"
   },
   "devDependencies": {
