@@ -2,26 +2,56 @@ use std::{net::SocketAddr, sync::Arc};
 
 use anyhow::Result;
 
+use crate::email::{EmailService, SmtpConfig};
 use axum::{
+    Json, Router,
     extract::{
         State,
         ws::{WebSocket, WebSocketUpgrade},
     },
-    http::{header::CACHE_CONTROL, HeaderName, HeaderValue, StatusCode},
+    http::{HeaderName, HeaderValue, StatusCode, header::CACHE_CONTROL},
     response::IntoResponse,
     routing::{get, get_service, post},
-    Json, Router,
 };
-use crate::email::EmailService;
+use clap::Parser;
 use net::server::ServerConnector;
-use webrtc::peer_connection::sdp::session_description::RTCSessionDescription;
-use webrtc::peer_connection::sdp::sdp_type::RTCSdpType;
 use serde::{Deserialize, Serialize};
+use webrtc::peer_connection::sdp::sdp_type::RTCSdpType;
+use webrtc::peer_connection::sdp::session_description::RTCSessionDescription;
 
-mod room;
 mod email;
+mod room;
 use sqlx::PgPool;
 use tower_http::{services::ServeDir, set_header::SetResponseHeaderLayer};
+
+#[derive(Parser, Debug)]
+struct Cli {
+    #[arg(long, env = "ARENA_SMTP_HOST", default_value = "localhost")]
+    smtp_host: String,
+    #[arg(long, env = "ARENA_SMTP_PORT", default_value_t = 25)]
+    smtp_port: u16,
+    #[arg(long, env = "ARENA_SMTP_FROM", default_value = "arena@localhost")]
+    smtp_from: String,
+    #[arg(long, env = "ARENA_SMTP_STARTTLS", default_value = "auto")]
+    smtp_starttls: String,
+    #[arg(long, env = "ARENA_SMTP_SMTPS", default_value_t = false)]
+    smtp_smtps: bool,
+    #[arg(long, env = "ARENA_SMTP_TIMEOUT", default_value_t = 10000)]
+    smtp_timeout: u64,
+}
+
+impl Cli {
+    fn smtp_config(&self) -> SmtpConfig {
+        SmtpConfig {
+            host: self.smtp_host.clone(),
+            port: self.smtp_port,
+            from: self.smtp_from.clone(),
+            starttls: self.smtp_starttls.parse().unwrap_or_default(),
+            smtps: self.smtp_smtps,
+            timeout: self.smtp_timeout,
+        }
+    }
+}
 
 #[derive(Clone)]
 struct AppState {
@@ -57,7 +87,9 @@ async fn signal_handler(
     State(state): State<Arc<AppState>>,
     Json(req): Json<SignalRequest>,
 ) -> Result<Json<SignalResponse>, StatusCode> {
-    let connector = ServerConnector::new().await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let connector = ServerConnector::new()
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     let mut offer = RTCSessionDescription::default();
     offer.sdp_type = RTCSdpType::Offer;
     offer.sdp = req.sdp;
@@ -82,6 +114,13 @@ async fn signal_handler(
 
 async fn handle_socket(mut socket: WebSocket) {
     while let Some(Ok(_)) = socket.recv().await {}
+}
+
+async fn mail_test_handler(State(state): State<Arc<AppState>>) -> StatusCode {
+    match state.email.send_test(state.email.from_address()) {
+        Ok(_) => StatusCode::OK,
+        Err(_) => StatusCode::INTERNAL_SERVER_ERROR,
+    }
 }
 
 async fn shutdown_signal() {
@@ -115,27 +154,21 @@ fn get_env(name: &str) -> Result<String> {
     })
 }
 
-async fn setup() -> Result<AppState> {
+async fn setup(smtp: SmtpConfig) -> Result<AppState> {
     let database_url = get_env("DATABASE_URL")?;
     let db = PgPool::connect(&database_url).await.map_err(|e| {
         log::error!("failed to connect to database: {e}");
         e
     })?;
 
-    let email = Arc::new(EmailService::new(
-        &get_env("SMTP_SERVER")?,
-        &get_env("SMTP_USERNAME")?,
-        &get_env("SMTP_PASSWORD")?,
-        &get_env("EMAIL_FROM")?,
-    ));
+    let email = Arc::new(EmailService::new(smtp));
 
     let rooms = room::RoomManager::new();
     Ok(AppState { db, email, rooms })
 }
 
-async fn run() -> Result<()> {
-    let state = Arc::new(setup().await?);
-
+async fn run(smtp: SmtpConfig) -> Result<()> {
+    let state = Arc::new(setup(smtp).await?);
 
     let assets_service =
         get_service(ServeDir::new("assets")).layer(SetResponseHeaderLayer::if_not_present(
@@ -147,6 +180,7 @@ async fn run() -> Result<()> {
         .nest("/auth", auth_routes())
         .route("/ws", get(ws_handler))
         .route("/signal", post(signal_handler))
+        .route("/admin/mail/test", post(mail_test_handler))
         .nest_service("/assets", assets_service)
         .fallback_service(ServeDir::new("static"))
         .layer(SetResponseHeaderLayer::if_not_present(
@@ -183,7 +217,8 @@ async fn run() -> Result<()> {
 #[tokio::main]
 async fn main() {
     env_logger::init();
-    if let Err(e) = run().await {
+    let cli = Cli::parse();
+    if let Err(e) = run(cli.smtp_config()).await {
         log::error!("{e}");
         std::process::exit(1);
     }
@@ -198,12 +233,32 @@ mod tests {
     async fn setup_fails_without_env_vars() {
         unsafe {
             env::remove_var("DATABASE_URL");
-            env::remove_var("SMTP_SERVER");
-            env::remove_var("SMTP_USERNAME");
-            env::remove_var("SMTP_PASSWORD");
-            env::remove_var("EMAIL_FROM");
         }
 
-        assert!(setup().await.is_err());
+        assert!(setup(SmtpConfig::default()).await.is_err());
+    }
+
+    #[test]
+    fn cli_overrides_env() {
+        unsafe {
+            env::set_var("ARENA_SMTP_HOST", "envhost");
+        }
+        let cli = Cli::try_parse_from(["prog", "--smtp-host", "clihost"]).unwrap();
+        assert_eq!(cli.smtp_host, "clihost");
+        unsafe {
+            env::remove_var("ARENA_SMTP_HOST");
+        }
+    }
+
+    #[test]
+    fn env_used_when_no_cli() {
+        unsafe {
+            env::set_var("ARENA_SMTP_PORT", "2525");
+        }
+        let cli = Cli::try_parse_from(["prog"]).unwrap();
+        assert_eq!(cli.smtp_port, 2525);
+        unsafe {
+            env::remove_var("ARENA_SMTP_PORT");
+        }
     }
 }
