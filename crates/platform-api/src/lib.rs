@@ -1,6 +1,7 @@
 use bevy::ecs::world::Mut;
 use bevy::prelude::*;
 use bitflags::bitflags;
+use anyhow::Result;
 
 #[derive(States, Default, Clone, Eq, PartialEq, Hash, Debug)]
 pub enum AppState {
@@ -36,6 +37,10 @@ pub struct ModuleMetadata {
     pub state: AppState,
     /// Feature flags implemented by the module.
     pub capabilities: CapabilityFlags,
+    /// Maximum number of players supported.
+    pub max_players: u32,
+    /// Icon representing the module.
+    pub icon: Handle<Image>,
 }
 
 /// Context handed to module hooks giving access to the Bevy [`World`] and other
@@ -99,8 +104,8 @@ pub trait GameModule: Plugin + Sized {
     fn server_register(_app: &mut ServerApp) {}
 
     /// Called whenever the engine transitions into the module's state.
-    fn enter(_context: &mut ModuleContext) {}
+    fn enter(_context: &mut ModuleContext) -> Result<()> { Ok(()) }
 
     /// Called whenever the engine leaves the module's state.
-    fn exit(_context: &mut ModuleContext) {}
+    fn exit(_context: &mut ModuleContext) -> Result<()> { Ok(()) }
 }

@@ -316,13 +316,13 @@ pub fn register_module<M: GameModule + Default + 'static>(app: &mut App) {
 /// System wrapper that forwards state entry to the module.
 fn enter_module<M: GameModule>(world: &mut World) {
     let mut ctx = ModuleContext::new(world);
-    M::enter(&mut ctx);
+    M::enter(&mut ctx).expect("module enter failed");
 }
 
 /// System wrapper that forwards state exit to the module.
 fn exit_module<M: GameModule>(world: &mut World) {
     let mut ctx = ModuleContext::new(world);
-    M::exit(&mut ctx);
+    M::exit(&mut ctx).expect("module exit failed");
 }
 
 #[derive(Deserialize)]
@@ -334,6 +334,8 @@ struct ModuleManifest {
     state: String,
     #[serde(default)]
     capabilities: Vec<String>,
+    #[serde(default)]
+    max_players: u32,
 }
 
 pub fn discover_modules(mut registry: ResMut<ModuleRegistry>) {
@@ -378,6 +380,8 @@ pub fn discover_modules(mut registry: ResMut<ModuleRegistry>) {
             author: Box::leak(manifest.author.into_boxed_str()),
             state,
             capabilities: caps,
+            max_players: manifest.max_players,
+            icon: Handle::default(),
         });
     }
 }

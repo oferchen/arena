@@ -2571,6 +2571,7 @@ checksum = "75b325c5dbd37f80359721ad39aca5a29fb04c89279657cffdda8736d0c0b9d2"
 name = "duck_hunt"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "bevy 0.12.1",
  "platform-api",
 ]
@@ -5121,6 +5122,7 @@ checksum = "7edddbd0b52d732b21ad9a5fab5c704c14cd949e5e9a1ec5929a24fded1b904c"
 name = "platform-api"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "bevy 0.12.1",
  "bitflags 2.9.4",
 ]
