@@ -1,0 +1,6 @@
+id = "null_module"
+name = "Null Module"
+version = "1.0.0"
+author = "Template"
+state = "NullModule"
+capabilities = ["LOBBY_PAD"]
