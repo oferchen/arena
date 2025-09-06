@@ -1,0 +1,8 @@
+{
+  "name": "Arena",
+  "short_name": "Arena",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "icons": []
+}

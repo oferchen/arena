@@ -5,14 +5,14 @@ use axum::{
         ws::{WebSocket, WebSocketUpgrade},
         State,
     },
-    http::StatusCode,
+    http::{header::CACHE_CONTROL, HeaderValue, StatusCode},
     response::IntoResponse,
-    routing::get,
+    routing::{get, get_service},
     Router,
 };
 use server::email::EmailService;
 use sqlx::PgPool;
-use tower_http::services::ServeDir;
+use tower_http::{services::ServeDir, set_header::SetResponseHeaderLayer};
 
 #[derive(Clone)]
 struct AppState {
@@ -78,9 +78,17 @@ async fn main() {
 
     let state = Arc::new(AppState { db, email });
 
+    let assets_service = get_service(ServeDir::new("assets")).layer(
+        SetResponseHeaderLayer::if_not_present(
+            CACHE_CONTROL,
+            HeaderValue::from_static("public, max-age=31536000, immutable"),
+        ),
+    );
+
     let app = Router::new()
         .nest("/auth", auth_routes())
         .route("/ws", get(ws_handler))
+        .nest_service("/assets", assets_service)
         .fallback_service(ServeDir::new("static"))
         .with_state(state);
 
