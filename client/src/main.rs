@@ -6,7 +6,7 @@ use reqwest::Client;
 use serde_json::json;
 use wasm_bindgen_futures::spawn_local;
 
-const AUTH_BASE_URL: &str = "http://localhost:8000/auth";
+const AUTH_BASE_URL: &str = "http://localhost:3000/auth";
 
 #[derive(Resource, Clone)]
 struct SessionClient {
