@@ -256,10 +256,8 @@ fn pad_trigger(
 pub fn register_module<M: GameModule + Default + 'static>(app: &mut App) {
     let info = M::metadata();
     let state = info.state.clone();
-    {
-        let world = &mut app.world;
-        M::server_register(&mut ModuleContext { world });
-    }
+    M::register(app);
+    M::server_register(app);
     app.world
         .get_resource_mut::<ModuleRegistry>()
         .expect("EnginePlugin must be added before registering modules")
@@ -272,12 +270,14 @@ pub fn register_module<M: GameModule + Default + 'static>(app: &mut App) {
 
 /// System wrapper that forwards state entry to the module.
 fn enter_module<M: GameModule>(world: &mut World) {
-    M::enter(&mut ModuleContext { world });
+    let mut ctx = ModuleContext::new(world);
+    M::enter(&mut ctx);
 }
 
 /// System wrapper that forwards state exit to the module.
 fn exit_module<M: GameModule>(world: &mut World) {
-    M::exit(&mut ModuleContext { world });
+    let mut ctx = ModuleContext::new(world);
+    M::exit(&mut ctx);
 }
 
 pub fn hotload_modules(_app: &mut App) {
