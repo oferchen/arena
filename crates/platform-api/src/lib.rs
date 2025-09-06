@@ -14,11 +14,11 @@ bitflags! {
     #[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Hash)]
     pub struct CapabilityFlags: u32 {
         const LOBBY_PAD = 0b0001;
-        const NeedsPhysics = 0b0010;
-        const UsesHitscan = 0b0100;
-        const NeedsNav = 0b1000;
-        const UsesVehicles = 0b1_0000;
-        const UsesFlight = 0b10_0000;
+        const NEEDS_PHYSICS = 0b0010;
+        const USES_HITSCAN = 0b0100;
+        const NEEDS_NAV = 0b1000;
+        const USES_VEHICLES = 0b1_0000;
+        const USES_FLIGHT = 0b10_0000;
     }
 }
 

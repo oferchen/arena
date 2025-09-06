@@ -364,11 +364,11 @@ pub fn discover_modules(mut registry: ResMut<ModuleRegistry>) {
         for cap in manifest.capabilities {
             match cap.as_str() {
                 "LOBBY_PAD" => caps |= CapabilityFlags::LOBBY_PAD,
-                "NeedsPhysics" => caps |= CapabilityFlags::NeedsPhysics,
-                "UsesHitscan" => caps |= CapabilityFlags::UsesHitscan,
-                "NeedsNav" => caps |= CapabilityFlags::NeedsNav,
-                "UsesVehicles" => caps |= CapabilityFlags::UsesVehicles,
-                "UsesFlight" => caps |= CapabilityFlags::UsesFlight,
+                "NeedsPhysics" => caps |= CapabilityFlags::NEEDS_PHYSICS,
+                "UsesHitscan" => caps |= CapabilityFlags::USES_HITSCAN,
+                "NeedsNav" => caps |= CapabilityFlags::NEEDS_NAV,
+                "UsesVehicles" => caps |= CapabilityFlags::USES_VEHICLES,
+                "UsesFlight" => caps |= CapabilityFlags::USES_FLIGHT,
                 _ => {}
             }
         }
