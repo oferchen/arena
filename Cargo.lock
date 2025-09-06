@@ -4443,9 +4443,11 @@ dependencies = [
  "anyhow",
  "async-trait",
  "bevy 0.11.3",
+ "bytes",
  "postcard",
  "serde",
  "tokio",
+ "wasm-bindgen-futures",
  "webrtc",
 ]
 
