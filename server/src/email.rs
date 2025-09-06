@@ -117,7 +117,13 @@ mod tests {
     use super::*;
 
     fn clear_limits() {
-        let mut map = RATE_LIMITS.lock().unwrap();
+        let mut map = match RATE_LIMITS.lock() {
+            Ok(guard) => guard,
+            Err(poison) => {
+                RATE_LIMITS.clear_poison();
+                poison.into_inner()
+            }
+        };
         map.clear();
     }
 
