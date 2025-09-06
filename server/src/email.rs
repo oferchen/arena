@@ -105,14 +105,15 @@ pub struct EmailService {
 }
 
 impl EmailService {
-    pub fn new(config: SmtpConfig) -> Self {
+    pub fn new(config: SmtpConfig) -> Result<Self, EmailError> {
         let mut builder = AsyncSmtpTransport::<Tokio1Executor>::builder_dangerous(&config.host)
             .port(config.port)
             .timeout(Some(Duration::from_millis(config.timeout)));
 
-        let tls_params = TlsParameters::builder(config.host.clone())
-            .build()
-            .expect("invalid TLS params");
+        let tls_params = TlsParameters::builder(config.host.clone()).build().map_err(|e| {
+            log::error!("failed to build TLS parameters: {e:?}");
+            EmailError::Smtp(e.to_string())
+        })?;
 
         builder = if config.smtps {
             builder.tls(Tls::Wrapper(tls_params))
@@ -129,7 +130,7 @@ impl EmailService {
         }
 
         let transport = builder.build();
-        Self::new_with_transport(config.from, transport)
+        Ok(Self::new_with_transport(config.from, transport))
     }
 
     fn new_with_transport(from: String, transport: AsyncSmtpTransport<Tokio1Executor>) -> Self {
@@ -271,7 +272,7 @@ mod tests {
         clear_limits();
         let mut cfg = SmtpConfig::default();
         cfg.from = "noreply@example.com".into();
-        let svc = EmailService::new(cfg);
+        let svc = EmailService::new(cfg).unwrap();
         match svc.send_registration_password("not-an-email", "pw") {
             Err(EmailError::Address(_)) => {}
             _ => panic!("expected address error"),
