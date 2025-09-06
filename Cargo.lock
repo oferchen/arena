@@ -1657,6 +1657,7 @@ dependencies = [
  "bevy",
  "duck_hunt",
  "engine",
+ "null_module",
 ]
 
 [[package]]
@@ -3925,6 +3926,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d4a28e057d01f97e61255210fcff094d74ed0466038633e95017f5beb68e4399"
 dependencies = [
  "windows-sys 0.52.0",
+]
+
+[[package]]
+name = "null_module"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "bevy",
+ "platform-api",
 ]
 
 [[package]]
