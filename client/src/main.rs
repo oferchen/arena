@@ -1,8 +1,9 @@
 
 use bevy::prelude::*;
 use bevy_egui::{egui, EguiContexts, EguiPlugin};
-use reqwest::blocking::Client;
+use reqwest::Client;
 use serde_json::json;
+use wasm_bindgen_futures::spawn_local;
 
 const AUTH_BASE_URL: &str = "http://localhost:8000/auth";
 
@@ -127,11 +128,10 @@ fn kiosk_ui(
                     ui.label("Password");
                     ui.text_edit_singleline(&mut forms.register_password);
                     if ui.button("Submit").clicked() {
-                        send_register(
-                            client.client.clone(),
-                            forms.register_email.clone(),
-                            forms.register_password.clone(),
-                        );
+                        let client = client.client.clone();
+                        let email = forms.register_email.clone();
+                        let password = forms.register_password.clone();
+                        spawn_local(send_register(client, email, password));
                         close = true;
                     }
                     if ui.button("Close").clicked() {
@@ -146,11 +146,10 @@ fn kiosk_ui(
                     ui.label("Password");
                     ui.text_edit_singleline(&mut forms.login_password);
                     if ui.button("Submit").clicked() {
-                        send_login(
-                            client.client.clone(),
-                            forms.login_email.clone(),
-                            forms.login_password.clone(),
-                        );
+                        let client = client.client.clone();
+                        let email = forms.login_email.clone();
+                        let password = forms.login_password.clone();
+                        spawn_local(send_login(client, email, password));
                         close = true;
                     }
                     if ui.button("Close").clicked() {
@@ -163,7 +162,9 @@ fn kiosk_ui(
                     ui.label("Code");
                     ui.text_edit_singleline(&mut forms.twofa_code);
                     if ui.button("Submit").clicked() {
-                        send_twofa(client.client.clone(), forms.twofa_code.clone());
+                        let client = client.client.clone();
+                        let code = forms.twofa_code.clone();
+                        spawn_local(send_twofa(client, code));
                         close = true;
                     }
                     if ui.button("Close").clicked() {
@@ -178,29 +179,26 @@ fn kiosk_ui(
     }
 }
 
-fn send_register(client: Client, email: String, password: String) {
-    std::thread::spawn(move || {
-        let _ = client
-            .post(format!("{}/register", AUTH_BASE_URL))
-            .json(&json!({ "email": email, "password": password }))
-            .send();
-    });
+async fn send_register(client: Client, email: String, password: String) {
+    let _ = client
+        .post(format!("{}/register", AUTH_BASE_URL))
+        .json(&json!({ "email": email, "password": password }))
+        .send()
+        .await;
 }
 
-fn send_login(client: Client, email: String, password: String) {
-    std::thread::spawn(move || {
-        let _ = client
-            .post(format!("{}/login", AUTH_BASE_URL))
-            .json(&json!({ "email": email, "password": password }))
-            .send();
-    });
+async fn send_login(client: Client, email: String, password: String) {
+    let _ = client
+        .post(format!("{}/login", AUTH_BASE_URL))
+        .json(&json!({ "email": email, "password": password }))
+        .send()
+        .await;
 }
 
-fn send_twofa(client: Client, code: String) {
-    std::thread::spawn(move || {
-        let _ = client
-            .post(format!("{}/2fa", AUTH_BASE_URL))
-            .json(&json!({ "code": code }))
-            .send();
-    });
+async fn send_twofa(client: Client, code: String) {
+    let _ = client
+        .post(format!("{}/2fa", AUTH_BASE_URL))
+        .json(&json!({ "code": code }))
+        .send()
+        .await;
 }
