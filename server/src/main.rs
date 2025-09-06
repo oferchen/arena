@@ -1,6 +1,6 @@
 use std::{net::SocketAddr, sync::Arc};
 
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 
 use crate::email::{EmailService, SmtpConfig};
 use axum::{
@@ -156,7 +156,10 @@ async fn setup(smtp: SmtpConfig) -> Result<AppState> {
         e
     })?;
 
-    let email = Arc::new(EmailService::new(smtp));
+    let email = Arc::new(EmailService::new(smtp).map_err(|e| {
+        log::error!("failed to initialize email service: {e:?}");
+        anyhow!("{e:?}")
+    })?);
 
     let rooms = room::RoomManager::new();
     Ok(AppState { db, email, rooms })
@@ -266,7 +269,7 @@ mod tests {
     #[tokio::test]
     async fn websocket_signaling_completes_handshake() {
         let db = PgPoolOptions::new().connect_lazy("postgres://localhost").unwrap();
-        let email = Arc::new(EmailService::new(SmtpConfig::default()));
+        let email = Arc::new(EmailService::new(SmtpConfig::default()).unwrap());
         let rooms = room::RoomManager::new();
         let state = Arc::new(AppState { db, email, rooms });
 
