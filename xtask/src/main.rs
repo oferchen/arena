@@ -42,6 +42,51 @@ fn main() -> Result<()> {
         }
     }
 
+    // process module assets
+    let modules_src = web.join("modules");
+    if modules_src.exists() {
+        let modules_dest_root = assets_dir.join("modules");
+        for module_entry in fs::read_dir(modules_src)? {
+            let module_entry = module_entry?;
+            if !module_entry.file_type()?.is_dir() {
+                continue;
+            }
+            let module_name = module_entry.file_name().to_string_lossy().to_string();
+            let module_dest = modules_dest_root.join(&module_name);
+            fs::create_dir_all(&module_dest)?;
+            let mut module_manifest: HashMap<String, String> = HashMap::new();
+            for asset in WalkDir::new(module_entry.path())
+                .into_iter()
+                .filter_map(Result::ok)
+            {
+                if asset.file_type().is_file() {
+                    let path = asset.path();
+                    let file_name = path.file_name().unwrap().to_string_lossy().to_string();
+                    if file_name == "module.toml" {
+                        fs::copy(path, module_dest.join(&file_name))?;
+                        continue;
+                    }
+                    let data = fs::read(path)?;
+                    let hash = Sha256::digest(&data);
+                    let hash_hex = hex::encode(&hash)[..16].to_string();
+                    let stem = path.file_stem().unwrap().to_string_lossy();
+                    let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
+                    let hashed_name = if ext.is_empty() {
+                        format!("{stem}-{hash_hex}")
+                    } else {
+                        format!("{stem}-{hash_hex}.{ext}")
+                    };
+                    fs::write(module_dest.join(&hashed_name), data)?;
+                    module_manifest.insert(file_name, hashed_name);
+                }
+            }
+            fs::write(
+                module_dest.join("manifest.json"),
+                serde_json::to_string_pretty(&module_manifest)?,
+            )?;
+        }
+    }
+
     // rewrite manifest.json with hashed icon paths
     let manifest_src = fs::read_to_string(web.join("manifest.json"))?;
     let mut manifest_json: serde_json::Value = serde_json::from_str(&manifest_src)?;
