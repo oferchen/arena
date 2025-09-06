@@ -1,0 +1,14 @@
+{
+  "name": "arena",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "format": "prettier --write .",
+    "lint": "prettier --check .",
+    "prepare": "husky install"
+  },
+  "devDependencies": {
+    "prettier": "^3.2.5",
+    "husky": "^8.0.3"
+  }
+}
