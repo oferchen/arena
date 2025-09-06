@@ -6,3 +6,4 @@ edition = "2021"
 [dependencies]
 bevy = "0.12"
 platform-api = { path = "../../../../crates/platform-api" }
+anyhow = "1"

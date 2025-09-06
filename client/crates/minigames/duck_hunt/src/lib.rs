@@ -1,3 +1,4 @@
+use anyhow::Result;
 use bevy::prelude::*;
 use platform_api::{AppState, CapabilityFlags, GameModule, ModuleContext, ModuleMetadata, ServerApp};
 
@@ -52,17 +53,21 @@ impl GameModule for DuckHuntPlugin {
             author: "Unknown",
             state: AppState::DuckHunt,
             capabilities: CapabilityFlags::LOBBY_PAD,
+            max_players: 4,
+            icon: Handle::default(),
         }
     }
 
     fn register(_app: &mut App) {}
 
-    fn enter(ctx: &mut ModuleContext) {
+    fn enter(ctx: &mut ModuleContext) -> Result<()> {
         setup(ctx.world());
+        Ok(())
     }
 
-    fn exit(ctx: &mut ModuleContext) {
+    fn exit(ctx: &mut ModuleContext) -> Result<()> {
         cleanup(ctx.world());
+        Ok(())
     }
 
     fn server_register(_app: &mut ServerApp) {}
