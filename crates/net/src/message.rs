@@ -1,3 +1,4 @@
+use anyhow::{anyhow, Error};
 use serde::{Deserialize, Serialize};
 
 /// Input from a client for a single simulation frame.
@@ -28,29 +29,93 @@ pub struct SnapshotDelta {
 }
 
 /// Create a [`SnapshotDelta`] by XOR'ing the bytes of `base` and `current`.
-pub fn delta_compress(base: &Snapshot, current: &Snapshot) -> SnapshotDelta {
+pub fn delta_compress(
+    base: &Snapshot,
+    current: &Snapshot,
+) -> Result<SnapshotDelta, Error> {
+    if base.data.len() != current.data.len() {
+        return Err(anyhow!(
+            "snapshot length mismatch: {} != {}",
+            base.data.len(),
+            current.data.len()
+        ));
+    }
     let delta = base
         .data
         .iter()
         .zip(&current.data)
         .map(|(a, b)| a ^ b)
         .collect();
-    SnapshotDelta {
+    Ok(SnapshotDelta {
         frame: current.frame,
         delta,
-    }
+    })
 }
 
 /// Apply a [`SnapshotDelta`] to `base` to reconstruct a [`Snapshot`].
-pub fn apply_delta(base: &Snapshot, delta: &SnapshotDelta) -> Snapshot {
+pub fn apply_delta(base: &Snapshot, delta: &SnapshotDelta) -> Result<Snapshot, Error> {
+    if base.data.len() != delta.delta.len() {
+        return Err(anyhow!(
+            "snapshot length mismatch: {} != {}",
+            base.data.len(),
+            delta.delta.len()
+        ));
+    }
     let data = base
         .data
         .iter()
         .zip(&delta.delta)
         .map(|(a, d)| a ^ d)
         .collect();
-    Snapshot {
+    Ok(Snapshot {
         frame: delta.frame,
         data,
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn delta_compress_and_apply_delta_happy_path() -> Result<(), Error> {
+        let base = Snapshot {
+            frame: 1,
+            data: vec![1, 2, 3],
+        };
+        let current = Snapshot {
+            frame: 2,
+            data: vec![2, 4, 6],
+        };
+        let delta = delta_compress(&base, &current)?;
+        let reconstructed = apply_delta(&base, &delta)?;
+        assert_eq!(reconstructed, current);
+        Ok(())
+    }
+
+    #[test]
+    fn delta_compress_mismatched_lengths() {
+        let base = Snapshot {
+            frame: 1,
+            data: vec![1, 2, 3],
+        };
+        let current = Snapshot {
+            frame: 2,
+            data: vec![1, 2],
+        };
+        assert!(delta_compress(&base, &current).is_err());
+    }
+
+    #[test]
+    fn apply_delta_mismatched_lengths() {
+        let base = Snapshot {
+            frame: 1,
+            data: vec![1, 2, 3],
+        };
+        let delta = SnapshotDelta {
+            frame: 2,
+            delta: vec![1, 2],
+        };
+        assert!(apply_delta(&base, &delta).is_err());
     }
 }
