@@ -1,12 +1,12 @@
 use std::sync::Arc;
 use std::time::Duration as StdDuration;
 
-use tokio::sync::{mpsc::Receiver, mpsc::Sender, Mutex};
+use tokio::sync::{Mutex, mpsc::Receiver, mpsc::Sender};
 use tokio::time::{self, Duration};
 
-use duck_hunt_server::{validate_hit, DuckState, Server as DuckServer};
+use duck_hunt_server::{DuckState, Server as DuckServer, validate_hit};
 use glam::Vec3;
-use net::message::{delta_compress, InputFrame, ServerMessage, Snapshot};
+use net::message::{InputFrame, ServerMessage, Snapshot, delta_compress};
 use net::server::ServerConnector;
 use serde::{Deserialize, Serialize};
 
@@ -60,6 +60,9 @@ impl Room {
         // Consume all pending input frames.
         for (i, conn) in self.connectors.iter_mut().enumerate() {
             while let Ok(frame) = conn.input_rx.try_recv() {
+                if frame.frame != self.frame {
+                    continue;
+                }
                 if let Ok(shot) = postcard::from_bytes::<Shot>(&frame.data) {
                     let origin = Vec3::from_array(shot.origin);
                     let direction = Vec3::from_array(shot.direction);
@@ -79,22 +82,31 @@ impl Room {
 
         // Build a snapshot of the world containing player scores.
         let data = postcard::to_allocvec(&self.scores).unwrap_or_default();
-        let snapshot = Snapshot { frame: self.frame, data };
+        let snapshot = Snapshot {
+            frame: self.frame,
+            data,
+        };
         if let Some(ref base) = self.last_snapshot {
             if let Ok(delta) = delta_compress(base, &snapshot) {
                 for conn in &self.connectors {
-                    let _ = conn.snapshot_tx.try_send(ServerMessage::Delta(delta.clone()));
+                    let _ = conn
+                        .snapshot_tx
+                        .try_send(ServerMessage::Delta(delta.clone()));
                 }
                 self.last_snapshot = Some(snapshot);
             } else {
                 for conn in &self.connectors {
-                    let _ = conn.snapshot_tx.try_send(ServerMessage::Baseline(snapshot.clone()));
+                    let _ = conn
+                        .snapshot_tx
+                        .try_send(ServerMessage::Baseline(snapshot.clone()));
                 }
                 self.last_snapshot = Some(snapshot);
             }
         } else {
             for conn in &self.connectors {
-                let _ = conn.snapshot_tx.try_send(ServerMessage::Baseline(snapshot.clone()));
+                let _ = conn
+                    .snapshot_tx
+                    .try_send(ServerMessage::Baseline(snapshot.clone()));
             }
             self.last_snapshot = Some(snapshot);
         }
@@ -128,8 +140,8 @@ impl RoomManager {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tokio::sync::mpsc;
     use net::message::apply_delta;
+    use tokio::sync::mpsc;
 
     #[tokio::test]
     async fn updates_snapshot_after_delta() {
@@ -138,7 +150,10 @@ mod tests {
         // Attach a dummy connector so messages are sent.
         let (_input_tx, input_rx) = mpsc::channel(1);
         let (snapshot_tx, mut snapshot_rx) = mpsc::channel(8);
-        room.connectors.push(ConnectorHandle { input_rx, snapshot_tx });
+        room.connectors.push(ConnectorHandle {
+            input_rx,
+            snapshot_tx,
+        });
 
         // First tick sends a baseline snapshot.
         room.tick().await;
@@ -170,10 +185,16 @@ mod tests {
         let mut room = Room::new();
         let (tx1, rx1) = mpsc::channel(1);
         let (snap_tx1, mut snap_rx1) = mpsc::channel(8);
-        room.connectors.push(ConnectorHandle { input_rx: rx1, snapshot_tx: snap_tx1 });
+        room.connectors.push(ConnectorHandle {
+            input_rx: rx1,
+            snapshot_tx: snap_tx1,
+        });
         let (tx2, rx2) = mpsc::channel(1);
         let (snap_tx2, mut snap_rx2) = mpsc::channel(8);
-        room.connectors.push(ConnectorHandle { input_rx: rx2, snapshot_tx: snap_tx2 });
+        room.connectors.push(ConnectorHandle {
+            input_rx: rx2,
+            snapshot_tx: snap_tx2,
+        });
         room.scores.push(0);
         room.scores.push(0);
 
@@ -187,9 +208,18 @@ mod tests {
             _ => panic!("expected baseline"),
         };
 
-        let shot = Shot { origin: [0.0, 0.0, 0.0], direction: [0.0, 0.0, 1.0], time: 0.0 };
+        let shot = Shot {
+            origin: [0.0, 0.0, 0.0],
+            direction: [0.0, 0.0, 1.0],
+            time: 0.0,
+        };
         let bytes = postcard::to_allocvec(&shot).unwrap();
-        tx1.send(InputFrame { frame: 0, data: bytes }).await.unwrap();
+        tx1.send(InputFrame {
+            frame: room.frame + 1,
+            data: bytes,
+        })
+        .await
+        .unwrap();
         room.tick().await;
         let delta1_p1 = match snap_rx1.try_recv().unwrap() {
             ServerMessage::Delta(d) => d,
@@ -204,9 +234,18 @@ mod tests {
         };
         let snap1_p2 = apply_delta(&base2, &delta1_p2).unwrap();
 
-        let shot = Shot { origin: [0.0, 0.0, 0.0], direction: [0.0, 0.0, 1.0], time: 0.0 };
+        let shot = Shot {
+            origin: [0.0, 0.0, 0.0],
+            direction: [0.0, 0.0, 1.0],
+            time: 0.0,
+        };
         let bytes = postcard::to_allocvec(&shot).unwrap();
-        tx2.send(InputFrame { frame: 0, data: bytes }).await.unwrap();
+        tx2.send(InputFrame {
+            frame: room.frame + 1,
+            data: bytes,
+        })
+        .await
+        .unwrap();
         room.tick().await;
         let delta2_p1 = match snap_rx1.try_recv().unwrap() {
             ServerMessage::Delta(d) => d,
@@ -224,4 +263,3 @@ mod tests {
         assert_eq!(scores, vec![1, 1]);
     }
 }
-
