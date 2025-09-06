@@ -1,7 +1,7 @@
 use std::time::Duration;
 use glam::Vec3;
 
-mod net {
+pub mod net {
     use super::DuckState;
     use std::time::Duration;
 
@@ -24,7 +24,7 @@ mod net {
     }
 }
 
-use net::Server;
+pub use net::Server;
 
 const DUCK_RADIUS: f32 = 0.5;
 

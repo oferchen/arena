@@ -1,9 +1,11 @@
 use anyhow::Result;
 use bevy::prelude::*;
 use bevy::render::mesh::shape::UVSphere;
+use net::message::{InputFrame, Snapshot};
 use platform_api::{
     AppState, CapabilityFlags, GameModule, ModuleContext, ModuleMetadata, ServerApp,
 };
+use serde::{Deserialize, Serialize};
 
 #[derive(Resource, Default)]
 struct Score(pub u32);
@@ -40,6 +42,13 @@ impl Spline {
 #[derive(Component)]
 struct HudText;
 
+#[derive(Serialize, Deserialize)]
+struct Shot {
+    origin: [f32; 3],
+    direction: [f32; 3],
+    time: f32,
+}
+
 #[derive(Default)]
 pub struct DuckHuntPlugin;
 
@@ -51,6 +60,7 @@ impl Plugin for DuckHuntPlugin {
                 spawn_ducks,
                 move_ducks,
                 fire_weapon,
+                apply_score_snapshots,
                 update_hud,
                 update_round_timer,
             ),
@@ -184,13 +194,24 @@ fn move_ducks(time: Res<Time>, mut q: Query<(Entity, &mut Transform, &mut Duck)>
 fn fire_weapon(
     buttons: Res<Input<MouseButton>>,
     q: Query<(Entity, &Transform), With<Duck>>,
+    camera: Query<&Transform, With<Camera3d>>,
+    time: Res<Time>,
     mut commands: Commands,
-    mut score: ResMut<Score>,
+    mut writer: EventWriter<InputFrame>,
 ) {
     if buttons.just_pressed(MouseButton::Left) {
+        if let Ok(cam) = camera.get_single() {
+            let shot = Shot {
+                origin: cam.translation.to_array(),
+                direction: cam.forward().to_array(),
+                time: time.elapsed_seconds_f64() as f32,
+            };
+            if let Ok(data) = postcard::to_allocvec(&shot) {
+                writer.send(InputFrame { frame: 0, data });
+            }
+        }
         if let Some((entity, _)) = q.iter().next() {
             commands.entity(entity).despawn_recursive();
-            score.0 += 1;
         }
     }
 }
@@ -200,6 +221,14 @@ fn update_hud(score: Res<Score>, timer: Res<RoundTimer>, mut q: Query<&mut Text,
         for mut text in &mut q {
             let remaining = timer.0.remaining_secs().ceil() as u32;
             text.sections[0].value = format!("Score: {}\nTime: {remaining}", score.0);
+        }
+    }
+}
+
+fn apply_score_snapshots(mut reader: EventReader<Snapshot>, mut score: ResMut<Score>) {
+    for snap in reader.read() {
+        if let Ok(scores) = postcard::from_bytes::<Vec<u32>>(&snap.data) {
+            score.0 = scores.get(0).copied().unwrap_or(0);
         }
     }
 }
