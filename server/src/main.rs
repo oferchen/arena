@@ -1,16 +1,18 @@
 use std::{net::SocketAddr, sync::Arc};
 
 use axum::{
+    Router,
     extract::{
-        ws::{WebSocket, WebSocketUpgrade},
         State,
+        ws::{WebSocket, WebSocketUpgrade},
     },
-    http::{header::CACHE_CONTROL, HeaderName, HeaderValue, StatusCode},
+    http::{HeaderName, HeaderValue, StatusCode, header::CACHE_CONTROL},
     response::IntoResponse,
     routing::{get, get_service},
-    Router,
 };
-use server::email::EmailService;
+use duck_hunt::DuckHuntPlugin;
+use platform_api::ServerApp;
+use server::{ServerAppExt, email::EmailService};
 use sqlx::PgPool;
 use tower_http::{services::ServeDir, set_header::SetResponseHeaderLayer};
 
@@ -77,6 +79,9 @@ async fn main() {
     ));
 
     let state = Arc::new(AppState { db, email });
+
+    let mut _game_app = ServerApp::new();
+    _game_app.add_game_module::<DuckHuntPlugin>();
 
     let assets_service =
         get_service(ServeDir::new("assets")).layer(SetResponseHeaderLayer::if_not_present(

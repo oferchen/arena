@@ -24,12 +24,7 @@ impl Plugin for EnginePlugin {
             .add_systems(OnExit(AppState::Lobby), cleanup_lobby)
             .add_systems(
                 Update,
-                (
-                    lobby_keyboard,
-                    player_move,
-                    player_look,
-                    pad_trigger,
-                )
+                (lobby_keyboard, player_move, player_look, pad_trigger)
                     .run_if(in_state(AppState::Lobby)),
             )
             .add_systems(Update, exit_to_lobby);
@@ -74,7 +69,10 @@ pub fn setup_lobby(
             RigidBody::KinematicPositionBased,
             Collider::capsule_y(0.5, 0.3),
             KinematicCharacterController::default(),
-            Controller { yaw: 0.0, pitch: 0.0 },
+            Controller {
+                yaw: 0.0,
+                pitch: 0.0,
+            },
             Player,
             LobbyEntity,
         ))
@@ -90,7 +88,10 @@ pub fn setup_lobby(
     ));
     commands.spawn((
         PbrBundle {
-            mesh: meshes.add(Mesh::from(shape::Plane { size: 10.0, subdivisions: 0 })),
+            mesh: meshes.add(Mesh::from(shape::Plane {
+                size: 10.0,
+                subdivisions: 0,
+            })),
             material: materials.add(Color::rgb(0.3, 0.5, 0.3).into()),
             ..default()
         },
@@ -242,8 +243,7 @@ fn player_move(
         if keys.pressed(KeyCode::D) {
             direction += transform.right();
         }
-        controller.translation =
-            Some(direction.normalize_or_zero() * 5.0 * time.delta_seconds());
+        controller.translation = Some(direction.normalize_or_zero() * 5.0 * time.delta_seconds());
     }
 }
 
@@ -302,7 +302,6 @@ pub fn register_module<M: GameModule + Default + 'static>(app: &mut App) {
     let info = M::metadata();
     let state = info.state.clone();
     M::register(app);
-    M::server_register(app);
     app.world
         .get_resource_mut::<ModuleRegistry>()
         .expect("EnginePlugin must be added before registering modules")
