@@ -28,6 +28,8 @@ cargo run -p xtask
 cargo run -p server
 ```
 
+For details on the networking model see the [Netcode guide](docs/netcode.md). To extend gameplay, follow the [Module guide](docs/modules.md).
+
 ## Running
 
 After building, open `http://localhost:3000` in a browser to enter the lobby.
@@ -39,6 +41,8 @@ The server must be served with the following headers:
 
 These enable cross-origin isolation required by the client.
 
+For deployment and operational details, consult the [Operations guide](docs/ops.md).
+
 ## Development
 
 Run Prettier before committing changes:
@@ -47,9 +51,15 @@ Run Prettier before committing changes:
 npm run prettier
 ```
 
+Additional resources:
+
+- [Module development](docs/modules.md)
+- [Netcode design](docs/netcode.md)
+- [Deployment and operations](docs/ops.md)
+
 ## Documentation
 
-Future documentation will live under `docs/`:
+Documentation lives under `docs/`:
 
 - [Netcode](docs/netcode.md)
 - [Operations](docs/ops.md)
