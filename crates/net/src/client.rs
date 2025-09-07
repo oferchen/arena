@@ -2,6 +2,7 @@ use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
 
 use anyhow::Result;
+use async_trait::async_trait;
 use bevy::prelude::*;
 use bytes::Bytes;
 use wasm_bindgen_futures::spawn_local;
@@ -14,7 +15,19 @@ use webrtc::peer_connection::RTCPeerConnection;
 
 use crate::message::{apply_delta, InputFrame, ServerMessage, Snapshot};
 
-static DATA_CHANNEL: Mutex<Option<Arc<RTCDataChannel>>> = Mutex::new(None);
+#[async_trait]
+pub trait DataSender: Send + Sync {
+    async fn send(&self, data: &Bytes) -> webrtc::error::Result<()>;
+}
+
+#[async_trait]
+impl DataSender for RTCDataChannel {
+    async fn send(&self, data: &Bytes) -> webrtc::error::Result<()> {
+        RTCDataChannel::send(self, data).await.map(|_| ())
+    }
+}
+
+static DATA_CHANNEL: Mutex<Option<Arc<dyn DataSender>>> = Mutex::new(None);
 static SNAPSHOT_QUEUE: Mutex<VecDeque<Snapshot>> = Mutex::new(VecDeque::new());
 static LAST_SNAPSHOT: Mutex<Option<Snapshot>> = Mutex::new(None);
 static CONNECTION_EVENTS: Mutex<VecDeque<ConnectionEvent>> =
@@ -43,7 +56,8 @@ impl ClientConnector {
         let pc = api.new_peer_connection(RTCConfiguration::default()).await?;
         let dc = pc.create_data_channel("gamedata", None).await?;
         setup_channel(&dc);
-        *DATA_CHANNEL.lock().unwrap_or_else(|e| e.into_inner()) = Some(Arc::clone(&dc));
+        let dc_trait: Arc<dyn DataSender> = dc.clone();
+        *DATA_CHANNEL.lock().unwrap_or_else(|e| e.into_inner()) = Some(dc_trait);
         Ok(Self { pc, _dc: dc })
     }
 
@@ -151,6 +165,12 @@ fn setup_channel(dc: &Arc<RTCDataChannel>) {
     }));
 }
 
+async fn send_bytes(dc: Arc<dyn DataSender>, bytes: Vec<u8>) {
+    if let Err(e) = dc.send(&Bytes::from(bytes)).await {
+        bevy::log::error!("failed to send input frame: {e}");
+    }
+}
+
 /// Forward queued [`InputFrame`] events to the network channel each tick.
 pub fn send_input_frames(mut reader: EventReader<InputFrame>) {
     if let Some(dc) = DATA_CHANNEL.lock().unwrap_or_else(|e| e.into_inner()).clone() {
@@ -161,7 +181,7 @@ pub fn send_input_frames(mut reader: EventReader<InputFrame>) {
             };
             let dc = Arc::clone(&dc);
             spawn_local(async move {
-                let _ = dc.send(&Bytes::from(bytes)).await;
+                send_bytes(dc, bytes).await;
             });
         }
     }
@@ -186,6 +206,7 @@ pub fn apply_connection_events(mut writer: EventWriter<ConnectionEvent>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use async_trait::async_trait;
 
     #[test]
     fn connection_events_mutex_recover_from_poison() {
@@ -198,5 +219,44 @@ mod tests {
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .push_back(ConnectionEvent::Open);
+    }
+
+    struct FailingChannel;
+
+    #[async_trait]
+    impl DataSender for FailingChannel {
+        async fn send(&self, _data: &Bytes) -> webrtc::error::Result<()> {
+            Err(webrtc::error::Error::ErrConnectionClosed)
+        }
+    }
+
+    struct TestWriter(std::sync::Arc<std::sync::Mutex<Vec<u8>>>);
+
+    impl std::io::Write for TestWriter {
+        fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+            self.0.lock().unwrap().extend_from_slice(buf);
+            Ok(buf.len())
+        }
+
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    #[tokio::test]
+    async fn logs_error_when_send_fails() {
+        let buf = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let writer_buf = buf.clone();
+        let subscriber = tracing_subscriber::fmt()
+            .with_writer(move || TestWriter(writer_buf.clone()))
+            .with_ansi(false)
+            .finish();
+        let _guard = tracing::subscriber::set_default(subscriber);
+
+        let dc: Arc<dyn DataSender> = Arc::new(FailingChannel);
+        super::send_bytes(dc, vec![1]).await;
+
+        let logs = String::from_utf8(buf.lock().unwrap().clone()).unwrap();
+        assert!(logs.contains("failed to send input frame"));
     }
 }

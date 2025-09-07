@@ -23,3 +23,7 @@ futures-channel = "0.3"
 wasm-bindgen = "0.2"
 web-sys = { version = "0.3", features = ["BinaryType", "MessageEvent", "WebSocket"] }
 js-sys = "0.3"
+
+[dev-dependencies]
+tracing = "0.1"
+tracing-subscriber = "0.3"
