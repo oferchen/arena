@@ -34,6 +34,35 @@ This guide covers deploying Arena and operating it in production environments.
   guide](modules.md) for capability flags and packaging via
   `assets/modules/<id>/module.toml`.
 
+## Reverse proxy examples
+
+Arena can run behind a reverse proxy to handle TLS termination or virtual
+hosting. Below are minimal configurations for common proxies.
+
+### Nginx
+
+```nginx
+server {
+    listen 80;
+    server_name example.com;
+
+    location / {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_set_header Host $host;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection upgrade;
+    }
+}
+```
+
+### Caddy
+
+```caddy
+example.com {
+    reverse_proxy localhost:3000
+}
+```
+
 ## Reference
 
 - Deployment artifacts are produced in `target/release/`.

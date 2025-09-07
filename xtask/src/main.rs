@@ -19,6 +19,18 @@ fn main() -> Result<()> {
         .status()
         .context("failed to build wasm client")?;
 
+    // generate wasm-bindgen outputs into web/pkg
+    Command::new("wasm-bindgen")
+        .args([
+            "--target",
+            "web",
+            "--out-dir",
+            "web/pkg",
+            "target/wasm32-unknown-unknown/release/client.wasm",
+        ])
+        .status()
+        .context("failed to run wasm-bindgen")?;
+
     let web = Path::new("web");
     let assets_dir = Path::new("assets");
     let static_dir = Path::new("static");
@@ -38,6 +50,11 @@ fn main() -> Result<()> {
             if file_name == "manifest.json" || file_name == "sw.js" {
                 continue;
             }
+
+            let rel_path = path.strip_prefix(web).unwrap();
+            let rel_parent = rel_path.parent().unwrap_or(Path::new(""));
+            let rel_parent_str = rel_parent.to_string_lossy();
+
             let data = fs::read(path)?;
             let hash = Sha256::digest(&data);
             let hash_hex = hex::encode(&hash)[..16].to_string();
@@ -48,10 +65,20 @@ fn main() -> Result<()> {
             } else {
                 format!("{stem}-{hash_hex}.{ext}")
             };
-            let dest = assets_dir.join(&hashed_name);
+
+            let hashed_rel = if rel_parent_str.is_empty() {
+                hashed_name.clone()
+            } else {
+                format!("{rel_parent_str}/{hashed_name}")
+            };
+
+            let dest = assets_dir.join(&hashed_rel);
+            if let Some(parent) = dest.parent() {
+                fs::create_dir_all(parent)?;
+            }
             fs::write(&dest, data)?;
-            manifest.insert(file_name.clone(), hashed_name.clone());
-            precache.push(format!("/assets/{hashed_name}"));
+            manifest.insert(rel_path.to_string_lossy().to_string(), hashed_rel.clone());
+            precache.push(format!("/assets/{hashed_rel}"));
         }
     }
 
@@ -103,6 +130,28 @@ fn main() -> Result<()> {
             precache.push(format!(
                 "/assets/modules/{module_name}/manifest.json"
             ));
+        }
+    }
+
+    // rewrite paths inside hashed wasm-bindgen outputs
+    if let (Some(client_js), Some(client_bg)) = (
+        manifest.get("pkg/client.js"),
+        manifest.get("pkg/client_bg.wasm"),
+    ) {
+        let client_js_path = assets_dir.join(client_js);
+        let mut client_js_src = fs::read_to_string(&client_js_path)?;
+        if let Some(stripped) = client_bg.strip_prefix("pkg/") {
+            client_js_src =
+                client_js_src.replace("./client_bg.wasm", &format!("./{stripped}"));
+        }
+        fs::write(&client_js_path, client_js_src)?;
+
+        if let Some(bootstrap) = manifest.get("bootstrap.js") {
+            let bootstrap_path = assets_dir.join(bootstrap);
+            let mut bootstrap_src = fs::read_to_string(&bootstrap_path)?;
+            bootstrap_src =
+                bootstrap_src.replace("./pkg/client.js", &format!("./{client_js}"));
+            fs::write(&bootstrap_path, bootstrap_src)?;
         }
     }
 
