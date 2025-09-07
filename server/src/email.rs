@@ -158,6 +158,7 @@ pub enum EmailError {
 pub struct EmailService {
     from: String,
     sender: UnboundedSender<Message>,
+    cleanup: &'static JoinHandle<()>,
 }
 
 impl EmailService {
@@ -197,7 +198,7 @@ impl EmailService {
         T::Error: std::fmt::Display,
     {
         // Start periodic cleanup once
-        cleanup_handle();
+        let cleanup = cleanup_handle();
         let (tx, mut rx) = mpsc::unbounded_channel::<Message>();
         tokio::spawn(async move {
             while let Some(msg) = rx.recv().await {
@@ -230,7 +231,11 @@ impl EmailService {
                 }
             }
         });
-        Self { from, sender: tx }
+        Self {
+            from,
+            sender: tx,
+            cleanup,
+        }
     }
 
     fn allowed(to: &str) -> Result<bool, EmailError> {
@@ -302,6 +307,10 @@ impl EmailService {
 
     pub fn from_address(&self) -> &str {
         &self.from
+    }
+
+    pub fn abort_cleanup(&self) {
+        self.cleanup.abort();
     }
 }
 
