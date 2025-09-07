@@ -15,6 +15,25 @@ bevy_app = { version = "0.12", default-features = false }
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 wasm-bindgen = "0.2"
 wasm-bindgen-futures = "0.4"
+web-sys = { version = "0.3", features = [
+    "Window",
+    "Navigator",
+    "StorageManager",
+    "FileSystemDirectoryHandle",
+    "FileSystemFileHandle",
+    "FileSystemWritableFileStream",
+    "FileSystemGetFileOptions",
+    "File",
+    "IdbFactory",
+    "IdbOpenDbRequest",
+    "IdbDatabase",
+    "IdbTransaction",
+    "IdbObjectStore",
+    "IdbRequest",
+    "IdbTransactionMode",
+    "IdbVersionChangeEvent",
+] }
+
 
 [dev-dependencies]
 null_module = { path = "../minigames/null_module" }

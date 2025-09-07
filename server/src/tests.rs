@@ -71,6 +71,12 @@ async fn websocket_signaling_completes_handshake() {
     let cfg = SmtpConfig::default();
     let email = Arc::new(EmailService::new(cfg.clone()).unwrap());
     let rooms = room::RoomManager::new();
+    let leaderboard = ::leaderboard::LeaderboardService::new(
+        "sqlite::memory:",
+        std::path::PathBuf::from("replays"),
+    )
+    .await
+    .unwrap();
     let state = Arc::new(AppState {
         email,
         rooms,
@@ -128,6 +134,12 @@ async fn websocket_logs_unexpected_messages_and_closes() {
     let cfg = SmtpConfig::default();
     let email = Arc::new(EmailService::new(cfg.clone()).unwrap());
     let rooms = room::RoomManager::new();
+    let leaderboard = ::leaderboard::LeaderboardService::new(
+        "sqlite::memory:",
+        std::path::PathBuf::from("replays"),
+    )
+    .await
+    .unwrap();
     let state = Arc::new(AppState {
         email,
         rooms,
@@ -168,6 +180,12 @@ async fn mail_test_defaults_to_from_address() {
     cfg.from = "default@example.com".into();
     let email = Arc::new(EmailService::new(cfg.clone()).unwrap());
     let rooms = room::RoomManager::new();
+    let leaderboard = ::leaderboard::LeaderboardService::new(
+        "sqlite::memory:",
+        std::path::PathBuf::from("replays"),
+    )
+    .await
+    .unwrap();
     let state = Arc::new(AppState {
         email,
         rooms,
@@ -196,6 +214,12 @@ async fn mail_test_accepts_user_address_query() {
     cfg.from = "query@example.com".into();
     let email = Arc::new(EmailService::new(cfg.clone()).unwrap());
     let rooms = room::RoomManager::new();
+    let leaderboard = ::leaderboard::LeaderboardService::new(
+        "sqlite::memory:",
+        std::path::PathBuf::from("replays"),
+    )
+    .await
+    .unwrap();
     let state = Arc::new(AppState {
         email,
         rooms,
@@ -231,6 +255,12 @@ async fn mail_test_accepts_user_address_body() {
     cfg.from = "body@example.com".into();
     let email = Arc::new(EmailService::new(cfg.clone()).unwrap());
     let rooms = room::RoomManager::new();
+    let leaderboard = ::leaderboard::LeaderboardService::new(
+        "sqlite::memory:",
+        std::path::PathBuf::from("replays"),
+    )
+    .await
+    .unwrap();
     let state = Arc::new(AppState {
         email,
         rooms,
@@ -265,6 +295,12 @@ async fn mail_config_redacts_password() {
     cfg.pass = Some("secret".into());
     let email = Arc::new(EmailService::new(cfg.clone()).unwrap());
     let rooms = room::RoomManager::new();
+    let leaderboard = ::leaderboard::LeaderboardService::new(
+        "sqlite::memory:",
+        std::path::PathBuf::from("replays"),
+    )
+    .await
+    .unwrap();
     let state = Arc::new(AppState {
         email,
         rooms,
@@ -286,6 +322,12 @@ async fn admin_mail_config_route() {
     let cfg = SmtpConfig::default();
     let email = Arc::new(EmailService::new(cfg.clone()).unwrap());
     let rooms = room::RoomManager::new();
+    let leaderboard = ::leaderboard::LeaderboardService::new(
+        "sqlite::memory:",
+        std::path::PathBuf::from("replays"),
+    )
+    .await
+    .unwrap();
     let state = Arc::new(AppState {
         email,
         rooms,

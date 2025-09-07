@@ -14,8 +14,8 @@ use uuid::Uuid;
 
 use analytics::Event;
 use ::leaderboard::{
-    LeaderboardService, LeaderboardWindow,
-    models::{Run, Score},
+    LeaderboardService,
+    models::{LeaderboardWindow, Run, Score},
 };
 
 use crate::AppState;
@@ -29,11 +29,18 @@ pub fn routes() -> Router<Arc<AppState>> {
         .route("/:id/run/:run_id/verify", post(post_verify))
 }
 
-async fn get_scores(Path(id): Path<Uuid>, State(state): State<Arc<AppState>>) -> Json<Vec<Score>> {
-    let scores = state
-        .leaderboard
-        .get_scores(id, LeaderboardWindow::AllTime)
-        .await;
+#[derive(Deserialize)]
+struct WindowQuery {
+    window: Option<LeaderboardWindow>,
+}
+
+async fn get_scores(
+    Path(id): Path<Uuid>,
+    Query(q): Query<WindowQuery>,
+    State(state): State<Arc<AppState>>,
+) -> Json<Vec<Score>> {
+    let window = q.window.unwrap_or(LeaderboardWindow::AllTime);
+    let scores = state.leaderboard.get_scores(id, window).await;
     Json(scores)
 }
 
@@ -69,12 +76,14 @@ async fn post_run(
         player_id: payload.player_id,
         replay_path: String::new(),
         created_at: Utc::now(),
+        flagged: false,
     };
     let score = Score {
         id: score_id,
         run_id,
         player_id: payload.player_id,
         points: payload.points,
+        window: LeaderboardWindow::AllTime,
         verified: false,
     };
     for window in [
@@ -123,28 +132,29 @@ async fn post_verify(
 
 async fn ws_scores(
     Path(id): Path<Uuid>,
+    Query(q): Query<WindowQuery>,
     State(state): State<Arc<AppState>>,
     ws: WebSocketUpgrade,
 ) -> impl IntoResponse {
     let service = state.leaderboard.clone();
+    let window = q.window.unwrap_or(LeaderboardWindow::AllTime);
     ws.on_upgrade(move |socket| async move {
-        handle_ws(socket, id, service).await;
+        handle_ws(socket, id, window, service).await;
     })
 }
 
-async fn handle_ws(mut socket: WebSocket, id: Uuid, service: LeaderboardService) {
+async fn handle_ws(
+    mut socket: WebSocket,
+    id: Uuid,
+    window: LeaderboardWindow,
+    service: LeaderboardService,
+) {
     let mut rx = service.subscribe();
-    for window in [
-        LeaderboardWindow::Daily,
-        LeaderboardWindow::Weekly,
-        LeaderboardWindow::AllTime,
-    ] {
-        if let Ok(json) = serde_json::to_string(&service.get_snapshot(id, window).await) {
-            let _ = socket.send(Message::Text(json)).await;
-        }
+    if let Ok(json) = serde_json::to_string(&service.get_scores(id, window).await) {
+        let _ = socket.send(Message::Text(json)).await;
     }
     while let Ok(snapshot) = rx.recv().await {
-        if snapshot.leaderboard != id {
+        if snapshot.leaderboard != id || snapshot.window != window {
             continue;
         }
         if let Ok(json) = serde_json::to_string(&snapshot) {
@@ -182,6 +192,12 @@ mod tests {
         let cfg = SmtpConfig::default();
         let email = Arc::new(EmailService::new(cfg.clone()).unwrap());
         let rooms = room::RoomManager::new();
+        let leaderboard = ::leaderboard::LeaderboardService::new(
+            "sqlite::memory:",
+            PathBuf::from("replays"),
+        )
+        .await
+        .unwrap();
         let state = Arc::new(AppState {
             email,
             rooms,
