@@ -1,6 +1,17 @@
 use bevy_ecs::prelude::*;
-use editor::{play_in_editor, validate_level, Level};
+use editor::{
+    export_level,
+    play_in_editor,
+    stop_play_in_editor,
+    validate_level,
+    EditorSession,
+    Level,
+};
+use null_module::NullModule;
 use platform_api::ModuleContext;
+
+#[derive(Component, Clone, Debug, PartialEq)]
+struct TestComponent(pub i32);
 
 #[test]
 fn invalid_level_is_rejected() {
@@ -16,9 +27,65 @@ fn play_in_editor_starts_session() {
     let mut ctx = ModuleContext::new(&mut world);
     let level = Level::new("test-level", "Test Level");
 
-    play_in_editor(&mut ctx, &level).expect("should start editor session");
+    play_in_editor::<NullModule>(&mut ctx, &level).expect("should start editor session");
 
-    let stored = ctx.world().get_resource::<Level>().expect("level missing");
+    let session = ctx
+        .world()
+        .get_non_send_resource::<EditorSession>()
+        .expect("session missing");
+    let stored = session
+        .app
+        .world
+        .get_resource::<Level>()
+        .expect("level missing");
     assert_eq!(stored.id, "test-level");
     assert_eq!(stored.name, "Test Level");
+
+    stop_play_in_editor(&mut ctx);
+}
+
+#[test]
+fn round_trip_export_play_modify_replay() {
+    let mut world = World::new();
+    let mut ctx = ModuleContext::new(&mut world);
+
+    // initial editor setup
+    let entity = ctx.world().spawn(TestComponent(1)).id();
+    let mut level = Level::new("roundtrip", "Round Trip");
+    export_level(&level).unwrap();
+
+    play_in_editor::<NullModule>(&mut ctx, &level).unwrap();
+
+    // modify during play
+    {
+        let mut session = ctx
+            .world()
+            .get_non_send_resource_mut::<EditorSession>()
+            .unwrap();
+        let mut comp = session.app.world.get_mut::<TestComponent>(entity).unwrap();
+        comp.0 = 2;
+    }
+
+    // stop and modify again in editor
+    stop_play_in_editor(&mut ctx);
+    {
+        let mut comp = ctx.world().get_mut::<TestComponent>(entity).unwrap();
+        assert_eq!(comp.0, 2);
+        comp.0 = 3;
+    }
+    level.name = "Round Trip 2".into();
+    export_level(&level).unwrap();
+
+    // replay
+    play_in_editor::<NullModule>(&mut ctx, &level).unwrap();
+    {
+        let session = ctx
+            .world()
+            .get_non_send_resource::<EditorSession>()
+            .unwrap();
+        let comp = session.app.world.get::<TestComponent>(entity).unwrap();
+        assert_eq!(comp.0, 3);
+        let stored = session.app.world.get_resource::<Level>().unwrap();
+        assert_eq!(stored.name, "Round Trip 2");
+    }
 }

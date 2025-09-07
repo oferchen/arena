@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::Path;
 
-#[derive(Resource, Serialize, Deserialize, Default, Debug)]
+#[derive(Resource, Serialize, Deserialize, Default, Debug, Clone)]
 pub struct Level {
     pub id: String,
     pub name: String,
