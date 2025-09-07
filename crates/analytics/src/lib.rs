@@ -7,6 +7,7 @@ use serde::Serialize;
 pub enum Event {
     WsConnected,
     MailTestQueued,
+    RunVerificationFailed,
 }
 
 impl Event {
@@ -14,6 +15,7 @@ impl Event {
         match self {
             Event::WsConnected => "ws_connected",
             Event::MailTestQueued => "mail_test_queued",
+            Event::RunVerificationFailed => "run_verification_failed",
         }
     }
 }

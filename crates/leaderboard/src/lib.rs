@@ -7,15 +7,23 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::{broadcast, Mutex};
 use uuid::Uuid;
 
+#[derive(Copy, Clone, Serialize, Deserialize, Eq, PartialEq, Hash)]
+pub enum LeaderboardWindow {
+    Daily,
+    Weekly,
+    AllTime,
+}
+
 #[derive(Clone, Serialize, Deserialize)]
 pub struct LeaderboardSnapshot {
     pub leaderboard: Uuid,
+    pub window: LeaderboardWindow,
     pub scores: Vec<Score>,
 }
 
 #[derive(Clone)]
 pub struct LeaderboardService {
-    scores: Arc<Mutex<HashMap<Uuid, Vec<Score>>>>,
+    scores: Arc<Mutex<HashMap<(Uuid, LeaderboardWindow), Vec<Score>>>>,
     runs: Arc<Mutex<HashMap<Uuid, Run>>>,
     tx: broadcast::Sender<LeaderboardSnapshot>,
     replay_dir: PathBuf,
@@ -35,31 +43,39 @@ impl LeaderboardService {
     pub async fn submit_score(
         &self,
         leaderboard: Uuid,
+        window: LeaderboardWindow,
         score: Score,
         mut run: Run,
         replay: Vec<u8>,
     ) -> std::io::Result<()> {
-        tokio::fs::create_dir_all(&self.replay_dir).await?;
-        let path = self.replay_dir.join(format!("{}.replay", run.id));
-        tokio::fs::write(&path, replay).await?;
-        run.replay_path = path.to_string_lossy().into_owned();
         let mut runs = self.runs.lock().await;
-        runs.insert(run.id, run);
+        if !runs.contains_key(&run.id) {
+            tokio::fs::create_dir_all(&self.replay_dir).await?;
+            let path = self.replay_dir.join(format!("{}.replay", run.id));
+            tokio::fs::write(&path, replay).await?;
+            run.replay_path = path.to_string_lossy().into_owned();
+            runs.insert(run.id, run);
+        }
         drop(runs);
 
         let mut map = self.scores.lock().await;
-        let list = map.entry(leaderboard).or_default();
+        let list = map.entry((leaderboard, window)).or_default();
         list.push(score.clone());
         list.sort_by(|a, b| b.points.cmp(&a.points));
-        let snapshot = LeaderboardSnapshot { leaderboard, scores: list.clone() };
+        let snapshot = LeaderboardSnapshot { leaderboard, window, scores: list.clone() };
         drop(map);
         let _ = self.tx.send(snapshot);
         Ok(())
     }
 
-    pub async fn get_scores(&self, leaderboard: Uuid) -> Vec<Score> {
+    pub async fn get_scores(&self, leaderboard: Uuid, window: LeaderboardWindow) -> Vec<Score> {
         let map = self.scores.lock().await;
-        map.get(&leaderboard).cloned().unwrap_or_default()
+        map.get(&(leaderboard, window)).cloned().unwrap_or_default()
+    }
+
+    pub async fn get_snapshot(&self, leaderboard: Uuid, window: LeaderboardWindow) -> LeaderboardSnapshot {
+        let scores = self.get_scores(leaderboard, window).await;
+        LeaderboardSnapshot { leaderboard, window, scores }
     }
 
     pub fn subscribe(&self) -> broadcast::Receiver<LeaderboardSnapshot> {
