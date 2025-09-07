@@ -30,23 +30,23 @@ self.addEventListener("fetch", (event) => {
   if (event.request.method !== "GET") {
     return;
   }
-
-  const fetchPromise = fetch(event.request).then((networkResponse) =>
-    caches
-      .open(
-        event.request.url.startsWith(`${self.location.origin}/assets/`)
-          ? PRECACHE
-          : RUNTIME,
-      )
-      .then((cache) => {
-        cache.put(event.request, networkResponse.clone());
-        return networkResponse;
-      }),
-  );
+  if (event.request.url.startsWith(`${self.location.origin}/assets/`)) {
+    event.respondWith(
+      caches.match(event.request).then((res) => res || fetch(event.request)),
+    );
+    return;
+  }
 
   event.respondWith(
-    caches.match(event.request).then((response) => response || fetchPromise),
+    caches.match(event.request).then((cached) => {
+      const fetchPromise = fetch(event.request).then((networkResponse) =>
+        caches.open(RUNTIME).then((cache) => {
+          cache.put(event.request, networkResponse.clone());
+          return networkResponse;
+        }),
+      );
+      event.waitUntil(fetchPromise);
+      return cached || fetchPromise;
+    }),
   );
-
-  event.waitUntil(fetchPromise);
 });
