@@ -1,6 +1,9 @@
+use chrono::Utc;
 use glam::Vec3;
+use leaderboard::{models::{LeaderboardWindow, Run, Score}, LeaderboardService};
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
+use uuid::Uuid;
 
 pub mod net {
     use super::DuckState;
@@ -40,10 +43,6 @@ pub mod net {
 
 pub use net::Server;
 
-pub trait Leaderboard {
-    fn submit_score(&mut self, score: u32);
-}
-
 const DUCK_RADIUS: f32 = 0.5;
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -63,6 +62,17 @@ pub fn replicate(server: &Server, state: &DuckState) {
     server.broadcast(state);
 }
 
+pub fn advance_ducks(server: &mut Server, dt: f32) {
+    let mut updated = Vec::new();
+    for duck in &mut server.ducks {
+        duck.position += duck.velocity * dt;
+        updated.push(duck.clone());
+    }
+    for duck in &updated {
+        server.broadcast(duck);
+    }
+}
+
 pub fn validate_hit(server: &Server, origin: Vec3, direction: Vec3, shot_time: Duration) -> bool {
     let rewind = shot_time + server.latency();
     let rewind_secs = rewind.as_secs_f32();
@@ -78,15 +88,38 @@ pub fn validate_hit(server: &Server, origin: Vec3, direction: Vec3, shot_time: D
     false
 }
 
-pub fn handle_shot(
+pub async fn handle_shot(
     server: &Server,
-    leaderboard: &mut dyn Leaderboard,
+    leaderboard: &LeaderboardService,
+    leaderboard_id: Uuid,
+    player_id: Uuid,
     origin: Vec3,
     direction: Vec3,
     shot_time: Duration,
+    replay: Vec<u8>,
 ) -> bool {
     if validate_hit(server, origin, direction, shot_time) {
-        leaderboard.submit_score(1);
+        let run_id = Uuid::new_v4();
+        let run = Run {
+            id: run_id,
+            leaderboard_id,
+            player_id,
+            replay_path: String::new(),
+            created_at: Utc::now(),
+            flagged: false,
+        };
+        let score = Score {
+            id: Uuid::new_v4(),
+            run_id,
+            player_id,
+            points: 1,
+            window: LeaderboardWindow::AllTime,
+            verified: true,
+            created_at: Utc::now(),
+        };
+        let _ = leaderboard
+            .submit_score(leaderboard_id, score, run, replay)
+            .await;
         return true;
     }
     false
@@ -153,16 +186,25 @@ mod tests {
         assert!(!hit);
     }
 
-    struct TestLeaderboard(u32);
-
-    impl Leaderboard for TestLeaderboard {
-        fn submit_score(&mut self, score: u32) {
-            self.0 += score;
-        }
+    #[test]
+    fn advance_updates_position() {
+        let mut server = Server {
+            latency: Duration::from_secs_f32(0.0),
+            ducks: vec![DuckState {
+                position: Vec3::ZERO,
+                velocity: Vec3::new(1.0, 0.0, 0.0),
+            }],
+            snapshot_txs: Vec::new(),
+        };
+        advance_ducks(&mut server, 1.0);
+        assert_eq!(server.ducks[0].position, Vec3::new(1.0, 0.0, 0.0));
     }
 
-    #[test]
-    fn leaderboard_records_hit() {
+    #[tokio::test]
+    async fn leaderboard_records_hit() {
+        let tmp = tempfile::tempdir().unwrap();
+        let service =
+            LeaderboardService::new("sqlite::memory:", tmp.path().into()).await.unwrap();
         let server = Server {
             latency: Duration::from_secs_f32(0.0),
             ducks: vec![DuckState {
@@ -171,15 +213,27 @@ mod tests {
             }],
             snapshot_txs: Vec::new(),
         };
-        let mut lb = TestLeaderboard(0);
+        let leaderboard_id = Uuid::new_v4();
+        let player_id = Uuid::new_v4();
+        let replay = b"shot".to_vec();
         let hit = handle_shot(
             &server,
-            &mut lb,
+            &service,
+            leaderboard_id,
+            player_id,
             Vec3::ZERO,
             Vec3::Z,
             Duration::from_secs_f32(0.0),
-        );
+            replay.clone(),
+        )
+        .await;
         assert!(hit);
-        assert_eq!(lb.0, 1);
+        let scores = service
+            .get_scores(leaderboard_id, LeaderboardWindow::AllTime)
+            .await;
+        assert_eq!(scores.len(), 1);
+        assert_eq!(scores[0].points, 1);
+        let stored = service.get_replay(scores[0].run_id).await.unwrap();
+        assert_eq!(stored, replay);
     }
 }
