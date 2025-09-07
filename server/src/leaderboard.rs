@@ -3,7 +3,7 @@ use std::sync::Arc;
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::{
     Json, Router,
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::StatusCode,
     response::IntoResponse,
     routing::{get, post},
@@ -25,10 +25,22 @@ pub fn routes() -> Router<Arc<AppState>> {
         .route("/:id/ws", get(ws_scores))
         .route("/:id/run", post(post_run))
         .route("/:id/run/:run_id/replay", get(get_replay))
+        .route("/:id/run/:run_id/verify", post(post_verify))
 }
 
-async fn get_scores(Path(id): Path<Uuid>, State(state): State<Arc<AppState>>) -> Json<Vec<Score>> {
-    let scores = state.leaderboard.get_scores(id).await;
+async fn get_scores(
+    Path(id): Path<Uuid>,
+    State(state): State<Arc<AppState>>,
+    Query(params): Query<std::collections::HashMap<String, String>>,
+) -> Json<Vec<Score>> {
+    let scores = if let Some(h) = params.get("window") {
+        match h.parse::<i64>() {
+            Ok(hours) => state.leaderboard.get_scores_window(id, hours).await,
+            Err(_) => state.leaderboard.get_scores(id).await,
+        }
+    } else {
+        state.leaderboard.get_scores(id).await
+    };
     Json(scores)
 }
 
@@ -62,6 +74,7 @@ async fn post_run(
         run_id,
         player_id: payload.player_id,
         points: payload.points,
+        verified: false,
     };
     match state
         .leaderboard
@@ -81,6 +94,17 @@ async fn get_replay(
         Ok(data)
     } else {
         Err(StatusCode::NOT_FOUND)
+    }
+}
+
+async fn post_verify(
+    Path((_id, run_id)): Path<(Uuid, Uuid)>,
+    State(state): State<Arc<AppState>>,
+) -> StatusCode {
+    if state.leaderboard.verify_run(run_id).await {
+        StatusCode::OK
+    } else {
+        StatusCode::NOT_FOUND
     }
 }
 
@@ -152,5 +176,39 @@ mod tests {
                 .await
                 .is_empty()
         );
+    }
+
+    #[tokio::test]
+    async fn verify_endpoint_marks_score_verified() {
+        let cfg = SmtpConfig::default();
+        let email = Arc::new(EmailService::new(cfg.clone()).unwrap());
+        let rooms = room::RoomManager::new();
+        let state = Arc::new(AppState {
+            email,
+            rooms,
+            smtp: cfg,
+            analytics: Analytics::new(None, false),
+            leaderboard: ::leaderboard::LeaderboardService::default(),
+        });
+
+        let leaderboard_id = Uuid::new_v4();
+        let player = Uuid::new_v4();
+        let replay = base64::encode("data");
+        let payload = SubmitRun {
+            player_id: player,
+            points: 10,
+            replay,
+        };
+        let status = post_run(Path(leaderboard_id), State(state.clone()), Json(payload)).await;
+        assert_eq!(status, StatusCode::CREATED);
+        let scores = state.leaderboard.get_scores(leaderboard_id).await;
+        assert_eq!(scores.len(), 1);
+        let run_id = scores[0].run_id;
+        assert!(!scores[0].verified);
+
+        let status = post_verify(Path((leaderboard_id, run_id)), State(state.clone())).await;
+        assert_eq!(status, StatusCode::OK);
+        let scores = state.leaderboard.get_scores(leaderboard_id).await;
+        assert!(scores[0].verified);
     }
 }

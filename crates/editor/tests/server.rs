@@ -25,7 +25,12 @@ fn invalid_level_is_rejected() {
 fn play_in_editor_starts_session() {
     let mut world = World::new();
     let mut ctx = ModuleContext::new(&mut world);
-    let level = Level::new("test-level", "Test Level");
+    let mut level = Level::new("test-level", "Test Level");
+    level.spawn_zones.push(SpawnZone {
+        x: 0.0,
+        y: 0.0,
+        radius: 5.0,
+    });
 
     play_in_editor::<NullModule>(&mut ctx, &level).expect("should start editor session");
 
@@ -88,4 +93,41 @@ fn round_trip_export_play_modify_replay() {
         let stored = session.app.world.get_resource::<Level>().unwrap();
         assert_eq!(stored.name, "Round Trip 2");
     }
+}
+
+#[test]
+fn missing_reference_is_rejected() {
+    let mut world = World::new();
+    world.insert_resource(AssetRegistry::default());
+    let mut ctx = ModuleContext::new(&mut world);
+    let mut level = Level::new("lvl", "Lvl");
+    level.references.push("missing_asset".into());
+    assert!(validate_level(&mut ctx, &level).is_err());
+}
+
+#[test]
+fn illegal_spawn_zone_is_rejected() {
+    let mut world = World::new();
+    let mut ctx = ModuleContext::new(&mut world);
+    let mut level = Level::new("lvl", "Lvl");
+    level.spawn_zones.push(SpawnZone {
+        x: 2000.0,
+        y: 0.0,
+        radius: 10.0,
+    });
+    assert!(validate_level(&mut ctx, &level).is_err());
+}
+
+#[test]
+fn perf_budget_is_enforced() {
+    let mut world = World::new();
+    let mut ctx = ModuleContext::new(&mut world);
+    let mut level = Level::new("lvl", "Lvl");
+    level.spawn_zones.push(SpawnZone {
+        x: 0.0,
+        y: 0.0,
+        radius: 10.0,
+    });
+    level.entity_count = 2000;
+    assert!(validate_level(&mut ctx, &level).is_err());
 }

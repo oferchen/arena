@@ -27,4 +27,3 @@ impl Plugin for VehiclePlugin {
         app.add_systems(Update, vehicle_motion);
     }
 }
-

@@ -1,7 +1,7 @@
 use bevy::prelude::*;
-use std::time::Duration;
 use engine::flight::{FlightController, FlightPlugin};
 use engine::vehicle::{VehicleController, VehiclePlugin};
+use std::time::Duration;
 
 #[test]
 fn vehicle_moves_forward() {
@@ -36,4 +36,3 @@ fn flight_moves_up() {
     let transform = app.world.get::<Transform>(entity).unwrap();
     assert_eq!(transform.translation.y, 3.0 * 2.0);
 }
-
