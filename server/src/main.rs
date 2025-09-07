@@ -1,4 +1,4 @@
-use std::{net::SocketAddr, sync::Arc};
+use std::{net::SocketAddr, path::PathBuf, sync::Arc};
 
 use anyhow::{Result, anyhow};
 
@@ -219,7 +219,11 @@ async fn setup(smtp: SmtpConfig, analytics: Analytics) -> Result<AppState> {
     })?);
 
     let rooms = room::RoomManager::new();
-    let leaderboard = ::leaderboard::LeaderboardService::default();
+    let leaderboard = ::leaderboard::LeaderboardService::new(
+        "sqlite::memory:",
+        PathBuf::from("replays"),
+    )
+    .await?;
     Ok(AppState { email, rooms, smtp, analytics, leaderboard })
 }
 

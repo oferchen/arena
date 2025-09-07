@@ -3,7 +3,7 @@ use std::sync::Arc;
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::{
     Json, Router,
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::StatusCode,
     response::IntoResponse,
     routing::{get, post},
@@ -14,7 +14,7 @@ use uuid::Uuid;
 
 use ::leaderboard::{
     LeaderboardService,
-    models::{Run, Score},
+    models::{LeaderboardWindow, Run, Score},
 };
 
 use crate::AppState;
@@ -27,8 +27,18 @@ pub fn routes() -> Router<Arc<AppState>> {
         .route("/:id/run/:run_id/replay", get(get_replay))
 }
 
-async fn get_scores(Path(id): Path<Uuid>, State(state): State<Arc<AppState>>) -> Json<Vec<Score>> {
-    let scores = state.leaderboard.get_scores(id).await;
+#[derive(Deserialize)]
+struct WindowQuery {
+    window: Option<LeaderboardWindow>,
+}
+
+async fn get_scores(
+    Path(id): Path<Uuid>,
+    Query(q): Query<WindowQuery>,
+    State(state): State<Arc<AppState>>,
+) -> Json<Vec<Score>> {
+    let window = q.window.unwrap_or(LeaderboardWindow::AllTime);
+    let scores = state.leaderboard.get_scores(id, window).await;
     Json(scores)
 }
 
@@ -56,12 +66,14 @@ async fn post_run(
         player_id: payload.player_id,
         replay_path: String::new(),
         created_at: Utc::now(),
+        flagged: false,
     };
     let score = Score {
         id: score_id,
         run_id,
         player_id: payload.player_id,
         points: payload.points,
+        window: LeaderboardWindow::AllTime,
     };
     match state
         .leaderboard
@@ -86,22 +98,29 @@ async fn get_replay(
 
 async fn ws_scores(
     Path(id): Path<Uuid>,
+    Query(q): Query<WindowQuery>,
     State(state): State<Arc<AppState>>,
     ws: WebSocketUpgrade,
 ) -> impl IntoResponse {
     let service = state.leaderboard.clone();
+    let window = q.window.unwrap_or(LeaderboardWindow::AllTime);
     ws.on_upgrade(move |socket| async move {
-        handle_ws(socket, id, service).await;
+        handle_ws(socket, id, window, service).await;
     })
 }
 
-async fn handle_ws(mut socket: WebSocket, id: Uuid, service: LeaderboardService) {
+async fn handle_ws(
+    mut socket: WebSocket,
+    id: Uuid,
+    window: LeaderboardWindow,
+    service: LeaderboardService,
+) {
     let mut rx = service.subscribe();
-    if let Ok(json) = serde_json::to_string(&service.get_scores(id).await) {
+    if let Ok(json) = serde_json::to_string(&service.get_scores(id, window).await) {
         let _ = socket.send(Message::Text(json)).await;
     }
     while let Ok(snapshot) = rx.recv().await {
-        if snapshot.leaderboard != id {
+        if snapshot.leaderboard != id || snapshot.window != window {
             continue;
         }
         if let Ok(json) = serde_json::to_string(&snapshot.scores) {
@@ -128,12 +147,18 @@ mod tests {
         let cfg = SmtpConfig::default();
         let email = Arc::new(EmailService::new(cfg.clone()).unwrap());
         let rooms = room::RoomManager::new();
+        let leaderboard = ::leaderboard::LeaderboardService::new(
+            "sqlite::memory:",
+            PathBuf::from("replays"),
+        )
+        .await
+        .unwrap();
         let state = Arc::new(AppState {
             email,
             rooms,
             smtp: cfg,
             analytics: Analytics::new(None, false),
-            leaderboard: ::leaderboard::LeaderboardService::default(),
+            leaderboard,
         });
 
         let leaderboard_id = Uuid::new_v4();
@@ -148,7 +173,7 @@ mod tests {
         assert!(
             state
                 .leaderboard
-                .get_scores(leaderboard_id)
+                .get_scores(leaderboard_id, LeaderboardWindow::AllTime)
                 .await
                 .is_empty()
         );
