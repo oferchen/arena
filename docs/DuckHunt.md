@@ -1,6 +1,8 @@
 # Duck Hunt Module
 
-A sample module that recreates the classic light-gun game in Arena.
+A sample module that recreates the classic light-gun game in Arena. Build the
+project following the [README instructions](../README.md#building) to run the
+module.
 
 ## Gameplay
 

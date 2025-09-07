@@ -12,7 +12,8 @@ Modules are regular Rust crates that plug into the server during startup.
    cargo new crates/my_module --lib
    ```
 3. Add the crate to the workspace `Cargo.toml` and implement the `GameModule` trait exported by the core library.
-4. Include any client-side assets in the module and rebuild the workspace with `cargo build`.
+4. Include any client-side assets and rebuild using the [README build steps](../README.md#building).
+   Run `cargo run -p xtask` to bundle assets into `web/pkg`.
 5. Create a descriptor at `assets/modules/<id>/module.toml` containing metadata and capability flags for the module.
 6. Review the [netcode design](netcode.md) to understand how modules communicate with clients.
 
