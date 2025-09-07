@@ -5290,7 +5290,7 @@ dependencies = [
  "serde",
  "serial_test",
  "sqlx",
- "sqlx-postgres",
+ "thiserror 1.0.69",
  "tokio",
  "tokio-tungstenite 0.21.0",
  "tower-http",

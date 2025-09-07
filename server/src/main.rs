@@ -169,8 +169,8 @@ async fn shutdown_signal() {
 
 async fn setup(smtp: SmtpConfig) -> Result<AppState> {
     let email = Arc::new(EmailService::new(smtp).map_err(|e| {
-        log::error!("failed to initialize email service: {e:?}");
-        anyhow!("{e:?}")
+        log::error!("failed to initialize email service: {e}");
+        anyhow!(e)
     })?);
 
     let rooms = room::RoomManager::new();

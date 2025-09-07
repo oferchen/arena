@@ -113,12 +113,12 @@ const RETRY_BASE: Duration = Duration::from_millis(1000);
 pub enum EmailError {
     #[error("rate limited")]
     RateLimited,
-    #[error("smtp error")]
-    Smtp(#[source] SmtpError),
-    #[error("invalid address")]
-    Address(#[source] AddressError),
-    #[error("failed to build email")]
-    Build(#[source] lettre::error::Error),
+    #[error("{0}")]
+    Smtp(String),
+    #[error("{0}")]
+    Address(AddressError),
+    #[error("{0}")]
+    Build(lettre::error::Error),
     #[error("lock poisoned")]
     LockPoisoned,
 }
@@ -135,8 +135,8 @@ impl EmailService {
             .timeout(Some(Duration::from_millis(config.timeout)));
 
         let tls_params = TlsParameters::builder(config.host.clone()).build().map_err(|e| {
-            log::error!("failed to build TLS parameters: {e:?}");
-            EmailError::Smtp(e)
+            log::error!("failed to build TLS parameters: {e}");
+            EmailError::Smtp(e.to_string())
         })?;
 
         builder = if config.smtps {
