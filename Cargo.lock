@@ -2377,11 +2377,15 @@ dependencies = [
 name = "duck_hunt_server"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
+ "bevy",
  "chrono",
  "glam",
  "leaderboard",
  "net",
+ "platform-api",
  "postcard",
+ "rand",
  "serde",
  "tempfile",
  "tokio",

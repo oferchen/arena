@@ -3,9 +3,6 @@ name = "duck_hunt_server"
 version = "0.1.0"
 edition = "2024"
 
-[lib]
-path = "server.rs"
-
 [dependencies]
 glam = { version = "0.24", features = ["serde"] }
 net = { path = "../../net" }
@@ -15,6 +12,15 @@ tokio = { version = "1", features = ["sync", "macros", "rt-multi-thread"] }
 leaderboard = { path = "../../leaderboard" }
 uuid = { version = "1", features = ["v4", "serde"] }
 chrono = { version = "0.4", features = ["serde", "clock"] }
+bevy = { version = "0.12", default-features = false, features = [
+    "bevy_render",
+    "bevy_core_pipeline",
+    "bevy_pbr",
+    "bevy_text",
+] }
+platform-api = { path = "../../platform-api" }
+anyhow = "1"
+rand = "0.8"
 
 [dev-dependencies]
 tempfile = "3"
