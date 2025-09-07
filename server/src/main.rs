@@ -23,7 +23,6 @@ use webrtc::peer_connection::sdp::session_description::RTCSessionDescription;
 
 mod email;
 mod room;
-use sqlx::PgPool;
 use tower_http::{services::ServeDir, set_header::SetResponseHeaderLayer};
 
 #[derive(Parser, Debug)]
@@ -69,7 +68,6 @@ impl Cli {
 
 #[derive(Clone)]
 struct AppState {
-    db: PgPool,
     email: Arc<EmailService>,
     rooms: room::RoomManager,
 }
@@ -167,27 +165,14 @@ async fn shutdown_signal() {
     }
 }
 
-fn get_env(name: &str) -> Result<String> {
-    std::env::var(name).map_err(|e| {
-        log::error!("{name} environment variable not set: {e}");
-        e.into()
-    })
-}
-
 async fn setup(smtp: SmtpConfig) -> Result<AppState> {
-    let database_url = get_env("DATABASE_URL")?;
-    let db = PgPool::connect(&database_url).await.map_err(|e| {
-        log::error!("failed to connect to database: {e}");
-        e
-    })?;
-
     let email = Arc::new(EmailService::new(smtp).map_err(|e| {
         log::error!("failed to initialize email service: {e:?}");
         anyhow!("{e:?}")
     })?);
 
     let rooms = room::RoomManager::new();
-    Ok(AppState { db, email, rooms })
+    Ok(AppState { email, rooms })
 }
 
 async fn run(smtp: SmtpConfig) -> Result<()> {
@@ -272,12 +257,8 @@ mod tests {
     use webrtc::peer_connection::configuration::RTCConfiguration;
 
     #[tokio::test]
-    async fn setup_fails_without_env_vars() {
-        unsafe {
-            env::remove_var("DATABASE_URL");
-        }
-
-        assert!(setup(SmtpConfig::default()).await.is_err());
+    async fn setup_initializes_state() {
+        assert!(setup(SmtpConfig::default()).await.is_ok());
     }
 
     #[test]
@@ -325,12 +306,9 @@ mod tests {
 
     #[tokio::test]
     async fn websocket_signaling_completes_handshake() {
-        let db = PgPoolOptions::new()
-            .connect_lazy("postgres://localhost")
-            .unwrap();
         let email = Arc::new(EmailService::new(SmtpConfig::default()).unwrap());
         let rooms = room::RoomManager::new();
-        let state = Arc::new(AppState { db, email, rooms });
+        let state = Arc::new(AppState { email, rooms });
 
         let app = Router::new()
             .route("/signal", get(signal_ws_handler))
