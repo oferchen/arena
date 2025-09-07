@@ -10,3 +10,4 @@ anyhow = "1"
 postcard = { version = "1", features = ["alloc"] }
 serde = { version = "1", features = ["derive"] }
 net = { path = "../../../../crates/net" }
+rand = "0.8"

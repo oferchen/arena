@@ -4,3 +4,9 @@ version = "1.0.0"
 author = "Test"
 state = "DuckHunt"
 capabilities = ["LOBBY_PAD"]
+assets = [
+    "duck_mesh.glb",
+    "duck_texture.png",
+    "quack.ogg",
+    "fonts/FiraSans-Bold.ttf",
+]

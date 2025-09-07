@@ -1,5 +1,5 @@
-use std::time::Duration;
 use glam::Vec3;
+use std::time::Duration;
 
 pub mod net {
     use super::DuckState;
@@ -26,6 +26,10 @@ pub mod net {
 
 pub use net::Server;
 
+pub trait Leaderboard {
+    fn submit_score(&mut self, score: u32);
+}
+
 const DUCK_RADIUS: f32 = 0.5;
 
 #[derive(Clone)]
@@ -44,12 +48,7 @@ pub fn replicate(server: &mut Server, state: &DuckState) {
     server.broadcast(state);
 }
 
-pub fn validate_hit(
-    server: &Server,
-    origin: Vec3,
-    direction: Vec3,
-    shot_time: Duration,
-) -> bool {
+pub fn validate_hit(server: &Server, origin: Vec3, direction: Vec3, shot_time: Duration) -> bool {
     let rewind = shot_time + server.latency();
     let rewind_secs = rewind.as_secs_f32();
     let dir = direction.normalize();
@@ -61,6 +60,20 @@ pub fn validate_hit(
         }
     }
 
+    false
+}
+
+pub fn handle_shot(
+    server: &Server,
+    leaderboard: &mut dyn Leaderboard,
+    origin: Vec3,
+    direction: Vec3,
+    shot_time: Duration,
+) -> bool {
+    if validate_hit(server, origin, direction, shot_time) {
+        leaderboard.submit_score(1);
+        return true;
+    }
     false
 }
 
@@ -120,5 +133,34 @@ mod tests {
 
         let hit = validate_hit(&server, Vec3::ZERO, Vec3::X, Duration::from_secs_f32(0.0));
         assert!(!hit);
+    }
+
+    struct TestLeaderboard(u32);
+
+    impl Leaderboard for TestLeaderboard {
+        fn submit_score(&mut self, score: u32) {
+            self.0 += score;
+        }
+    }
+
+    #[test]
+    fn leaderboard_records_hit() {
+        let server = Server {
+            latency: Duration::from_secs_f32(0.0),
+            ducks: vec![DuckState {
+                position: Vec3::new(0.0, 0.0, 5.0),
+                velocity: Vec3::ZERO,
+            }],
+        };
+        let mut lb = TestLeaderboard(0);
+        let hit = handle_shot(
+            &server,
+            &mut lb,
+            Vec3::ZERO,
+            Vec3::Z,
+            Duration::from_secs_f32(0.0),
+        );
+        assert!(hit);
+        assert_eq!(lb.0, 1);
     }
 }
