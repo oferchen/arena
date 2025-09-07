@@ -270,7 +270,7 @@ async fn run(smtp: SmtpConfig) -> Result<()> {
             HeaderName::from_static("content-security-policy"),
             HeaderValue::from_static("default-src 'self'"),
         ))
-        .with_state(state);
+        .with_state(state.clone());
 
     let addr = SocketAddr::from(([0, 0, 0, 0], 3000));
     let listener = tokio::net::TcpListener::bind(addr).await.map_err(|e| {
@@ -278,13 +278,14 @@ async fn run(smtp: SmtpConfig) -> Result<()> {
         e
     })?;
 
-    axum::serve(listener, app)
+    let res = axum::serve(listener, app)
         .with_graceful_shutdown(shutdown_signal())
-        .await
-        .map_err(|e| {
-            log::error!("server error: {e}");
-            e
-        })?;
+        .await;
+    state.email.abort_cleanup();
+    res.map_err(|e| {
+        log::error!("server error: {e}");
+        e
+    })?;
 
     Ok(())
 }
