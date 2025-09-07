@@ -20,7 +20,15 @@ impl Plugin for NetPlugin {
         app.insert_resource(CurrentFrame::default())
             .add_event::<message::InputFrame>()
             .add_event::<message::Snapshot>()
+            .add_event::<client::ConnectionEvent>()
             .add_systems(PreUpdate, advance_frame)
-            .add_systems(Update, (client::send_input_frames, client::apply_snapshots));
+            .add_systems(
+                Update,
+                (
+                    client::send_input_frames,
+                    client::apply_snapshots,
+                    client::apply_connection_events,
+                ),
+            );
     }
 }
