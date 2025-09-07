@@ -20,10 +20,12 @@ use serde::{Deserialize, Serialize};
 use webrtc::peer_connection::sdp::sdp_type::RTCSdpType;
 use webrtc::peer_connection::sdp::session_description::RTCSessionDescription;
 use analytics::{Analytics, Event};
+use ::payments::{Catalog, EntitlementStore, Sku, StripeClient};
 
 mod email;
 mod room;
 mod leaderboard;
+mod payments;
 #[cfg(test)]
 mod test_logger;
 #[cfg(test)]
@@ -48,6 +50,9 @@ pub(crate) struct AppState {
     smtp: SmtpConfig,
     analytics: Analytics,
     leaderboard: ::leaderboard::LeaderboardService,
+    catalog: Catalog,
+    stripe: StripeClient,
+    entitlements: EntitlementStore,
 }
 
 fn auth_routes() -> Router<Arc<AppState>> {
@@ -220,7 +225,10 @@ async fn setup(smtp: SmtpConfig, analytics: Analytics) -> Result<AppState> {
 
     let rooms = room::RoomManager::new();
     let leaderboard = ::leaderboard::LeaderboardService::default();
-    Ok(AppState { email, rooms, smtp, analytics, leaderboard })
+    let catalog = Catalog::new(vec![Sku { id: "basic".to_string(), price_cents: 1000 }]);
+    let stripe = StripeClient::new();
+    let entitlements = EntitlementStore::default();
+    Ok(AppState { email, rooms, smtp, analytics, leaderboard, catalog, stripe, entitlements })
 }
 
 async fn run(cli: Cli) -> Result<()> {
@@ -242,6 +250,7 @@ async fn run(cli: Cli) -> Result<()> {
         .route("/admin/mail/test", post(mail_test_handler))
         .route("/admin/mail/config", get(mail_config_handler))
         .nest("/leaderboard", leaderboard::routes())
+        .nest("/payments", payments::routes())
         .nest_service("/assets", assets_service)
         .fallback_service(ServeDir::new("static"))
         .layer(SetResponseHeaderLayer::if_not_present(

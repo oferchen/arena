@@ -122,6 +122,7 @@ mod tests {
     use analytics::Analytics;
     use axum::Json;
     use axum::extract::{Path, State};
+    use ::payments::{Catalog, EntitlementStore, StripeClient, Sku};
 
     #[tokio::test]
     async fn post_run_rejects_malformed_base64() {
@@ -134,6 +135,9 @@ mod tests {
             smtp: cfg,
             analytics: Analytics::new(None, false),
             leaderboard: ::leaderboard::LeaderboardService::default(),
+            catalog: Catalog::new(vec![Sku { id: "basic".into(), price_cents: 1000 }]),
+            stripe: StripeClient::new(),
+            entitlements: EntitlementStore::default(),
         });
 
         let leaderboard_id = Uuid::new_v4();

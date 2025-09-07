@@ -34,6 +34,8 @@ null_module = { path = "../crates/minigames/null_module" }
 physics = { path = "crates/physics" }
 editor = { path = "../crates/editor" }
 render = { path = "../crates/render" }
+analytics = { path = "../crates/analytics" }
+payments = { path = "../crates/payments" }
 
 [features]
 default = ["audio"]

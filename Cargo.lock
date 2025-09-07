@@ -1700,11 +1700,13 @@ checksum = "b94f61472cee1439c0b966b47e3aca9ae07e45d070759512cd390ea2bebc6675"
 name = "client"
 version = "0.1.0"
 dependencies = [
+ "analytics",
  "bevy",
  "duck_hunt",
  "editor",
  "engine",
  "null_module",
+ "payments",
  "physics",
  "render",
  "wasm-bindgen",
@@ -4723,6 +4725,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "57c0d7b74b563b49d38dae00a0c37d4d6de9b432382b2892f0574ddcae73fd0a"
 
 [[package]]
+name = "payments"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "serde",
+ "uuid",
+]
+
+[[package]]
 name = "pem"
 version = "3.0.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5674,6 +5685,7 @@ dependencies = [
  "log",
  "net",
  "once_cell",
+ "payments",
  "postcard",
  "prometheus",
  "serde",

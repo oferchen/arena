@@ -7,6 +7,9 @@ use serde::Serialize;
 pub enum Event {
     WsConnected,
     MailTestQueued,
+    PurchaseInitiated,
+    PurchaseCompleted,
+    EntitlementChecked,
 }
 
 impl Event {
@@ -14,6 +17,9 @@ impl Event {
         match self {
             Event::WsConnected => "ws_connected",
             Event::MailTestQueued => "mail_test_queued",
+            Event::PurchaseInitiated => "purchase_initiated",
+            Event::PurchaseCompleted => "purchase_completed",
+            Event::EntitlementChecked => "entitlement_checked",
         }
     }
 }
