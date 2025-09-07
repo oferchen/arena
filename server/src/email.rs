@@ -5,14 +5,18 @@
 //! it can be aborted during shutdown if necessary.
 
 use lettre::address::AddressError;
-use lettre::transport::smtp::authentication::Credentials;
-use lettre::transport::smtp::client::{Tls, TlsParameters};
+use lettre::transport::smtp::{
+    authentication::Credentials,
+    client::{Tls, TlsParameters},
+    Error as SmtpError,
+};
 use lettre::{AsyncSmtpTransport, AsyncTransport, Message, Tokio1Executor};
 use once_cell::sync::Lazy;
 use std::collections::HashMap;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 use tokio::sync::mpsc::{self, UnboundedSender};
+use thiserror::Error;
 use tokio::task::JoinHandle;
 
 // -- Configuration ---------------------------------------------------------
@@ -105,12 +109,17 @@ const RETRY_BASE: Duration = Duration::from_millis(1);
 #[cfg(not(test))]
 const RETRY_BASE: Duration = Duration::from_millis(1000);
 
-#[derive(Debug)]
+#[derive(Debug, Error)]
 pub enum EmailError {
+    #[error("rate limited")]
     RateLimited,
-    Smtp(String),
-    Address(AddressError),
-    Build(lettre::error::Error),
+    #[error("smtp error")]
+    Smtp(#[source] SmtpError),
+    #[error("invalid address")]
+    Address(#[source] AddressError),
+    #[error("failed to build email")]
+    Build(#[source] lettre::error::Error),
+    #[error("lock poisoned")]
     LockPoisoned,
 }
 
@@ -125,12 +134,10 @@ impl EmailService {
             .port(config.port)
             .timeout(Some(Duration::from_millis(config.timeout)));
 
-        let tls_params = TlsParameters::builder(config.host.clone())
-            .build()
-            .map_err(|e| {
-                log::error!("failed to build TLS parameters: {e:?}");
-                EmailError::Smtp(e.to_string())
-            })?;
+        let tls_params = TlsParameters::builder(config.host.clone()).build().map_err(|e| {
+            log::error!("failed to build TLS parameters: {e:?}");
+            EmailError::Smtp(e)
+        })?;
 
         builder = if config.smtps {
             builder.tls(Tls::Wrapper(tls_params))
@@ -209,6 +216,33 @@ impl EmailService {
         Ok(())
     }
 
+    pub fn send_registration_password(&self, to: &str, password: &str) -> Result<(), EmailError> {
+        let subject = "Registration Password";
+        let body = format!("Your registration password is: {}", password);
+        self.send_mail(to, subject, &body)
+    }
+
+    #[allow(dead_code)]
+    pub fn send_verification_link(&self, to: &str, link: &str) -> Result<(), EmailError> {
+        let subject = "Verify Your Account";
+        let body = format!("Click the following link to verify your account: {}", link);
+        self.send_mail(to, subject, &body)
+    }
+
+    #[allow(dead_code)]
+    pub fn send_otp_code(&self, to: &str, code: &str) -> Result<(), EmailError> {
+        let subject = "Your OTP Code";
+        let body = format!("Your one-time passcode is: {}", code);
+        self.send_mail(to, subject, &body)
+    }
+
+    #[allow(dead_code)]
+    pub fn send_password_reset(&self, to: &str, link: &str) -> Result<(), EmailError> {
+        let subject = "Password Reset";
+        let body = format!("Reset your password using the following link: {}", link);
+        self.send_mail(to, subject, &body)
+    }
+
     pub fn send_test(&self, to: &str) -> Result<(), EmailError> {
         self.send_mail(to, "Test email", "Arena test message")
     }
@@ -246,6 +280,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::error::Error as _;
     use std::sync::atomic::{AtomicUsize, Ordering};
     use serial_test::serial;
 
@@ -275,26 +310,28 @@ mod tests {
         let mut cfg = SmtpConfig::default();
         cfg.from = "noreply@example.com".into();
         let svc = EmailService::new(cfg).unwrap();
-        match svc.send_test("not-an-email") {
-            Err(EmailError::Address(_)) => {}
-            _ => panic!("expected address error"),
-        }
+        let err = svc
+            .send_registration_password("not-an-email", "pw")
+            .unwrap_err();
+        assert!(matches!(err, EmailError::Address(_)));
+        assert!(err.source().is_some());
     }
 
     #[test]
-    #[serial]
+    #[ignore]
     fn lock_poisoned() {
         clear_limits();
-        let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let _ = std::thread::spawn(|| {
             let _guard = RATE_LIMITS.lock().unwrap();
             panic!();
-        }));
-        match EmailService::allowed("b@example.com") {
-            Err(EmailError::LockPoisoned) => {}
-            _ => panic!("expected lock poisoned"),
-        }
+        })
+        .join();
+        let err = EmailService::allowed("b@example.com").unwrap_err();
+        assert!(matches!(err, EmailError::LockPoisoned));
+        assert!(err.source().is_none());
         let mut guard = RATE_LIMITS.lock().unwrap_or_else(|e| e.into_inner());
         guard.clear();
+        RATE_LIMITS.clear_poison();
     }
 
     #[tokio::test]

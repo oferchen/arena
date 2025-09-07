@@ -20,6 +20,7 @@ clap = { version = "4", features = ["derive", "env"] }
 duck_hunt_server = { path = "../crates/minigames/duck_hunt" }
 glam = "0.24"
 postcard = { version = "1", features = ["alloc"] }
+thiserror = "1"
 email_address = "0.2"
 
 [dev-dependencies]
