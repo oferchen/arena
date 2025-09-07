@@ -1,36 +1,34 @@
-use bevy::{input::mouse::MouseMotion, prelude::*, window::CursorGrabMode};
-use bevy_rapier3d::prelude::*;
-use platform_api::{AppState, CapabilityFlags, GameModule, ModuleContext, ModuleMetadata};
-use serde::Deserialize;
 use bevy::ecs::schedule::common_conditions::resource_changed;
 #[cfg(target_arch = "wasm32")]
 use bevy::tasks::{AsyncComputeTaskPool, Task};
+use bevy::{input::mouse::MouseMotion, prelude::*, window::CursorGrabMode};
+use bevy_rapier3d::prelude::*;
 #[cfg(target_arch = "wasm32")]
 use futures_lite::future;
+#[cfg(target_arch = "wasm32")]
+use gloo_timers::future::TimeoutFuture;
+#[cfg(not(target_arch = "wasm32"))]
+use notify::{RecommendedWatcher, RecursiveMode, Watcher};
+use platform_api::{AppState, CapabilityFlags, GameModule, ModuleContext, ModuleMetadata};
+use serde::Deserialize;
 #[cfg(not(target_arch = "wasm32"))]
 use std::fs;
 #[cfg(not(target_arch = "wasm32"))]
 use std::path::Path;
 #[cfg(not(target_arch = "wasm32"))]
-use notify::{RecommendedWatcher, RecursiveMode, Watcher};
+use std::sync::mpsc;
 #[cfg(not(target_arch = "wasm32"))]
 use std::sync::mpsc::Receiver;
-#[cfg(not(target_arch = "wasm32"))]
-use std::sync::mpsc;
-#[cfg(target_arch = "wasm32")]
-use wasm_bindgen_futures::spawn_local;
-#[cfg(target_arch = "wasm32")]
-use gloo_timers::future::TimeoutFuture;
 
-#[cfg(feature = "vehicle")]
-pub mod vehicle;
 #[cfg(feature = "flight")]
 pub mod flight;
-
 #[cfg(feature = "vehicle")]
-use vehicle::VehiclePlugin;
+pub mod vehicle;
+
 #[cfg(feature = "flight")]
 use flight::FlightPlugin;
+#[cfg(feature = "vehicle")]
+use vehicle::VehiclePlugin;
 
 /// Stores metadata for all registered game modules.
 #[derive(Resource, Default)]
@@ -444,16 +442,21 @@ fn read_modules_from_disk() -> Vec<ModuleMetadata> {
 #[derive(Resource)]
 struct ModuleDiscoveryTask(Task<Vec<ModuleMetadata>>);
 
+#[cfg(target_arch = "wasm32")]
+#[derive(Resource)]
+struct ModuleDiscoveryLoop(Task<()>);
+
 pub fn discover_modules(
-    #[cfg_attr(not(target_arch = "wasm32"), allow(unused_mut))]
-    mut commands: Commands,
+    #[cfg_attr(not(target_arch = "wasm32"), allow(unused_mut))] mut commands: Commands,
     mut registry: ResMut<ModuleRegistry>,
     asset_server: Option<Res<AssetServer>>,
 ) {
     #[cfg(target_arch = "wasm32")]
     {
         use bevy::asset::load;
-        let Some(asset_server) = asset_server else { return; };
+        let Some(asset_server) = asset_server else {
+            return;
+        };
         let asset_server = asset_server.clone();
         let task = AsyncComputeTaskPool::get().spawn(async move {
             let data: String = load(asset_server.as_ref(), "modules.json").await;
@@ -502,7 +505,6 @@ pub fn discover_modules(
     }
 }
 
-
 #[cfg(target_arch = "wasm32")]
 fn apply_discovered_modules(
     mut commands: Commands,
@@ -526,10 +528,7 @@ struct ModuleWatcher {
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-fn process_module_events(
-    watcher: Res<ModuleWatcher>,
-    mut registry: ResMut<ModuleRegistry>,
-) {
+fn process_module_events(watcher: Res<ModuleWatcher>, mut registry: ResMut<ModuleRegistry>) {
     let mut changed = false;
     if let Ok(rx) = watcher.receiver.lock() {
         while let Ok(_event) = rx.try_recv() {
@@ -546,10 +545,8 @@ pub fn hotload_modules(app: &mut App) {
     {
         use notify::Config;
         let (tx, rx) = mpsc::channel();
-        let mut watcher =
-            RecommendedWatcher::new(tx, Config::default()).expect("watcher");
-        let modules_dir =
-            Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../assets/modules");
+        let mut watcher = RecommendedWatcher::new(tx, Config::default()).expect("watcher");
+        let modules_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../assets/modules");
         watcher
             .watch(&modules_dir, RecursiveMode::Recursive)
             .expect("watch");
@@ -562,15 +559,28 @@ pub fn hotload_modules(app: &mut App) {
 
     #[cfg(target_arch = "wasm32")]
     {
-        let world_ptr = app.world_mut() as *mut World;
-        spawn_local(async move {
-            loop {
-                TimeoutFuture::new(1000).await;
-                unsafe {
-                    (*world_ptr).run_system_once(discover_modules);
-                }
-            }
-        });
+        app.insert_resource(ModuleDiscoveryLoop(spawn_module_discovery_task()));
+        app.add_systems(Update, poll_module_discovery_loop);
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
+fn spawn_module_discovery_task() -> Task<()> {
+    AsyncComputeTaskPool::get().spawn_local(async move {
+        TimeoutFuture::new(1000).await;
+    })
+}
+
+#[cfg(target_arch = "wasm32")]
+fn poll_module_discovery_loop(
+    mut task: ResMut<ModuleDiscoveryLoop>,
+    mut commands: Commands,
+    mut registry: ResMut<ModuleRegistry>,
+    asset_server: Option<Res<AssetServer>>,
+) {
+    if future::block_on(future::poll_once(&mut task.0)).is_some() {
+        discover_modules(commands, registry, asset_server);
+        task.0 = spawn_module_discovery_task();
     }
 }
 

@@ -1,6 +1,0 @@
-id = "duck_hunt"
-name = "Duck Hunt"
-version = "1.0.0"
-author = "Test"
-state = "DuckHunt"
-capabilities = ["LOBBY_PAD"]
