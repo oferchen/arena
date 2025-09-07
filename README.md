@@ -19,6 +19,12 @@ cargo build --target wasm32-unknown-unknown
 wasm-bindgen --target web --out-dir ../web/pkg target/wasm32-unknown-unknown/debug/client.wasm
 ```
 
+To enable the WebGL2 fallback, build the client with the `webgl2` feature:
+
+```
+cargo build --target wasm32-unknown-unknown --features webgl2
+```
+
 ### Server
 
 From the repository root:
