@@ -1868,6 +1868,7 @@ dependencies = [
  "render",
  "reqwest",
  "wasm-bindgen",
+ "wasm-bindgen-test",
  "wee_alloc",
 ]
 
@@ -2395,6 +2396,7 @@ dependencies = [
  "toml",
  "wasm-bindgen",
  "wasm-bindgen-futures",
+ "web-sys",
 ]
 
 [[package]]
