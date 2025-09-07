@@ -4,6 +4,7 @@ use leaderboard::{models::{LeaderboardWindow, Run, Score}, LeaderboardService};
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 use uuid::Uuid;
+use rand::{rngs::StdRng, Rng, SeedableRng};
 
 pub mod net {
     use super::DuckState;
@@ -45,7 +46,7 @@ pub use net::Server;
 
 const DUCK_RADIUS: f32 = 0.5;
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize, PartialEq, Debug)]
 pub struct DuckState {
     pub position: Vec3,
     pub velocity: Vec3,
@@ -60,6 +61,21 @@ pub fn spawn_duck(server: &mut Server, position: Vec3, velocity: Vec3) {
 
 pub fn replicate(server: &Server, state: &DuckState) {
     server.broadcast(state);
+}
+
+/// Spawn a deterministic wave of ducks using the provided `seed`.
+/// This allows tests and replays to reproduce identical spawns.
+pub fn spawn_wave(server: &mut Server, seed: u64, count: usize) {
+    let mut rng = StdRng::seed_from_u64(seed);
+    for _ in 0..count {
+        let position = Vec3::new(
+            rng.gen_range(-5.0..5.0),
+            rng.gen_range(0.5..2.5),
+            0.0,
+        );
+        let velocity = Vec3::new(rng.gen_range(-1.0..1.0), 0.0, 0.0);
+        spawn_duck(server, position, velocity);
+    }
 }
 
 pub fn advance_ducks(server: &mut Server, dt: f32) {
