@@ -8,6 +8,15 @@ use std::path::Path;
 pub struct Level {
     pub id: String,
     pub name: String,
+    /// External asset identifiers that must exist for the level to load.
+    #[serde(default)]
+    pub references: Vec<String>,
+    /// Areas where players can spawn when the level loads.
+    #[serde(default)]
+    pub spawn_zones: Vec<SpawnZone>,
+    /// Estimated number of entities the level will spawn at runtime.
+    #[serde(default)]
+    pub entity_count: usize,
 }
 
 impl Level {
@@ -15,8 +24,19 @@ impl Level {
         Self {
             id: id.into(),
             name: name.into(),
+            references: Vec::new(),
+            spawn_zones: Vec::new(),
+            entity_count: 0,
         }
     }
+}
+
+/// Defines a circular area players may spawn in.
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct SpawnZone {
+    pub x: f32,
+    pub y: f32,
+    pub radius: f32,
 }
 
 /// Persist the level to the assets directory.
