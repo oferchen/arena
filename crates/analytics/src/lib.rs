@@ -14,6 +14,9 @@ use serde::Serialize;
 pub enum Event {
     WsConnected,
     MailTestQueued,
+    PurchaseInitiated,
+    PurchaseCompleted,
+    EntitlementChecked,
     RunVerificationFailed,
 
     // Gameplay
@@ -40,6 +43,9 @@ impl Event {
         match self {
             Event::WsConnected => "ws_connected",
             Event::MailTestQueued => "mail_test_queued",
+            Event::PurchaseInitiated => "purchase_initiated",
+            Event::PurchaseCompleted => "purchase_completed",
+            Event::EntitlementChecked => "entitlement_checked",
             Event::RunVerificationFailed => "run_verification_failed",
             Event::PlayerJoined => "player_joined",
             Event::PlayerJumped => "player_jumped",

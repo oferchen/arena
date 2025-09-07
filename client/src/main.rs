@@ -6,7 +6,8 @@ use engine::{AppExt, EnginePlugin};
 use null_module::NullModule;
 use physics::PhysicsPlugin;
 use render::RenderPlugin;
-use payments::EntitlementList;
+use analytics::{Analytics, Event};
+use payments::{EntitlementStore, UserId};
 
 #[cfg(all(target_arch = "wasm32", not(target_os = "emscripten")))]
 #[global_allocator]
@@ -27,9 +28,14 @@ fn fetch_entitlements() -> Vec<String> {
 }
 
 fn main() {
-    let entitlements = fetch_entitlements();
-    let mut app = App::new();
-    app.add_plugins(RenderPlugin)
+    let analytics = Analytics::new(None, false);
+    let entitlements = EntitlementStore::default();
+    let user = UserId::new_v4();
+    let _ = entitlements.has(user, "basic");
+    analytics.dispatch(Event::EntitlementChecked);
+
+    App::new()
+        .add_plugins(RenderPlugin)
         .add_plugins(PhysicsPlugin)
         .add_plugins(EnginePlugin);
     if entitlements.contains(&"duck_hunt".to_string()) {

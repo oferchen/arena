@@ -14,6 +14,7 @@ use webrtc::peer_connection::configuration::RTCConfiguration;
 
 use crate::test_logger::{INIT, LOGGER};
 use log::LevelFilter;
+use ::payments::{Catalog, EntitlementStore, StripeClient, Sku};
 
 #[tokio::test]
 async fn setup_succeeds_without_env_vars() {
@@ -81,7 +82,10 @@ async fn websocket_signaling_completes_handshake() {
         rooms,
         smtp: cfg,
         analytics: Analytics::new(None, false),
-        leaderboard,
+        leaderboard: ::leaderboard::LeaderboardService::default(),
+        catalog: Catalog::new(vec![Sku { id: "basic".into(), price_cents: 1000 }]),
+        stripe: StripeClient::new(),
+        entitlements: EntitlementStore::default(),
     });
 
     let app = Router::new()
@@ -141,7 +145,10 @@ async fn websocket_logs_unexpected_messages_and_closes() {
         rooms,
         smtp: cfg,
         analytics: Analytics::new(None, false),
-        leaderboard,
+        leaderboard: ::leaderboard::LeaderboardService::default(),
+        catalog: Catalog::new(vec![Sku { id: "basic".into(), price_cents: 1000 }]),
+        stripe: StripeClient::new(),
+        entitlements: EntitlementStore::default(),
     });
 
     let app = Router::new()
@@ -184,7 +191,10 @@ async fn mail_test_defaults_to_from_address() {
         rooms,
         smtp: cfg.clone(),
         analytics: Analytics::new(None, false),
-        leaderboard,
+        leaderboard: ::leaderboard::LeaderboardService::default(),
+        catalog: Catalog::new(vec![Sku { id: "basic".into(), price_cents: 1000 }]),
+        stripe: StripeClient::new(),
+        entitlements: EntitlementStore::default(),
     });
 
     assert_eq!(
@@ -215,7 +225,10 @@ async fn mail_test_accepts_user_address_query() {
         rooms,
         smtp: cfg.clone(),
         analytics: Analytics::new(None, false),
-        leaderboard,
+        leaderboard: ::leaderboard::LeaderboardService::default(),
+        catalog: Catalog::new(vec![Sku { id: "basic".into(), price_cents: 1000 }]),
+        stripe: StripeClient::new(),
+        entitlements: EntitlementStore::default(),
     });
 
     assert_eq!(
@@ -253,7 +266,10 @@ async fn mail_test_accepts_user_address_body() {
         rooms,
         smtp: cfg.clone(),
         analytics: Analytics::new(None, false),
-        leaderboard,
+        leaderboard: ::leaderboard::LeaderboardService::default(),
+        catalog: Catalog::new(vec![Sku { id: "basic".into(), price_cents: 1000 }]),
+        stripe: StripeClient::new(),
+        entitlements: EntitlementStore::default(),
     });
 
     assert_eq!(
@@ -290,7 +306,10 @@ async fn mail_config_redacts_password() {
         rooms,
         smtp: cfg.clone(),
         analytics: Analytics::new(None, false),
-        leaderboard,
+        leaderboard: ::leaderboard::LeaderboardService::default(),
+        catalog: Catalog::new(vec![Sku { id: "basic".into(), price_cents: 1000 }]),
+        stripe: StripeClient::new(),
+        entitlements: EntitlementStore::default(),
     });
 
     let Json(redacted) = mail_config_handler(State(state)).await;
@@ -314,7 +333,10 @@ async fn admin_mail_config_route() {
         rooms,
         smtp: cfg,
         analytics: Analytics::new(None, false),
-        leaderboard,
+        leaderboard: ::leaderboard::LeaderboardService::default(),
+        catalog: Catalog::new(vec![Sku { id: "basic".into(), price_cents: 1000 }]),
+        stripe: StripeClient::new(),
+        entitlements: EntitlementStore::default(),
     });
 
     let app = Router::new()

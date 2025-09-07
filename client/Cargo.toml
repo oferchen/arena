@@ -34,8 +34,9 @@ null_module = { path = "../crates/minigames/null_module" }
 physics = { path = "crates/physics" }
 editor = { path = "../crates/editor" }
 render = { path = "../crates/render" }
+analytics = { path = "../crates/analytics" }
 payments = { path = "../crates/payments" }
-reqwest = { version = "0.11", default-features = false, features = ["json", "blocking", "rustls-tls"] }
+
 
 [features]
 default = ["audio"]
