@@ -1,11 +1,8 @@
-use anyhow::{bail, Result};
+use anyhow::{Context, Result, bail};
 use bevy_app::{AppExit, MainScheduleOrder};
+use bevy_ecs::prelude::Resource;
 use bevy_ecs::{prelude::*, schedule::Schedules};
 use platform_api::{GameModule, ModuleContext, ServerApp};
-use anyhow::{Result, bail};
-use anyhow::{Context, Result, bail};
-use bevy_ecs::prelude::Resource;
-use platform_api::ModuleContext;
 use std::collections::HashSet;
 
 use crate::level::Level;

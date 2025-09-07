@@ -1867,7 +1867,6 @@ dependencies = [
  "payments",
  "physics",
  "render",
- "reqwest",
  "wasm-bindgen",
  "wasm-bindgen-test",
  "wee_alloc",
@@ -5036,9 +5035,8 @@ version = "0.1.0"
 dependencies = [
  "chrono",
  "serde",
- "uuid",
- "serde",
  "serde_json",
+ "uuid",
 ]
 
 [[package]]
