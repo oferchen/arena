@@ -24,6 +24,7 @@ use thiserror::Error;
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen_futures::spawn_local;
 
+pub mod core;
 #[cfg(feature = "flight")]
 pub mod flight;
 #[cfg(feature = "vehicle")]
@@ -33,6 +34,7 @@ pub mod vehicle;
 use flight::FlightPlugin;
 #[cfg(feature = "vehicle")]
 use vehicle::VehiclePlugin;
+use core::CorePlugin;
 
 /// Numeric hotkeys usable in the lobby to select modules.
 const LOBBY_KEYS: [KeyCode; 9] = [
@@ -73,11 +75,10 @@ pub struct EnginePlugin;
 
 impl Plugin for EnginePlugin {
     fn build(&self, app: &mut App) {
-        app.insert_resource(Time::<Fixed>::from_seconds(1.0 / 60.0))
+        app.add_plugins(CorePlugin)
             .init_resource::<ModuleRegistry>()
             .init_resource::<FrameInterpolation>()
             .add_state::<AppState>()
-            .add_plugins(RapierPhysicsPlugin::<NoUserData>::default().in_fixed_schedule())
             .add_systems(Startup, discover_modules)
             .add_systems(OnEnter(AppState::Lobby), setup_lobby)
             .add_systems(OnExit(AppState::Lobby), cleanup_lobby)

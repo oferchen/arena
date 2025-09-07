@@ -32,7 +32,12 @@ bevy = { version = "0.12", default-features = false, features = [
 engine = { path = "crates/engine" }
 duck_hunt = { path = "crates/minigames/duck_hunt" }
 null_module = { path = "../crates/minigames/null_module" }
+physics = { path = "crates/physics" }
 
 [features]
 default = ["audio"]
 audio = ["bevy/bevy_audio"]
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wee_alloc = { version = "0.4" }
+wasm-bindgen = "0.2"
