@@ -39,7 +39,8 @@ impl LeaderboardService {
                 player_id TEXT NOT NULL,
                 replay_path TEXT NOT NULL,
                 created_at TEXT NOT NULL,
-                flagged INTEGER NOT NULL DEFAULT 0
+                flagged INTEGER NOT NULL DEFAULT 0,
+                replay_index INTEGER NOT NULL
             )"
         )
         .execute(&pool)
@@ -51,7 +52,8 @@ impl LeaderboardService {
                 player_id TEXT NOT NULL,
                 points INTEGER NOT NULL,
                 created_at TEXT NOT NULL,
-                verified INTEGER NOT NULL DEFAULT 0
+                verified INTEGER NOT NULL DEFAULT 0,
+                window TEXT NOT NULL
             )"
         )
         .execute(&pool)
@@ -91,9 +93,19 @@ impl LeaderboardService {
             .await
             .map_err(to_io_error)?;
 
+        let idx_row = sqlx::query(
+            "SELECT COALESCE(MAX(replay_index), 0) + 1 AS idx FROM runs WHERE leaderboard_id = ?",
+        )
+        .bind(leaderboard)
+        .fetch_one(&self.pool)
+        .await
+        .map_err(to_io_error)?;
+        let next_idx: i64 = idx_row.get("idx");
+        run.replay_index = next_idx;
+
         sqlx::query(
-            r#"INSERT OR IGNORE INTO runs (id, leaderboard_id, player_id, replay_path, created_at, flagged)
-               VALUES (?, ?, ?, ?, ?, ?)"#,
+            r#"INSERT OR IGNORE INTO runs (id, leaderboard_id, player_id, replay_path, created_at, flagged, replay_index)
+               VALUES (?, ?, ?, ?, ?, ?, ?)"#,
         )
         .bind(run.id)
         .bind(leaderboard)
@@ -101,23 +113,31 @@ impl LeaderboardService {
         .bind(&run.replay_path)
         .bind(run.created_at)
         .bind(run.flagged as i64)
+        .bind(run.replay_index)
         .execute(&self.pool)
         .await
         .map_err(to_io_error)?;
 
-        sqlx::query(
-            r#"INSERT OR IGNORE INTO scores (id, run_id, player_id, points, created_at, verified)
-               VALUES (?, ?, ?, ?, ?, ?)"#,
-        )
-        .bind(score.id)
-        .bind(run.id)
-        .bind(score.player_id)
-        .bind(score.points)
-        .bind(score.created_at)
-        .bind(score.verified as i64)
-        .execute(&self.pool)
-        .await
-        .map_err(to_io_error)?;
+        for window in [
+            LeaderboardWindow::Daily,
+            LeaderboardWindow::Weekly,
+            LeaderboardWindow::AllTime,
+        ] {
+            sqlx::query(
+                r#"INSERT OR IGNORE INTO scores (id, run_id, player_id, points, created_at, verified, window)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)"#,
+            )
+            .bind(Uuid::new_v4())
+            .bind(run.id)
+            .bind(score.player_id)
+            .bind(score.points)
+            .bind(score.created_at)
+            .bind(score.verified as i64)
+            .bind(window.as_str())
+            .execute(&self.pool)
+            .await
+            .map_err(to_io_error)?;
+        }
 
         for window in [
             LeaderboardWindow::Daily,

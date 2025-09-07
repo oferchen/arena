@@ -18,6 +18,7 @@ pub struct Run {
     pub replay_path: String,
     pub created_at: DateTime<Utc>,
     pub flagged: bool,
+    pub replay_index: i64,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -26,18 +27,25 @@ pub struct Score {
     pub run_id: Uuid,
     pub player_id: Uuid,
     pub points: i32,
-    pub window: LeaderboardWindow,
     pub verified: bool,
     pub created_at: DateTime<Utc>,
+    pub window: LeaderboardWindow,
 }
 
 impl LeaderboardWindow {
-    pub fn since(&self) -> Option<DateTime<Utc>> {
-        let now = Utc::now();
+    pub fn as_str(&self) -> &'static str {
         match self {
-            LeaderboardWindow::Daily => Some(now - chrono::Duration::days(1)),
-            LeaderboardWindow::Weekly => Some(now - chrono::Duration::weeks(1)),
-            LeaderboardWindow::AllTime => None,
+            LeaderboardWindow::Daily => "daily",
+            LeaderboardWindow::Weekly => "weekly",
+            LeaderboardWindow::AllTime => "all_time",
+        }
+    }
+
+    pub fn from_str(s: &str) -> Self {
+        match s {
+            "daily" => LeaderboardWindow::Daily,
+            "weekly" => LeaderboardWindow::Weekly,
+            _ => LeaderboardWindow::AllTime,
         }
     }
 }
@@ -56,36 +64,19 @@ pub async fn scores_for_window(
         verified: i64,
         created_at: DateTime<Utc>,
     }
-
-    let since = window.since();
-    let rows: Vec<ScoreRow> = if let Some(since) = since {
-        sqlx::query_as(
-            r#"
-            SELECT s.id, s.run_id, s.player_id, s.points, s.verified, s.created_at
-            FROM scores s
-            JOIN runs r ON s.run_id = r.id
-            WHERE r.leaderboard_id = ? AND s.created_at >= ?
-            ORDER BY s.points DESC
-            "#,
-        )
-        .bind(leaderboard)
-        .bind(since)
-        .fetch_all(pool)
-        .await?
-    } else {
-        sqlx::query_as(
-            r#"
-            SELECT s.id, s.run_id, s.player_id, s.points, s.verified, s.created_at
-            FROM scores s
-            JOIN runs r ON s.run_id = r.id
-            WHERE r.leaderboard_id = ?
-            ORDER BY s.points DESC
-            "#,
-        )
-        .bind(leaderboard)
-        .fetch_all(pool)
-        .await?
-    };
+    let rows: Vec<ScoreRow> = sqlx::query_as(
+        r#"
+        SELECT s.id, s.run_id, s.player_id, s.points, s.verified, s.created_at
+        FROM scores s
+        JOIN runs r ON s.run_id = r.id
+        WHERE r.leaderboard_id = ? AND s.window = ?
+        ORDER BY s.points DESC
+        "#,
+    )
+    .bind(leaderboard)
+    .bind(window.as_str())
+    .fetch_all(pool)
+    .await?;
 
     Ok(rows
         .into_iter()
@@ -94,9 +85,9 @@ pub async fn scores_for_window(
             run_id: row.run_id,
             player_id: row.player_id,
             points: row.points,
-            window,
             verified: row.verified != 0,
             created_at: row.created_at,
+            window,
         })
         .collect())
 }

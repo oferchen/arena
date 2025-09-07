@@ -1,6 +1,14 @@
 use bevy::ecs::system::RunSystemOnce;
 use bevy::prelude::*;
-use engine::{DocPad, LobbyPad, ModuleRegistry, discover_modules, setup_lobby};
+use engine::{
+    DocPad,
+    LobbyPad,
+    ModuleRegistry,
+    discover_modules,
+    setup_lobby,
+    LeaderboardScreen,
+    ReplayPedestal,
+};
 use std::fs;
 use std::path::Path;
 
@@ -91,4 +99,14 @@ fn setup_lobby_handles_missing_window() {
 
     // no entities should be spawned without a window
     assert_eq!(app.world.iter_entities().count(), 0);
+}
+
+#[test]
+fn lobby_spawns_leaderboard_and_pedestal() {
+    let mut app = test_app();
+    app.world.run_system_once(setup_lobby);
+    let screens = app.world.query::<&LeaderboardScreen>().iter(&app.world).count();
+    let pedestals = app.world.query::<&ReplayPedestal>().iter(&app.world).count();
+    assert_eq!(screens, 1);
+    assert_eq!(pedestals, 1);
 }
