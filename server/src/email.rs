@@ -110,10 +110,12 @@ impl EmailService {
             .port(config.port)
             .timeout(Some(Duration::from_millis(config.timeout)));
 
-        let tls_params = TlsParameters::builder(config.host.clone()).build().map_err(|e| {
-            log::error!("failed to build TLS parameters: {e:?}");
-            EmailError::Smtp(e.to_string())
-        })?;
+        let tls_params = TlsParameters::builder(config.host.clone())
+            .build()
+            .map_err(|e| {
+                log::error!("failed to build TLS parameters: {e:?}");
+                EmailError::Smtp(e.to_string())
+            })?;
 
         builder = if config.smtps {
             builder.tls(Tls::Wrapper(tls_params))
@@ -143,7 +145,13 @@ impl EmailService {
                 send_with_retry(|| {
                     let mailer = mailer.clone();
                     let msg = msg.clone();
-                    async move { mailer.send(msg).await.map(|_| ()).map_err(|e| e.to_string()) }
+                    async move {
+                        mailer
+                            .send(msg)
+                            .await
+                            .map(|_| ())
+                            .map_err(|e| e.to_string())
+                    }
                 })
                 .await;
             }
@@ -184,30 +192,6 @@ impl EmailService {
 
         self.queue_mail(email);
         Ok(())
-    }
-
-    pub fn send_registration_password(&self, to: &str, password: &str) -> Result<(), EmailError> {
-        let subject = "Registration Password";
-        let body = format!("Your registration password is: {}", password);
-        self.send_mail(to, subject, &body)
-    }
-
-    pub fn send_verification_link(&self, to: &str, link: &str) -> Result<(), EmailError> {
-        let subject = "Verify Your Account";
-        let body = format!("Click the following link to verify your account: {}", link);
-        self.send_mail(to, subject, &body)
-    }
-
-    pub fn send_otp_code(&self, to: &str, code: &str) -> Result<(), EmailError> {
-        let subject = "Your OTP Code";
-        let body = format!("Your one-time passcode is: {}", code);
-        self.send_mail(to, subject, &body)
-    }
-
-    pub fn send_password_reset(&self, to: &str, link: &str) -> Result<(), EmailError> {
-        let subject = "Password Reset";
-        let body = format!("Reset your password using the following link: {}", link);
-        self.send_mail(to, subject, &body)
     }
 
     pub fn send_test(&self, to: &str) -> Result<(), EmailError> {
@@ -273,7 +257,7 @@ mod tests {
         let mut cfg = SmtpConfig::default();
         cfg.from = "noreply@example.com".into();
         let svc = EmailService::new(cfg).unwrap();
-        match svc.send_registration_password("not-an-email", "pw") {
+        match svc.send_test("not-an-email") {
             Err(EmailError::Address(_)) => {}
             _ => panic!("expected address error"),
         }
@@ -299,9 +283,7 @@ mod tests {
         let attempts = AtomicUsize::new(0);
         send_with_retry(|| {
             let n = attempts.fetch_add(1, Ordering::SeqCst);
-            async move {
-                if n < 2 { Err("fail") } else { Ok(()) }
-            }
+            async move { if n < 2 { Err("fail") } else { Ok(()) } }
         })
         .await;
         assert_eq!(attempts.load(Ordering::SeqCst), 3);
