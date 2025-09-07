@@ -307,7 +307,10 @@ async fn setup(smtp: SmtpConfig, analytics: Analytics) -> Result<AppState> {
     })?);
 
     let rooms = room::RoomManager::new();
-    let leaderboard = ::leaderboard::LeaderboardService::default();
+    let db_url = std::env::var("DATABASE_URL").unwrap_or_else(|_| "sqlite::memory:".into());
+    let leaderboard = ::leaderboard::LeaderboardService::new(&db_url, PathBuf::from("replays"))
+        .await
+        .map_err(|e| anyhow!(e))?;
     let catalog = Catalog::new(vec![Sku {
         id: "basic".to_string(),
         price_cents: 1000,

@@ -1,18 +1,19 @@
 pub mod models;
 
-use std::collections::HashMap;
+use std::io;
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
 
-use models::{LeaderboardWindow, Run, Score};
+use models::{scores_for_window, LeaderboardWindow, Run, Score};
 use serde::{Deserialize, Serialize};
+use sqlx::sqlite::SqlitePoolOptions;
+use sqlx::{Row, SqlitePool};
 use tokio::sync::broadcast;
 use uuid::Uuid;
 
 #[derive(Clone)]
 pub struct LeaderboardService {
-    scores: Arc<Mutex<HashMap<(Uuid, LeaderboardWindow), Vec<Score>>>>,
-    replays: Arc<Mutex<HashMap<Uuid, Vec<u8>>>>,
+    pool: SqlitePool,
+    replay_dir: PathBuf,
     tx: broadcast::Sender<LeaderboardSnapshot>,
 }
 
@@ -24,41 +25,110 @@ pub struct LeaderboardSnapshot {
 }
 
 impl LeaderboardService {
-    pub async fn new(_database_url: &str, _replay_dir: PathBuf) -> Result<Self, sqlx::Error> {
-        Ok(Self::default())
+    pub async fn new(database_url: &str, replay_dir: PathBuf) -> Result<Self, sqlx::Error> {
+        let pool = SqlitePoolOptions::new().max_connections(1).connect(database_url).await?;
+        sqlx::query(
+            "CREATE TABLE IF NOT EXISTS leaderboards (id TEXT PRIMARY KEY)"
+        )
+        .execute(&pool)
+        .await?;
+        sqlx::query(
+            "CREATE TABLE IF NOT EXISTS runs (
+                id TEXT PRIMARY KEY,
+                leaderboard_id TEXT NOT NULL,
+                player_id TEXT NOT NULL,
+                replay_path TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                flagged INTEGER NOT NULL DEFAULT 0
+            )"
+        )
+        .execute(&pool)
+        .await?;
+        sqlx::query(
+            "CREATE TABLE IF NOT EXISTS scores (
+                id TEXT PRIMARY KEY,
+                run_id TEXT NOT NULL,
+                player_id TEXT NOT NULL,
+                points INTEGER NOT NULL,
+                created_at TEXT NOT NULL,
+                verified INTEGER NOT NULL DEFAULT 0
+            )"
+        )
+        .execute(&pool)
+        .await?;
+        tokio::fs::create_dir_all(&replay_dir).await.map_err(|e| sqlx::Error::Io(e))?;
+        let (tx, _) = broadcast::channel(16);
+        Ok(Self { pool, replay_dir, tx })
     }
 
     pub async fn submit_score(
         &self,
         leaderboard: Uuid,
-        window: LeaderboardWindow,
-        mut score: Score,
-        run: Run,
+        score: Score,
+        mut run: Run,
         replay: Vec<u8>,
-    ) -> std::io::Result<()> {
-        self.replays.lock().unwrap().insert(run.id, replay);
-        score.window = window;
-        self.scores
-            .lock()
-            .unwrap()
-            .entry((leaderboard, window))
-            .or_default()
-            .push(score);
-        let scores = self.get_scores(leaderboard, window).await;
-        let _ = self.tx.send(LeaderboardSnapshot {
-            leaderboard,
-            window,
-            scores,
-        });
+    ) -> io::Result<()> {
+        if !replay.is_empty() {
+            let filename = format!("{}", run.id);
+            let path = self.replay_dir.join(&filename);
+            tokio::fs::write(&path, &replay).await?;
+            run.replay_path = filename;
+        }
+
+        sqlx::query("INSERT OR IGNORE INTO leaderboards (id) VALUES (?)")
+            .bind(leaderboard)
+            .execute(&self.pool)
+            .await
+            .map_err(to_io_error)?;
+
+        sqlx::query(
+            r#"INSERT OR IGNORE INTO runs (id, leaderboard_id, player_id, replay_path, created_at, flagged)
+               VALUES (?, ?, ?, ?, ?, ?)"#,
+        )
+        .bind(run.id)
+        .bind(leaderboard)
+        .bind(run.player_id)
+        .bind(&run.replay_path)
+        .bind(run.created_at)
+        .bind(run.flagged as i64)
+        .execute(&self.pool)
+        .await
+        .map_err(to_io_error)?;
+
+        sqlx::query(
+            r#"INSERT OR IGNORE INTO scores (id, run_id, player_id, points, created_at, verified)
+               VALUES (?, ?, ?, ?, ?, ?)"#,
+        )
+        .bind(score.id)
+        .bind(run.id)
+        .bind(score.player_id)
+        .bind(score.points)
+        .bind(score.created_at)
+        .bind(score.verified as i64)
+        .execute(&self.pool)
+        .await
+        .map_err(to_io_error)?;
+
+        for window in [
+            LeaderboardWindow::Daily,
+            LeaderboardWindow::Weekly,
+            LeaderboardWindow::AllTime,
+        ] {
+            let scores = scores_for_window(&self.pool, leaderboard, window)
+                .await
+                .map_err(to_io_error)?;
+            let _ = self.tx.send(LeaderboardSnapshot {
+                leaderboard,
+                window,
+                scores,
+            });
+        }
         Ok(())
     }
 
     pub async fn get_scores(&self, leaderboard: Uuid, window: LeaderboardWindow) -> Vec<Score> {
-        self.scores
-            .lock()
-            .unwrap()
-            .get(&(leaderboard, window))
-            .cloned()
+        scores_for_window(&self.pool, leaderboard, window)
+            .await
             .unwrap_or_default()
     }
 
@@ -67,29 +137,57 @@ impl LeaderboardService {
     }
 
     pub async fn get_replay(&self, run_id: Uuid) -> Option<Vec<u8>> {
-        self.replays.lock().unwrap().get(&run_id).cloned()
+        if let Ok(Some(row)) =
+            sqlx::query("SELECT replay_path FROM runs WHERE id = ?")
+                .bind(run_id)
+                .fetch_optional(&self.pool)
+                .await
+        {
+            let rel: String = row.get("replay_path");
+            let path = self.replay_dir.join(rel);
+            tokio::fs::read(path).await.ok()
+        } else {
+            None
+        }
     }
 
     pub async fn verify_run(&self, run_id: Uuid) -> bool {
-        let mut scores = self.scores.lock().unwrap();
-        let mut found = false;
-        for list in scores.values_mut() {
-            if let Some(score) = list.iter_mut().find(|s| s.run_id == run_id) {
-                score.verified = true;
-                found = true;
+        let result = sqlx::query("UPDATE scores SET verified = 1 WHERE run_id = ?")
+            .bind(run_id)
+            .execute(&self.pool)
+            .await;
+        if let Ok(res) = result {
+            if res.rows_affected() > 0 {
+                if let Ok(row) =
+                    sqlx::query("SELECT leaderboard_id FROM runs WHERE id = ?")
+                        .bind(run_id)
+                        .fetch_one(&self.pool)
+                        .await
+                {
+                    let leaderboard: Uuid = row.get("leaderboard_id");
+                    for window in [
+                        LeaderboardWindow::Daily,
+                        LeaderboardWindow::Weekly,
+                        LeaderboardWindow::AllTime,
+                    ] {
+                        if let Ok(scores) =
+                            scores_for_window(&self.pool, leaderboard, window).await
+                        {
+                            let _ = self.tx.send(LeaderboardSnapshot {
+                                leaderboard,
+                                window,
+                                scores,
+                            });
+                        }
+                    }
+                }
+                return true;
             }
         }
-        found
+        false
     }
 }
 
-impl Default for LeaderboardService {
-    fn default() -> Self {
-        let (tx, _) = broadcast::channel(16);
-        Self {
-            scores: Arc::new(Mutex::new(HashMap::new())),
-            replays: Arc::new(Mutex::new(HashMap::new())),
-            tx,
-        }
-    }
+fn to_io_error(e: sqlx::Error) -> io::Error {
+    io::Error::new(io::ErrorKind::Other, e)
 }
