@@ -47,12 +47,10 @@ struct Cli {
 
 impl Cli {
     fn smtp_config(&self) -> Result<SmtpConfig> {
-        let starttls = self.smtp_starttls.parse().map_err(|_| {
-            anyhow!(
-                "invalid value for --smtp-starttls: {}",
-                self.smtp_starttls
-            )
-        })?;
+        let starttls = self
+            .smtp_starttls
+            .parse()
+            .map_err(|_| anyhow!("invalid value for --smtp-starttls: {}", self.smtp_starttls))?;
         Ok(SmtpConfig {
             host: self.smtp_host.clone(),
             port: self.smtp_port,
@@ -68,8 +66,6 @@ impl Cli {
 
 #[derive(Clone)]
 struct AppState {
-    #[allow(dead_code)]
-    db: PgPool,
     email: Arc<EmailService>,
     rooms: room::RoomManager,
 }
@@ -250,8 +246,6 @@ mod tests {
     use super::*;
     use axum::extract::{Json, Query, State};
     use futures_util::{SinkExt, StreamExt};
-    use serial_test::serial;
-    use sqlx::postgres::PgPoolOptions;
     use std::env;
     use tokio_tungstenite::tungstenite::Message;
     use webrtc::api::APIBuilder;
@@ -259,7 +253,11 @@ mod tests {
     use webrtc::peer_connection::configuration::RTCConfiguration;
 
     #[tokio::test]
-    async fn setup_initializes_state() {
+    async fn setup_succeeds_without_env_vars() {
+        unsafe {
+            env::remove_var("DATABASE_URL");
+        }
+
         assert!(setup(SmtpConfig::default()).await.is_ok());
     }
 
@@ -289,8 +287,7 @@ mod tests {
 
     #[test]
     fn invalid_starttls_cli_value_errors() {
-        let cli =
-            Cli::try_parse_from(["prog", "--smtp-starttls", "bogus"]).unwrap();
+        let cli = Cli::try_parse_from(["prog", "--smtp-starttls", "bogus"]).unwrap();
         assert!(cli.smtp_config().is_err());
     }
 
