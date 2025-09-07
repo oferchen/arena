@@ -2,7 +2,7 @@ use anyhow::Error as AnyError;
 use bevy::ecs::schedule::common_conditions::resource_changed;
 #[cfg(target_arch = "wasm32")]
 use bevy::tasks::{AsyncComputeTaskPool, Task};
-use bevy::{input::mouse::MouseMotion, prelude::*, window::CursorGrabMode};
+use bevy::{prelude::*, window::CursorGrabMode};
 use bevy_rapier3d::prelude::*;
 #[cfg(target_arch = "wasm32")]
 use futures_lite::future;
@@ -10,16 +10,16 @@ use futures_lite::future;
 use gloo_timers::future::TimeoutFuture;
 #[cfg(not(target_arch = "wasm32"))]
 use notify::{RecommendedWatcher, RecursiveMode, Watcher};
-use platform_api::{AppState, CapabilityFlags, GameModule, ModuleContext, ModuleMetadata};
-use serde::Deserialize;
-#[cfg(not(target_arch = "wasm32"))]
-use std::fs;
-#[cfg(not(target_arch = "wasm32"))]
-use std::path::Path;
+use platform_api::{
+    discover_local_modules, AppState, CapabilityFlags, GameModule, ModuleContext, ModuleManifest,
+    ModuleMetadata,
+};
 #[cfg(not(target_arch = "wasm32"))]
 use std::sync::mpsc;
 #[cfg(not(target_arch = "wasm32"))]
 use std::sync::mpsc::Receiver;
+#[cfg(not(target_arch = "wasm32"))]
+use std::path::Path;
 use thiserror::Error;
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen_futures::spawn_local;
@@ -29,12 +29,14 @@ pub mod core;
 pub mod flight;
 #[cfg(feature = "vehicle")]
 pub mod vehicle;
+pub mod motion;
 
 #[cfg(feature = "flight")]
 use flight::FlightPlugin;
 #[cfg(feature = "vehicle")]
 use vehicle::VehiclePlugin;
 use core::CorePlugin;
+use motion::{Controller, MotionPlugin, Player, PlayerCamera};
 
 /// Numeric hotkeys usable in the lobby to select modules.
 const LOBBY_KEYS: [KeyCode; 9] = [
@@ -76,6 +78,7 @@ pub struct EnginePlugin;
 impl Plugin for EnginePlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins(CorePlugin)
+            .add_plugins(MotionPlugin)
             .init_resource::<ModuleRegistry>()
             .init_resource::<FrameInterpolation>()
             .add_state::<AppState>()
@@ -85,7 +88,7 @@ impl Plugin for EnginePlugin {
             .add_systems(Update, lobby_keyboard.run_if(in_state(AppState::Lobby)))
             .add_systems(
                 FixedUpdate,
-                (player_move, player_look, pad_trigger).run_if(in_state(AppState::Lobby)),
+                pad_trigger.run_if(in_state(AppState::Lobby)),
             )
             .add_systems(Update, exit_to_lobby)
             .add_systems(Update, update_frame_interpolation);
@@ -112,17 +115,6 @@ impl Plugin for EnginePlugin {
 #[derive(Component)]
 struct LobbyEntity;
 
-#[derive(Component)]
-struct Player;
-
-#[derive(Component)]
-struct PlayerCamera;
-
-#[derive(Component)]
-struct Controller {
-    yaw: f32,
-    pitch: f32,
-}
 
 #[derive(Component)]
 pub struct LobbyPad {
@@ -335,54 +327,6 @@ fn exit_to_lobby(
     }
 }
 
-fn player_move(
-    time: Res<Time>,
-    keys: Res<Input<KeyCode>>,
-    mut query: Query<(&Transform, &mut KinematicCharacterController), With<Player>>,
-) {
-    if let Ok((transform, mut controller)) = query.get_single_mut() {
-        let mut direction = Vec3::ZERO;
-        if keys.pressed(KeyCode::W) {
-            direction += transform.forward();
-        }
-        if keys.pressed(KeyCode::S) {
-            direction -= transform.forward();
-        }
-        if keys.pressed(KeyCode::A) {
-            direction -= transform.right();
-        }
-        if keys.pressed(KeyCode::D) {
-            direction += transform.right();
-        }
-        controller.translation = Some(direction.normalize_or_zero() * 5.0 * time.delta_seconds());
-    }
-}
-
-fn player_look(
-    mut mouse_motion: EventReader<MouseMotion>,
-    mut query: Query<(&mut Controller, &mut Transform), With<Player>>,
-    mut cam_query: Query<&mut Transform, With<PlayerCamera>>,
-) {
-    let Ok((mut controller, mut transform)) = query.get_single_mut() else {
-        return;
-    };
-    let Ok(mut cam_transform) = cam_query.get_single_mut() else {
-        return;
-    };
-    let mut delta = Vec2::ZERO;
-    for ev in mouse_motion.read() {
-        delta += ev.delta;
-    }
-    if delta == Vec2::ZERO {
-        return;
-    }
-    controller.yaw -= delta.x * 0.002;
-    controller.pitch -= delta.y * 0.002;
-    controller.pitch = controller.pitch.clamp(-1.54, 1.54);
-    transform.rotation = Quat::from_rotation_y(controller.yaw);
-    cam_transform.rotation = Quat::from_rotation_x(controller.pitch);
-}
-
 fn pad_trigger(
     mut collisions: EventReader<CollisionEvent>,
     player: Query<Entity, With<Player>>,
@@ -459,76 +403,6 @@ fn exit_module<M: GameModule>(world: &mut World) {
 }
 
 #[derive(Deserialize)]
-struct ModuleManifest {
-    id: String,
-    name: String,
-    version: String,
-    author: String,
-    state: String,
-    #[serde(default)]
-    capabilities: Vec<String>,
-    #[serde(default)]
-    max_players: u32,
-}
-
-#[cfg(not(target_arch = "wasm32"))]
-fn read_modules_from_disk() -> Vec<ModuleMetadata> {
-    let modules_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../assets/modules");
-    let Ok(entries) = fs::read_dir(modules_dir) else {
-        return Vec::new();
-    };
-    let mut mods = Vec::new();
-    for entry in entries.flatten() {
-        let manifest_path = entry.path().join("module.toml");
-        if !manifest_path.exists() {
-            continue;
-        }
-        let Ok(contents) = fs::read_to_string(&manifest_path) else {
-            continue;
-        };
-        let manifest = match toml::from_str::<ModuleManifest>(&contents) {
-            Ok(m) => m,
-            Err(_) => {
-                continue;
-            }
-        };
-        let state = match manifest.state.as_str() {
-            "Lobby" => AppState::Lobby,
-            "DuckHunt" => AppState::DuckHunt,
-            other => {
-                log::error!(
-                    "unknown module state '{}' for module '{}', skipping",
-                    other,
-                    manifest.id
-                );
-                continue;
-            }
-        };
-        let mut caps = CapabilityFlags::default();
-        for cap in manifest.capabilities {
-            match cap.as_str() {
-                "LOBBY_PAD" => caps |= CapabilityFlags::LOBBY_PAD,
-                "NeedsPhysics" => caps |= CapabilityFlags::NEEDS_PHYSICS,
-                "UsesHitscan" => caps |= CapabilityFlags::USES_HITSCAN,
-                "NeedsNav" => caps |= CapabilityFlags::NEEDS_NAV,
-                "UsesVehicles" => caps |= CapabilityFlags::USES_VEHICLES,
-                "UsesFlight" => caps |= CapabilityFlags::USES_FLIGHT,
-                _ => {}
-            }
-        }
-        mods.push(ModuleMetadata {
-            id: manifest.id,
-            name: manifest.name,
-            version: manifest.version,
-            author: manifest.author,
-            state,
-            capabilities: caps,
-            max_players: manifest.max_players,
-            icon: Handle::default(),
-        });
-    }
-    mods
-}
 
 #[cfg(target_arch = "wasm32")]
 #[derive(Resource)]
@@ -601,7 +475,7 @@ pub fn discover_modules(
     {
         let _ = asset_server;
         let _ = commands;
-        registry.modules = read_modules_from_disk();
+        registry.modules = discover_local_modules();
     }
 }
 
@@ -636,7 +510,7 @@ fn process_module_events(watcher: Res<ModuleWatcher>, mut registry: ResMut<Modul
         }
     }
     if changed {
-        registry.modules = read_modules_from_disk();
+        registry.modules = discover_local_modules();
     }
 }
 

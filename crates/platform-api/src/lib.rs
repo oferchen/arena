@@ -2,6 +2,9 @@ use anyhow::Result;
 use bevy::ecs::world::Mut;
 use bevy::prelude::*;
 use bitflags::bitflags;
+use serde::Deserialize;
+#[cfg(not(target_arch = "wasm32"))]
+use std::{fs, path::Path};
 
 #[derive(States, Default, Clone, Eq, PartialEq, Hash, Debug)]
 pub enum AppState {
@@ -112,4 +115,66 @@ pub trait GameModule: Plugin + Sized {
     fn exit(_context: &mut ModuleContext) -> Result<()> {
         Ok(())
     }
+}
+
+#[derive(Deserialize, Clone)]
+pub struct ModuleManifest {
+    pub id: String,
+    pub name: String,
+    pub version: String,
+    pub author: String,
+    pub state: String,
+    #[serde(default)]
+    pub capabilities: Vec<String>,
+    #[serde(default)]
+    pub max_players: u32,
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub fn discover_local_modules() -> Vec<ModuleMetadata> {
+    let modules_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../assets/modules");
+    let Ok(entries) = fs::read_dir(modules_dir) else {
+        return Vec::new();
+    };
+    let mut mods = Vec::new();
+    for entry in entries.flatten() {
+        let manifest_path = entry.path().join("module.toml");
+        if !manifest_path.exists() {
+            continue;
+        }
+        let Ok(contents) = fs::read_to_string(&manifest_path) else {
+            continue;
+        };
+        let Ok(manifest) = toml::from_str::<ModuleManifest>(&contents) else {
+            continue;
+        };
+        let state = match manifest.state.as_str() {
+            "Lobby" => AppState::Lobby,
+            "DuckHunt" => AppState::DuckHunt,
+            _ => continue,
+        };
+        let mut caps = CapabilityFlags::default();
+        for cap in manifest.capabilities {
+            match cap.as_str() {
+                "LOBBY_PAD" => caps |= CapabilityFlags::LOBBY_PAD,
+                "NeedsPhysics" => caps |= CapabilityFlags::NEEDS_PHYSICS,
+                "UsesHitscan" => caps |= CapabilityFlags::USES_HITSCAN,
+                "NeedsNav" => caps |= CapabilityFlags::NEEDS_NAV,
+                "UsesVehicles" => caps |= CapabilityFlags::USES_VEHICLES,
+                "UsesFlight" => caps |= CapabilityFlags::USES_FLIGHT,
+                _ => {}
+            }
+        }
+        mods.push(ModuleMetadata {
+            id: manifest.id,
+            name: manifest.name,
+            version: manifest.version,
+            author: manifest.author,
+            state,
+            capabilities: caps,
+            max_players: manifest.max_players,
+            icon: Handle::default(),
+        });
+    }
+    mods
 }

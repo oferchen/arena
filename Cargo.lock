@@ -2240,10 +2240,8 @@ dependencies = [
  "logtest",
  "notify",
  "platform-api",
- "serde",
  "serde_json",
  "thiserror 1.0.69",
- "toml",
  "wasm-bindgen-futures",
  "wasm-bindgen-test",
  "web-sys",
@@ -4485,6 +4483,8 @@ dependencies = [
  "anyhow",
  "bevy",
  "bitflags 2.9.4",
+ "serde",
+ "toml",
 ]
 
 [[package]]
