@@ -199,37 +199,11 @@ impl RoomManager {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use log::{LevelFilter, Log, Metadata, Record};
+    use crate::test_logger::{INIT, LOGGER};
+    use log::LevelFilter;
     use net::message::apply_delta;
     use std::sync::atomic::Ordering;
-    use std::sync::{Mutex, Once};
     use tokio::sync::mpsc;
-
-    struct TestLogger {
-        messages: Mutex<Vec<String>>,
-    }
-
-    impl Log for TestLogger {
-        fn enabled(&self, metadata: &Metadata) -> bool {
-            metadata.level() <= log::Level::Warn
-        }
-
-        fn log(&self, record: &Record) {
-            if self.enabled(record.metadata()) {
-                self.messages
-                    .lock()
-                    .unwrap()
-                    .push(record.args().to_string());
-            }
-        }
-
-        fn flush(&self) {}
-    }
-
-    static LOGGER: TestLogger = TestLogger {
-        messages: Mutex::new(Vec::new()),
-    };
-    static INIT: Once = Once::new();
 
     #[tokio::test]
     async fn updates_snapshot_after_delta() {
