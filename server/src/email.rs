@@ -1,3 +1,9 @@
+//! Email utilities and rate limiting.
+//!
+//! A background task periodically purges expired entries from the rate-limit
+//! map. The task runs on the Tokio runtime and its [`JoinHandle`] is stored so
+//! it can be aborted during shutdown if necessary.
+
 use lettre::address::AddressError;
 use lettre::transport::smtp::{
     authentication::Credentials,
@@ -11,6 +17,7 @@ use std::sync::Mutex;
 use std::time::{Duration, Instant};
 use tokio::sync::mpsc::{self, UnboundedSender};
 use thiserror::Error;
+use tokio::task::JoinHandle;
 
 // -- Configuration ---------------------------------------------------------
 
@@ -71,10 +78,10 @@ impl Default for SmtpConfig {
 
 static RATE_LIMITS: Lazy<Mutex<HashMap<String, Instant>>> =
     Lazy::new(|| Mutex::new(HashMap::new()));
-static CLEANUP: Lazy<()> = Lazy::new(|| {
-    std::thread::spawn(|| {
+static CLEANUP: Lazy<JoinHandle<()>> = Lazy::new(|| {
+    tokio::spawn(async move {
         loop {
-            std::thread::sleep(CLEANUP_INTERVAL);
+            tokio::time::sleep(CLEANUP_INTERVAL).await;
             let now = Instant::now();
             let mut map = match RATE_LIMITS.lock() {
                 Ok(m) => m,
@@ -82,10 +89,18 @@ static CLEANUP: Lazy<()> = Lazy::new(|| {
             };
             map.retain(|_, &mut instant| now.duration_since(instant) < RATE_LIMIT);
         }
-    });
+    })
 });
 const RATE_LIMIT: Duration = Duration::from_secs(60);
 const CLEANUP_INTERVAL: Duration = Duration::from_secs(60);
+
+/// Access the cleanup task's [`JoinHandle`].
+///
+/// The task is started on first use and can be aborted during shutdown
+/// if necessary.
+pub fn cleanup_handle() -> &'static JoinHandle<()> {
+    Lazy::force(&CLEANUP)
+}
 
 // retry behaviour
 const MAX_RETRIES: u32 = 5;
@@ -144,7 +159,7 @@ impl EmailService {
 
     fn new_with_transport(from: String, transport: AsyncSmtpTransport<Tokio1Executor>) -> Self {
         // Start periodic cleanup once
-        Lazy::force(&CLEANUP);
+        cleanup_handle();
         let (tx, mut rx) = mpsc::unbounded_channel::<Message>();
         tokio::spawn(async move {
             while let Some(msg) = rx.recv().await {
@@ -152,7 +167,13 @@ impl EmailService {
                 send_with_retry(|| {
                     let mailer = mailer.clone();
                     let msg = msg.clone();
-                    async move { mailer.send(msg).await.map(|_| ()).map_err(|e| e.to_string()) }
+                    async move {
+                        mailer
+                            .send(msg)
+                            .await
+                            .map(|_| ())
+                            .map_err(|e| e.to_string())
+                    }
                 })
                 .await;
             }
@@ -261,6 +282,7 @@ mod tests {
     use super::*;
     use std::error::Error as _;
     use std::sync::atomic::{AtomicUsize, Ordering};
+    use serial_test::serial;
 
     fn clear_limits() {
         let mut map = match RATE_LIMITS.lock() {
@@ -274,6 +296,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn rate_limiting() {
         clear_limits();
         assert!(EmailService::allowed("a@example.com").unwrap());
@@ -281,6 +304,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn invalid_address() {
         clear_limits();
         let mut cfg = SmtpConfig::default();
@@ -311,13 +335,12 @@ mod tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn retries_on_failure() {
         let attempts = AtomicUsize::new(0);
         send_with_retry(|| {
             let n = attempts.fetch_add(1, Ordering::SeqCst);
-            async move {
-                if n < 2 { Err("fail") } else { Ok(()) }
-            }
+            async move { if n < 2 { Err("fail") } else { Ok(()) } }
         })
         .await;
         assert_eq!(attempts.load(Ordering::SeqCst), 3);
