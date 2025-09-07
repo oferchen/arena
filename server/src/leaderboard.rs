@@ -12,8 +12,9 @@ use chrono::Utc;
 use serde::Deserialize;
 use uuid::Uuid;
 
+use analytics::Event;
 use ::leaderboard::{
-    LeaderboardService,
+    LeaderboardService, LeaderboardWindow,
     models::{Run, Score},
 };
 
@@ -28,19 +29,11 @@ pub fn routes() -> Router<Arc<AppState>> {
         .route("/:id/run/:run_id/verify", post(post_verify))
 }
 
-async fn get_scores(
-    Path(id): Path<Uuid>,
-    State(state): State<Arc<AppState>>,
-    Query(params): Query<std::collections::HashMap<String, String>>,
-) -> Json<Vec<Score>> {
-    let scores = if let Some(h) = params.get("window") {
-        match h.parse::<i64>() {
-            Ok(hours) => state.leaderboard.get_scores_window(id, hours).await,
-            Err(_) => state.leaderboard.get_scores(id).await,
-        }
-    } else {
-        state.leaderboard.get_scores(id).await
-    };
+async fn get_scores(Path(id): Path<Uuid>, State(state): State<Arc<AppState>>) -> Json<Vec<Score>> {
+    let scores = state
+        .leaderboard
+        .get_scores(id, LeaderboardWindow::AllTime)
+        .await;
     Json(scores)
 }
 
@@ -62,6 +55,14 @@ async fn post_run(
         Ok(bytes) => bytes,
         Err(_) => return StatusCode::BAD_REQUEST,
     };
+    let verified = verify_score(&replay_bytes);
+    if verified != Some(payload.points) {
+        state
+            .analytics
+            .dispatch(Event::RunVerificationFailed);
+        return StatusCode::BAD_REQUEST;
+    }
+
     let run = Run {
         id: run_id,
         leaderboard_id: id,
@@ -76,14 +77,26 @@ async fn post_run(
         points: payload.points,
         verified: false,
     };
-    match state
-        .leaderboard
-        .submit_score(id, score, run, replay_bytes)
-        .await
-    {
-        Ok(_) => StatusCode::CREATED,
-        Err(_) => StatusCode::INTERNAL_SERVER_ERROR,
+    for window in [
+        LeaderboardWindow::Daily,
+        LeaderboardWindow::Weekly,
+        LeaderboardWindow::AllTime,
+    ] {
+        let replay = if matches!(window, LeaderboardWindow::AllTime) {
+            replay_bytes.clone()
+        } else {
+            Vec::new()
+        };
+        if state
+            .leaderboard
+            .submit_score(id, window, score.clone(), run.clone(), replay)
+            .await
+            .is_err()
+        {
+            return StatusCode::INTERNAL_SERVER_ERROR;
+        }
     }
+    StatusCode::CREATED
 }
 
 async fn get_replay(
@@ -121,19 +134,34 @@ async fn ws_scores(
 
 async fn handle_ws(mut socket: WebSocket, id: Uuid, service: LeaderboardService) {
     let mut rx = service.subscribe();
-    if let Ok(json) = serde_json::to_string(&service.get_scores(id).await) {
-        let _ = socket.send(Message::Text(json)).await;
+    for window in [
+        LeaderboardWindow::Daily,
+        LeaderboardWindow::Weekly,
+        LeaderboardWindow::AllTime,
+    ] {
+        if let Ok(json) = serde_json::to_string(&service.get_snapshot(id, window).await) {
+            let _ = socket.send(Message::Text(json)).await;
+        }
     }
     while let Ok(snapshot) = rx.recv().await {
         if snapshot.leaderboard != id {
             continue;
         }
-        if let Ok(json) = serde_json::to_string(&snapshot.scores) {
+        if let Ok(json) = serde_json::to_string(&snapshot) {
             if socket.send(Message::Text(json)).await.is_err() {
                 break;
             }
         }
     }
+}
+
+fn verify_score(replay: &[u8]) -> Option<i32> {
+    if replay.len() < 4 {
+        return None;
+    }
+    let mut bytes = [0u8; 4];
+    bytes.copy_from_slice(&replay[..4]);
+    Some(i32::from_le_bytes(bytes))
 }
 
 #[cfg(test)]
@@ -146,6 +174,7 @@ mod tests {
     use analytics::Analytics;
     use axum::Json;
     use axum::extract::{Path, State};
+    use ::leaderboard::LeaderboardWindow;
 
     #[tokio::test]
     async fn post_run_rejects_malformed_base64() {
@@ -172,7 +201,41 @@ mod tests {
         assert!(
             state
                 .leaderboard
-                .get_scores(leaderboard_id)
+                .get_scores(leaderboard_id, LeaderboardWindow::AllTime)
+                .await
+                .is_empty()
+        );
+    }
+
+    #[tokio::test]
+    async fn post_run_rejects_invalid_score() {
+        let cfg = SmtpConfig::default();
+        let email = Arc::new(EmailService::new(cfg.clone()).unwrap());
+        let rooms = room::RoomManager::new();
+        let state = Arc::new(AppState {
+            email,
+            rooms,
+            smtp: cfg,
+            analytics: Analytics::new(None, false),
+            leaderboard: ::leaderboard::LeaderboardService::default(),
+        });
+
+        let leaderboard_id = Uuid::new_v4();
+        let mut bytes = 41i32.to_le_bytes().to_vec();
+        bytes.extend_from_slice(b"rest");
+        let replay = base64::encode(bytes);
+        let payload = SubmitRun {
+            player_id: Uuid::new_v4(),
+            points: 42,
+            replay,
+        };
+
+        let status = post_run(Path(leaderboard_id), State(state.clone()), Json(payload)).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert!(
+            state
+                .leaderboard
+                .get_scores(leaderboard_id, LeaderboardWindow::AllTime)
                 .await
                 .is_empty()
         );
