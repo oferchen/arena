@@ -78,17 +78,96 @@ async fn signal_ws_handler(
 }
 
 async fn handle_signal_socket(state: Arc<AppState>, mut socket: WebSocket) {
-    if let Some(Ok(Message::Text(sdp))) = socket.recv().await {
-        if let Ok(connector) = ServerConnector::new().await {
-            let mut offer = RTCSessionDescription::default();
-            offer.sdp_type = RTCSdpType::Offer;
-            offer.sdp = sdp;
-            if connector.pc.set_remote_description(offer).await.is_ok() {
-                if let Ok(answer) = connector.pc.create_answer(None).await {
-                    let _ = connector.pc.set_local_description(answer.clone()).await;
-                    let _ = socket.send(Message::Text(answer.sdp.clone())).await;
-                    state.rooms.add_peer(connector).await;
+    use axum::extract::ws::CloseFrame;
+    use serde_json::json;
+
+    if let Some(msg) = socket.recv().await {
+        match msg {
+            Ok(Message::Text(sdp)) => {
+                match ServerConnector::new().await {
+                    Ok(connector) => {
+                        let mut offer = RTCSessionDescription::default();
+                        offer.sdp_type = RTCSdpType::Offer;
+                        offer.sdp = sdp;
+                        if let Err(e) = connector.pc.set_remote_description(offer).await {
+                            log::warn!("invalid SDP offer: {e}");
+                            let _ = socket
+                                .send(Message::Text(
+                                    json!({ "error": "invalid SDP offer" }).to_string(),
+                                ))
+                                .await;
+                            let _ = socket
+                                .send(Message::Close(Some(CloseFrame {
+                                    code: 1002,
+                                    reason: "invalid SDP".into(),
+                                })))
+                                .await;
+                            return;
+                        }
+
+                        match connector.pc.create_answer(None).await {
+                            Ok(answer) => {
+                                if connector
+                                    .pc
+                                    .set_local_description(answer.clone())
+                                    .await
+                                    .is_err()
+                                {
+                                    log::warn!("failed to set local description");
+                                    let _ = socket
+                                        .send(Message::Close(Some(CloseFrame {
+                                            code: 1011,
+                                            reason: "pc error".into(),
+                                        })))
+                                        .await;
+                                    return;
+                                }
+
+                                let _ = socket.send(Message::Text(answer.sdp.clone())).await;
+                                state.rooms.add_peer(connector).await;
+                            }
+                            Err(e) => {
+                                log::warn!("failed to create answer: {e}");
+                                let _ = socket
+                                    .send(Message::Close(Some(CloseFrame {
+                                        code: 1011,
+                                        reason: "pc error".into(),
+                                    })))
+                                    .await;
+                                return;
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        log::warn!("failed to create peer connection: {e}");
+                        let _ = socket
+                            .send(Message::Close(Some(CloseFrame {
+                                code: 1011,
+                                reason: "pc error".into(),
+                            })))
+                            .await;
+                        return;
+                    }
                 }
+            }
+            Ok(_) => {
+                log::warn!("expected SDP offer");
+                let _ = socket
+                    .send(Message::Text(
+                        json!({ "error": "invalid SDP offer" }).to_string(),
+                    ))
+                    .await;
+                let _ = socket
+                    .send(Message::Close(Some(CloseFrame {
+                        code: 1003,
+                        reason: "invalid message".into(),
+                    })))
+                    .await;
+                return;
+            }
+            Err(e) => {
+                log::warn!("websocket error: {e}");
+                return;
             }
         }
     }

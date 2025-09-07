@@ -129,6 +129,126 @@ async fn websocket_signaling_completes_handshake() {
 
 #[tokio::test]
 #[serial]
+async fn websocket_signaling_invalid_sdp_logs_and_closes() {
+    INIT.call_once(|| {
+        log::set_logger(&LOGGER).unwrap();
+    });
+    log::set_max_level(LevelFilter::Warn);
+    LOGGER.messages.lock().unwrap().clear();
+
+    let cfg = SmtpConfig::default();
+    let email = Arc::new(EmailService::new(cfg.clone()).unwrap());
+    let rooms = room::RoomManager::new();
+    let leaderboard = ::leaderboard::LeaderboardService::new(
+        "sqlite::memory:",
+        std::path::PathBuf::from("replays"),
+    )
+    .await
+    .unwrap();
+    let state = Arc::new(AppState {
+        email,
+        rooms,
+        smtp: cfg,
+        analytics: Analytics::new(None, false),
+        leaderboard: ::leaderboard::LeaderboardService::default(),
+        catalog: Catalog::new(vec![Sku {
+            id: "basic".into(),
+            price_cents: 1000,
+        }]),
+        stripe: StripeClient::new(),
+        entitlements: EntitlementStore::default(),
+        entitlements_path: PathBuf::new(),
+    });
+
+    let app = Router::new()
+        .route("/signal", get(signal_ws_handler))
+        .with_state(state);
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(async move {
+        axum::serve(listener, app).await.unwrap();
+    });
+
+    let (mut ws, _) =
+        tokio_tungstenite::connect_async(format!("ws://{}/signal", addr))
+            .await
+            .unwrap();
+    ws.send(Message::Text("bogus".into())).await.unwrap();
+
+    let msg = ws.next().await.unwrap().unwrap();
+    let err: serde_json::Value = serde_json::from_str(&msg.into_text().unwrap()).unwrap();
+    assert_eq!(err["error"], "invalid SDP offer");
+
+    let msg = ws.next().await.unwrap().unwrap();
+    assert!(matches!(msg, Message::Close(_)));
+    assert!(ws.next().await.is_none());
+
+    let logs = LOGGER.messages.lock().unwrap();
+    assert!(logs.iter().any(|m| m.contains("invalid SDP offer")));
+}
+
+#[tokio::test]
+#[serial]
+async fn websocket_signaling_unexpected_binary_logs_and_closes() {
+    INIT.call_once(|| {
+        log::set_logger(&LOGGER).unwrap();
+    });
+    log::set_max_level(LevelFilter::Warn);
+    LOGGER.messages.lock().unwrap().clear();
+
+    let cfg = SmtpConfig::default();
+    let email = Arc::new(EmailService::new(cfg.clone()).unwrap());
+    let rooms = room::RoomManager::new();
+    let leaderboard = ::leaderboard::LeaderboardService::new(
+        "sqlite::memory:",
+        std::path::PathBuf::from("replays"),
+    )
+    .await
+    .unwrap();
+    let state = Arc::new(AppState {
+        email,
+        rooms,
+        smtp: cfg,
+        analytics: Analytics::new(None, false),
+        leaderboard: ::leaderboard::LeaderboardService::default(),
+        catalog: Catalog::new(vec![Sku {
+            id: "basic".into(),
+            price_cents: 1000,
+        }]),
+        stripe: StripeClient::new(),
+        entitlements: EntitlementStore::default(),
+        entitlements_path: PathBuf::new(),
+    });
+
+    let app = Router::new()
+        .route("/signal", get(signal_ws_handler))
+        .with_state(state);
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(async move {
+        axum::serve(listener, app).await.unwrap();
+    });
+
+    let (mut ws, _) =
+        tokio_tungstenite::connect_async(format!("ws://{}/signal", addr))
+            .await
+            .unwrap();
+    ws.send(Message::Binary(vec![1, 2, 3])).await.unwrap();
+
+    let msg = ws.next().await.unwrap().unwrap();
+    let err: serde_json::Value = serde_json::from_str(&msg.into_text().unwrap()).unwrap();
+    assert_eq!(err["error"], "invalid SDP offer");
+
+    let msg = ws.next().await.unwrap().unwrap();
+    assert!(matches!(msg, Message::Close(_)));
+    assert!(ws.next().await.is_none());
+
+    let logs = LOGGER.messages.lock().unwrap();
+    assert!(logs.iter().any(|m| m.contains("expected SDP offer")));
+}
+
+#[tokio::test]
+#[serial]
 async fn websocket_logs_unexpected_messages_and_closes() {
     INIT.call_once(|| {
         log::set_logger(&LOGGER).unwrap();
