@@ -10,6 +10,8 @@ use gloo_timers::future::TimeoutFuture;
 #[cfg(not(target_arch = "wasm32"))]
 use notify::{RecommendedWatcher, RecursiveMode, Watcher};
 use platform_api::{AppState, CapabilityFlags, GameModule, ModuleContext, ModuleMetadata};
+use thiserror::Error;
+use anyhow::Error as AnyError;
 use serde::Deserialize;
 #[cfg(not(target_arch = "wasm32"))]
 use std::fs;
@@ -55,6 +57,17 @@ pub struct ModuleRegistry {
 /// Stores the interpolation factor between fixed simulation steps for smooth rendering.
 #[derive(Resource, Default)]
 pub struct FrameInterpolation(pub f32);
+
+#[derive(Debug, Error)]
+enum EngineError {
+    #[error("module enter failed: {0}")]
+    ModuleEnter(AnyError),
+    #[error("module exit failed: {0}")]
+    ModuleExit(AnyError),
+    #[cfg(not(target_arch = "wasm32"))]
+    #[error("watcher error: {0}")]
+    Watcher(#[from] notify::Error),
+}
 
 pub struct EnginePlugin;
 
@@ -431,13 +444,17 @@ pub fn register_module<M: GameModule + Default + 'static>(app: &mut App) {
 /// System wrapper that forwards state entry to the module.
 fn enter_module<M: GameModule>(world: &mut World) {
     let mut ctx = ModuleContext::new(world);
-    M::enter(&mut ctx).expect("module enter failed");
+    if let Err(e) = M::enter(&mut ctx) {
+        log::error!("{}", EngineError::ModuleEnter(e));
+    }
 }
 
 /// System wrapper that forwards state exit to the module.
 fn exit_module<M: GameModule>(world: &mut World) {
     let mut ctx = ModuleContext::new(world);
-    M::exit(&mut ctx).expect("module exit failed");
+    if let Err(e) = M::exit(&mut ctx) {
+        log::error!("{}", EngineError::ModuleExit(e));
+    }
 }
 
 #[derive(Deserialize)]
@@ -611,11 +628,18 @@ pub fn hotload_modules(app: &mut App) {
     {
         use notify::Config;
         let (tx, rx) = mpsc::channel();
-        let mut watcher = RecommendedWatcher::new(tx, Config::default()).expect("watcher");
+        let mut watcher = match RecommendedWatcher::new(tx, Config::default()) {
+            Ok(w) => w,
+            Err(e) => {
+                log::error!("{}", EngineError::Watcher(e));
+                return;
+            }
+        };
         let modules_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../assets/modules");
-        watcher
-            .watch(&modules_dir, RecursiveMode::Recursive)
-            .expect("watch");
+        if let Err(e) = watcher.watch(&modules_dir, RecursiveMode::Recursive) {
+            log::error!("{}", EngineError::Watcher(e));
+            return;
+        }
         app.insert_resource(ModuleWatcher {
             receiver: std::sync::Mutex::new(rx),
             watcher,
