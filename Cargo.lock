@@ -1665,6 +1665,7 @@ version = "0.1.0"
 dependencies = [
  "bevy",
  "duck_hunt",
+ "editor",
  "engine",
  "null_module",
  "physics",
@@ -2147,6 +2148,16 @@ dependencies = [
  "rfc6979",
  "signature",
  "spki",
+]
+
+[[package]]
+name = "editor"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "platform-api",
+ "serde",
+ "toml",
 ]
 
 [[package]]
@@ -5422,6 +5433,7 @@ dependencies = [
  "axum",
  "clap",
  "duck_hunt_server",
+ "editor",
  "email_address",
  "env_logger",
  "futures-util",

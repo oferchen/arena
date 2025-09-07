@@ -5,6 +5,7 @@ members = [
     "client",
     "crates/net",
     "crates/platform-api",
+    "crates/editor",
     "xtask",
     "crates/minigames/duck_hunt",
     "crates/minigames/null_module",
