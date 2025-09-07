@@ -1,10 +1,24 @@
-use std::{collections::HashMap, fs, path::Path};
+use std::{collections::HashMap, fs, path::Path, process::Command};
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use sha2::{Digest, Sha256};
 use walkdir::WalkDir;
 
 fn main() -> Result<()> {
+    Command::new("cargo")
+        .args([
+            "build",
+            "-p",
+            "client",
+            "--target",
+            "wasm32-unknown-unknown",
+            "--release",
+            "--features",
+            "audio",
+        ])
+        .status()
+        .context("failed to build wasm client")?;
+
     let web = Path::new("web");
     let assets_dir = Path::new("assets");
     let static_dir = Path::new("static");

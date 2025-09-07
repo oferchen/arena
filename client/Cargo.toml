@@ -5,7 +5,34 @@ edition = "2024"
 
 
 [dependencies]
-bevy = "0.12"
+bevy = { version = "0.12", default-features = false, features = [
+    "animation",
+    "bevy_asset",
+    "bevy_gilrs",
+    "bevy_scene",
+    "bevy_winit",
+    "bevy_core_pipeline",
+    "bevy_pbr",
+    "bevy_gltf",
+    "bevy_render",
+    "bevy_sprite",
+    "bevy_text",
+    "bevy_ui",
+    "multi-threaded",
+    "png",
+    "hdr",
+    "vorbis",
+    "x11",
+    "bevy_gizmos",
+    "android_shared_stdcxx",
+    "tonemapping_luts",
+    "default_font",
+    "webgl2",
+] }
 engine = { path = "crates/engine" }
 duck_hunt = { path = "crates/minigames/duck_hunt" }
 null_module = { path = "../crates/minigames/null_module" }
+
+[features]
+default = ["audio"]
+audio = ["bevy/bevy_audio"]
