@@ -92,6 +92,7 @@ impl Plugin for EnginePlugin {
             .add_systems(OnExit(AppState::Lobby), cleanup_lobby)
             .add_systems(Update, lobby_keyboard.run_if(in_state(AppState::Lobby)))
             .add_systems(FixedUpdate, pad_trigger.run_if(in_state(AppState::Lobby)))
+            .add_systems(Update, doc_button_system.run_if(in_state(AppState::Lobby)))
             .add_systems(Update, exit_to_lobby)
             .add_systems(Update, update_frame_interpolation);
 
@@ -126,6 +127,11 @@ pub struct LobbyPad {
 
 #[derive(Component)]
 pub struct DocPad {
+    pub url: &'static str,
+}
+
+#[derive(Component)]
+pub struct DocButton {
     pub url: &'static str,
 }
 
@@ -258,6 +264,49 @@ pub fn setup_lobby(
                 transform: Transform::from_xyz(0.0, 0.75, 0.0),
                 ..default()
             });
+        });
+
+    commands
+        .spawn((
+            NodeBundle {
+                style: Style {
+                    position_type: PositionType::Absolute,
+                    top: Val::Px(8.0),
+                    left: Val::Px(8.0),
+                    flex_direction: FlexDirection::Column,
+                    row_gap: Val::Px(4.0),
+                    ..default()
+                },
+                background_color: BackgroundColor(Color::rgba(0.0, 0.0, 0.0, 0.5)),
+                ..default()
+            },
+            LobbyEntity,
+        ))
+        .with_children(|parent| {
+            for &(label, url) in HELP_DOCS.iter() {
+                parent
+                    .spawn((
+                        ButtonBundle {
+                            style: Style {
+                                padding: UiRect::all(Val::Px(4.0)),
+                                ..default()
+                            },
+                            background_color: BackgroundColor(Color::rgb(0.15, 0.15, 0.15)),
+                            ..default()
+                        },
+                        DocButton { url },
+                    ))
+                    .with_children(|button| {
+                        button.spawn(TextBundle::from_section(
+                            label,
+                            TextStyle {
+                                font: font.clone(),
+                                font_size: 16.0,
+                                color: Color::WHITE,
+                            },
+                        ));
+                    });
+            }
         });
 
     if registry.modules.is_empty() {
@@ -441,6 +490,25 @@ fn pad_trigger(
                 {
                     let _ = doc;
                 }
+            }
+        }
+    }
+}
+
+fn doc_button_system(
+    mut interactions: Query<(&Interaction, &DocButton), (Changed<Interaction>, With<Button>)>,
+) {
+    for (interaction, doc) in &mut interactions {
+        if *interaction == Interaction::Pressed {
+            #[cfg(target_arch = "wasm32")]
+            {
+                if let Some(window) = web_sys::window() {
+                    let _ = window.open_with_url(doc.url);
+                }
+            }
+            #[cfg(not(target_arch = "wasm32"))]
+            {
+                let _ = doc;
             }
         }
     }
