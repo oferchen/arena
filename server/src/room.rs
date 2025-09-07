@@ -116,70 +116,56 @@ impl Room {
             frame: self.frame,
             data,
         };
-        let diff_mask = u64::MAX;
-        if let Some(ref base) = self.last_snapshot {
-            if let Ok(delta) = delta_compress(base, &snapshot) {
-                for conn in &self.connectors {
-                    if conn.interest_mask & diff_mask == 0 {
-                        continue;
-                    }
-                    let msg = ServerMessage::Delta(delta.clone());
-                    if let Err(err) = conn.snapshot_tx.try_send(msg) {
-                        match err {
-                            TrySendError::Full(msg) => {
-                                SNAPSHOT_CHANNEL_FULL.inc();
-                                log::warn!("snapshot channel full; falling back to send");
-                                let _ = conn.snapshot_tx.send(msg).await;
-                            }
-                            TrySendError::Closed(_) => {
-                                log::warn!("snapshot channel closed");
+
+        let mut diff_mask = 0u64;
+        let msg = if let Some(ref base) = self.last_snapshot {
+            match delta_compress(base, &snapshot) {
+                Ok(delta) => {
+                    if let Ok(prev_scores) = postcard::from_bytes::<Vec<u32>>(&base.data) {
+                        for (i, (prev, curr)) in prev_scores
+                            .iter()
+                            .zip(&self.scores)
+                            .enumerate()
+                            .take(64)
+                        {
+                            if prev != curr {
+                                diff_mask |= 1 << i;
                             }
                         }
+                    } else {
+                        diff_mask = (1u64 << self.scores.len().min(64)) - 1;
                     }
+                    ServerMessage::Delta(delta)
                 }
-                self.last_snapshot = Some(snapshot);
-            } else {
-                for conn in &self.connectors {
-                    if conn.interest_mask & diff_mask == 0 {
-                        continue;
-                    }
-                    let msg = ServerMessage::Baseline(snapshot.clone());
-                    if let Err(err) = conn.snapshot_tx.try_send(msg) {
-                        match err {
-                            TrySendError::Full(msg) => {
-                                SNAPSHOT_CHANNEL_FULL.inc();
-                                log::warn!("snapshot channel full; falling back to send");
-                                let _ = conn.snapshot_tx.send(msg).await;
-                            }
-                            TrySendError::Closed(_) => {
-                                log::warn!("snapshot channel closed");
-                            }
-                        }
-                    }
+                Err(_) => {
+                    diff_mask = (1u64 << self.scores.len().min(64)) - 1;
+                    ServerMessage::Baseline(snapshot.clone())
                 }
-                self.last_snapshot = Some(snapshot);
             }
         } else {
-            for conn in &self.connectors {
-                if conn.interest_mask & diff_mask == 0 {
-                    continue;
-                }
-                let msg = ServerMessage::Baseline(snapshot.clone());
-                if let Err(err) = conn.snapshot_tx.try_send(msg) {
-                    match err {
-                        TrySendError::Full(msg) => {
-                            SNAPSHOT_CHANNEL_FULL.inc();
-                            log::warn!("snapshot channel full; falling back to send");
-                            let _ = conn.snapshot_tx.send(msg).await;
-                        }
-                        TrySendError::Closed(_) => {
-                            log::warn!("snapshot channel closed");
-                        }
+            diff_mask = (1u64 << self.scores.len().min(64)) - 1;
+            ServerMessage::Baseline(snapshot.clone())
+        };
+
+        for conn in &self.connectors {
+            if conn.interest_mask & diff_mask == 0 {
+                continue;
+            }
+            if let Err(err) = conn.snapshot_tx.try_send(msg.clone()) {
+                match err {
+                    TrySendError::Full(msg) => {
+                        SNAPSHOT_CHANNEL_FULL.inc();
+                        log::warn!("snapshot channel full; falling back to send");
+                        let _ = conn.snapshot_tx.send(msg).await;
+                    }
+                    TrySendError::Closed(_) => {
+                        log::warn!("snapshot channel closed");
                     }
                 }
             }
-            self.last_snapshot = Some(snapshot);
         }
+
+        self.last_snapshot = Some(snapshot);
     }
 }
 
@@ -215,8 +201,10 @@ mod tests {
     use net::message::apply_delta;
     use std::sync::atomic::Ordering;
     use tokio::sync::mpsc;
+    use serial_test::serial;
 
     #[tokio::test]
+    #[serial]
     async fn updates_snapshot_after_delta() {
         let mut room = Room::new();
 
@@ -228,6 +216,7 @@ mod tests {
             snapshot_tx,
             interest_mask: u64::MAX,
         });
+    room.scores.push(0);
 
         // First tick sends a baseline snapshot.
         room.tick().await;
@@ -238,6 +227,7 @@ mod tests {
         assert_eq!(room.last_snapshot.as_ref().unwrap().frame, 1);
 
         // Second tick sends a delta and updates the last snapshot.
+        room.scores[0] = 1;
         room.tick().await;
         match snapshot_rx.try_recv().expect("no delta message") {
             ServerMessage::Delta(d) => assert_eq!(d.frame, 2),
@@ -246,6 +236,7 @@ mod tests {
         assert_eq!(room.last_snapshot.as_ref().unwrap().frame, 2);
 
         // Third tick should base its delta on the second snapshot.
+        room.scores[0] = 2;
         room.tick().await;
         match snapshot_rx.try_recv().expect("no second delta message") {
             ServerMessage::Delta(d) => assert_eq!(d.frame, 3),
@@ -255,6 +246,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn multiplayer_scoring() {
         let mut room = Room::new();
         let (tx1, rx1) = mpsc::channel(1);
@@ -340,6 +332,44 @@ mod tests {
     }
 
     #[tokio::test]
+    #[serial]
+    async fn selective_updates_to_multiple_clients() {
+        let mut room = Room::new();
+
+        let (_tx1, rx1) = mpsc::channel(1);
+        let (snap_tx1, mut snap_rx1) = mpsc::channel(8);
+        room.connectors.push(ConnectorHandle {
+            input_rx: rx1,
+            snapshot_tx: snap_tx1,
+            interest_mask: 1,
+        });
+        let (_tx2, rx2) = mpsc::channel(1);
+        let (snap_tx2, mut snap_rx2) = mpsc::channel(8);
+        room.connectors.push(ConnectorHandle {
+            input_rx: rx2,
+            snapshot_tx: snap_tx2,
+            interest_mask: 1 << 1,
+        });
+        room.scores.push(0);
+        room.scores.push(0);
+
+        room.tick().await; // baseline
+        assert!(matches!(snap_rx1.try_recv().unwrap(), ServerMessage::Baseline(_)));
+        assert!(matches!(snap_rx2.try_recv().unwrap(), ServerMessage::Baseline(_)));
+
+        room.scores[0] = 1;
+        room.tick().await;
+        assert!(matches!(snap_rx1.try_recv().unwrap(), ServerMessage::Delta(_)));
+        assert!(snap_rx2.try_recv().is_err());
+
+        room.scores[1] = 1;
+        room.tick().await;
+        assert!(matches!(snap_rx2.try_recv().unwrap(), ServerMessage::Delta(_)));
+        assert!(snap_rx1.try_recv().is_err());
+    }
+
+    #[tokio::test]
+    #[serial]
     async fn serialization_error_logged_and_skips_snapshot() {
         INIT.call_once(|| {
             log::set_logger(&LOGGER).unwrap();
@@ -372,6 +402,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn logs_warning_when_channel_full() {
         INIT.call_once(|| {
             log::set_logger(&LOGGER).unwrap();
@@ -388,9 +419,12 @@ mod tests {
             snapshot_tx,
             interest_mask: u64::MAX,
         });
+        room.scores.push(0);
 
         // First tick fills the channel with a baseline snapshot.
         room.tick().await;
+
+        room.scores[0] = 1;
 
         // Drain baseline and future delta to allow fallback send to complete.
         let drain = tokio::spawn(async move {
