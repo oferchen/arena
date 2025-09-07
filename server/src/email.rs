@@ -209,30 +209,6 @@ impl EmailService {
         Ok(())
     }
 
-    pub fn send_registration_password(&self, to: &str, password: &str) -> Result<(), EmailError> {
-        let subject = "Registration Password";
-        let body = format!("Your registration password is: {}", password);
-        self.send_mail(to, subject, &body)
-    }
-
-    pub fn send_verification_link(&self, to: &str, link: &str) -> Result<(), EmailError> {
-        let subject = "Verify Your Account";
-        let body = format!("Click the following link to verify your account: {}", link);
-        self.send_mail(to, subject, &body)
-    }
-
-    pub fn send_otp_code(&self, to: &str, code: &str) -> Result<(), EmailError> {
-        let subject = "Your OTP Code";
-        let body = format!("Your one-time passcode is: {}", code);
-        self.send_mail(to, subject, &body)
-    }
-
-    pub fn send_password_reset(&self, to: &str, link: &str) -> Result<(), EmailError> {
-        let subject = "Password Reset";
-        let body = format!("Reset your password using the following link: {}", link);
-        self.send_mail(to, subject, &body)
-    }
-
     pub fn send_test(&self, to: &str) -> Result<(), EmailError> {
         self.send_mail(to, "Test email", "Arena test message")
     }
@@ -296,7 +272,7 @@ mod tests {
         let mut cfg = SmtpConfig::default();
         cfg.from = "noreply@example.com".into();
         let svc = EmailService::new(cfg).unwrap();
-        match svc.send_registration_password("not-an-email", "pw") {
+        match svc.send_test("not-an-email") {
             Err(EmailError::Address(_)) => {}
             _ => panic!("expected address error"),
         }
