@@ -1,0 +1,26 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "type": "dashboard",
+        "name": "Annotations & Alerts",
+        "hide": true
+      }
+    ]
+  },
+  "panels": [
+    {
+      "type": "graph",
+      "title": "Analytics Events",
+      "targets": [
+        {
+          "expr": "sum(rate(analytics_events_total[5m])) by (event)",
+          "legendFormat": "{{event}}"
+        }
+      ]
+    }
+  ],
+  "title": "Arena Analytics",
+  "version": 1
+}

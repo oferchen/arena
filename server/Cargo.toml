@@ -22,7 +22,9 @@ postcard = { version = "1", features = ["alloc"] }
 thiserror = "1"
 email_address = "0.2"
 prometheus = "0.13"
+analytics = { path = "../crates/analytics" }
 editor = { path = "../crates/editor" }
+
 
 [dev-dependencies]
 tokio-tungstenite = "0.21"
