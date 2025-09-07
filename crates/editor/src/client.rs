@@ -131,19 +131,36 @@ async fn load_opfs(id: &str) -> Result<Option<String>, JsValue> {
 
 #[cfg(target_arch = "wasm32")]
 async fn open_db() -> Result<IdbDatabase, JsValue> {
+    use std::{cell::RefCell, rc::Rc};
+
     let window = web_sys::window().ok_or_else(|| JsValue::from_str("no window"))?;
     let factory = window
         .indexed_db()?
         .ok_or_else(|| JsValue::from_str("no indexeddb"))?;
     let open = factory.open_with_u32(DB_NAME, DB_VERSION)?;
-    let on_upgrade = Closure::once_into_js(Box::new(move |_evt: web_sys::IdbVersionChangeEvent| {
-        let db = open.result().unwrap().dyn_into::<IdbDatabase>().unwrap();
-        let _ = db.create_object_store(STORE_NAME);
-    }));
+
+    let error: Rc<RefCell<Option<JsValue>>> = Rc::new(RefCell::new(None));
+    let error_clone = error.clone();
+    let open_clone = open.clone();
+    let on_upgrade = Closure::once_into_js(move |_evt: web_sys::IdbVersionChangeEvent| {
+        let res = (|| -> Result<(), JsValue> {
+            let db_js = open_clone.result()?;
+            let db: IdbDatabase = db_js.dyn_into()?;
+            db.create_object_store(STORE_NAME)?;
+            Ok(())
+        })();
+        if let Err(e) = res {
+            *error_clone.borrow_mut() = Some(e);
+        }
+    });
     open.set_onupgradeneeded(Some(on_upgrade.as_ref().unchecked_ref()));
     on_upgrade.forget();
     let db_js = JsFuture::from(open).await?;
-    db_js.dyn_into()
+    if let Some(err) = error.borrow_mut().take() {
+        Err(err)
+    } else {
+        db_js.dyn_into()
+    }
 }
 
 #[cfg(target_arch = "wasm32")]
