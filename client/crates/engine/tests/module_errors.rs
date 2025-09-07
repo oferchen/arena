@@ -1,5 +1,5 @@
 use bevy::prelude::*;
-use engine::{register_module, ModuleRegistry};
+use engine::{ModuleRegistry, register_module};
 use log::Level;
 use logtest::Logger;
 use platform_api::{AppState, CapabilityFlags, GameModule, ModuleContext, ModuleMetadata};

@@ -28,7 +28,9 @@ pub struct EditorClient {
 
 impl EditorClient {
     pub fn new() -> Self {
-        Self { mode: EditorMode::FirstPerson }
+        Self {
+            mode: EditorMode::FirstPerson,
+        }
     }
 
     pub fn set_mode(&mut self, mode: EditorMode) {

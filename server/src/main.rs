@@ -3,6 +3,7 @@ use std::{net::SocketAddr, sync::Arc};
 use anyhow::{Result, anyhow};
 
 use crate::email::{EmailService, SmtpConfig, StartTls};
+use analytics::{Analytics, Event};
 use axum::{
     Router,
     extract::{
@@ -23,8 +24,8 @@ use analytics::{Analytics, Event};
 use payments::{self, EntitlementList, EntitlementStore, Sku};
 
 mod email;
-mod room;
 mod leaderboard;
+mod room;
 #[cfg(test)]
 mod test_logger;
 #[cfg(test)]
@@ -57,10 +58,7 @@ fn auth_routes() -> Router<Arc<AppState>> {
     Router::new().route("/*path", get(|| async { StatusCode::OK }))
 }
 
-async fn ws_handler(
-    State(state): State<Arc<AppState>>,
-    ws: WebSocketUpgrade,
-) -> impl IntoResponse {
+async fn ws_handler(State(state): State<Arc<AppState>>, ws: WebSocketUpgrade) -> impl IntoResponse {
     state.analytics.dispatch(Event::WsConnected);
     ws.on_upgrade(|socket| async move {
         handle_socket(socket).await;

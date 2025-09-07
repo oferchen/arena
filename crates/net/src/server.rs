@@ -2,13 +2,16 @@ use std::sync::Arc;
 
 use anyhow::Result;
 use bytes::Bytes;
-use tokio::sync::{mpsc::{self, Receiver, Sender}, Mutex};
-use webrtc::api::media_engine::MediaEngine;
+use tokio::sync::{
+    Mutex,
+    mpsc::{self, Receiver, Sender},
+};
 use webrtc::api::APIBuilder;
-use webrtc::data_channel::data_channel_message::DataChannelMessage;
+use webrtc::api::media_engine::MediaEngine;
 use webrtc::data_channel::RTCDataChannel;
-use webrtc::peer_connection::configuration::RTCConfiguration;
+use webrtc::data_channel::data_channel_message::DataChannelMessage;
 use webrtc::peer_connection::RTCPeerConnection;
+use webrtc::peer_connection::configuration::RTCConfiguration;
 
 use crate::message::{InputFrame, ServerMessage};
 
@@ -66,7 +69,11 @@ impl ServerConnector {
             })
         }));
 
-        Ok(Self { pc, input_rx, snapshot_tx })
+        Ok(Self {
+            pc,
+            input_rx,
+            snapshot_tx,
+        })
     }
 
     /// Close the underlying connection.
