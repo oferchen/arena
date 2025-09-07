@@ -33,3 +33,23 @@ track_event("player_jump", &["height", "2.3"]);
 ```
 
 Attach `AnalyticsPlugin` to the server to automatically forward events.
+
+## Events
+
+### Gameplay
+
+- `player_joined` - emitted when a player connects
+- `player_jumped` - emitted when a player jumps
+- `player_died` - emitted when a player dies
+
+### Economy
+
+- `item_purchased` - player purchases an item
+- `currency_earned` - player gains currency
+- `currency_spent` - player spends currency
+
+### Performance
+
+- `frame_dropped` - a frame took too long to render
+- `high_latency` - network latency exceeded threshold
+- `tick_overrun` - server tick exceeded budget

@@ -12,4 +12,3 @@ impl Plugin for CorePlugin {
             .add_schedule(Schedule::new(Network));
     }
 }
-
