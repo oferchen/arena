@@ -1,4 +1,7 @@
-use std::sync::Arc;
+use std::sync::{
+    Arc,
+    atomic::{AtomicUsize, Ordering},
+};
 
 use anyhow::Result;
 use bytes::Bytes;
@@ -14,6 +17,8 @@ use webrtc::peer_connection::RTCPeerConnection;
 use webrtc::peer_connection::configuration::RTCConfiguration;
 
 use crate::message::{InputFrame, ServerMessage};
+
+static DECODE_FAILURES: AtomicUsize = AtomicUsize::new(0);
 
 /// Handles the server side of the WebRTC connection.
 pub struct ServerConnector {
@@ -44,8 +49,16 @@ impl ServerConnector {
                     let input_tx = input_tx.clone();
                     Box::pin(async move {
                         if !msg.is_string {
-                            if let Ok(frame) = postcard::from_bytes::<InputFrame>(&msg.data) {
-                                let _ = input_tx.send(frame).await;
+                            match postcard::from_bytes::<InputFrame>(&msg.data) {
+                                Ok(frame) => {
+                                    let _ = input_tx.send(frame).await;
+                                }
+                                Err(e) => {
+                                    let count = DECODE_FAILURES.fetch_add(1, Ordering::Relaxed) + 1;
+                                    if count <= 5 || count % 100 == 0 {
+                                        bevy::log::warn!("failed to decode input frame: {e} ({count} total failures)");
+                                    }
+                                }
                             }
                         }
                     })
