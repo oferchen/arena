@@ -14,6 +14,7 @@ use webrtc::peer_connection::configuration::RTCConfiguration;
 
 use crate::test_logger::{INIT, LOGGER};
 use ::payments::{Catalog, EntitlementStore, Sku, StripeClient};
+use std::sync::Arc;
 use log::LevelFilter;
 use std::path::PathBuf;
 
@@ -88,7 +89,7 @@ async fn websocket_signaling_completes_handshake() {
             id: "basic".into(),
             price_cents: 1000,
         }]),
-        stripe: StripeClient::new(),
+        store: Arc::new(StripeClient::new(String::new())),
         entitlements: EntitlementStore::default(),
         entitlements_path: PathBuf::new(),
     });
@@ -155,7 +156,7 @@ async fn websocket_signaling_invalid_sdp_logs_and_closes() {
             id: "basic".into(),
             price_cents: 1000,
         }]),
-        stripe: StripeClient::new(),
+        store: Arc::new(StripeClient::new(String::new())),
         entitlements: EntitlementStore::default(),
         entitlements_path: PathBuf::new(),
     });
@@ -215,7 +216,7 @@ async fn websocket_signaling_unexpected_binary_logs_and_closes() {
             id: "basic".into(),
             price_cents: 1000,
         }]),
-        stripe: StripeClient::new(),
+        store: Arc::new(StripeClient::new(String::new())),
         entitlements: EntitlementStore::default(),
         entitlements_path: PathBuf::new(),
     });
@@ -275,7 +276,7 @@ async fn websocket_logs_unexpected_messages_and_closes() {
             id: "basic".into(),
             price_cents: 1000,
         }]),
-        stripe: StripeClient::new(),
+        store: Arc::new(StripeClient::new(String::new())),
         entitlements: EntitlementStore::default(),
         entitlements_path: PathBuf::new(),
     });
@@ -325,7 +326,7 @@ async fn mail_test_defaults_to_from_address() {
             id: "basic".into(),
             price_cents: 1000,
         }]),
-        stripe: StripeClient::new(),
+        store: Arc::new(StripeClient::new(String::new())),
         entitlements: EntitlementStore::default(),
         entitlements_path: PathBuf::new(),
     });
@@ -363,7 +364,7 @@ async fn mail_test_accepts_user_address_query() {
             id: "basic".into(),
             price_cents: 1000,
         }]),
-        stripe: StripeClient::new(),
+        store: Arc::new(StripeClient::new(String::new())),
         entitlements: EntitlementStore::default(),
         entitlements_path: PathBuf::new(),
     });
@@ -408,7 +409,7 @@ async fn mail_test_accepts_user_address_body() {
             id: "basic".into(),
             price_cents: 1000,
         }]),
-        stripe: StripeClient::new(),
+        store: Arc::new(StripeClient::new(String::new())),
         entitlements: EntitlementStore::default(),
         entitlements_path: PathBuf::new(),
     });
@@ -452,7 +453,7 @@ async fn mail_config_redacts_password() {
             id: "basic".into(),
             price_cents: 1000,
         }]),
-        stripe: StripeClient::new(),
+        store: Arc::new(StripeClient::new(String::new())),
         entitlements: EntitlementStore::default(),
         entitlements_path: PathBuf::new(),
     });
@@ -483,7 +484,7 @@ async fn admin_mail_config_route() {
             id: "basic".into(),
             price_cents: 1000,
         }]),
-        stripe: StripeClient::new(),
+        store: Arc::new(StripeClient::new(String::new())),
         entitlements: EntitlementStore::default(),
         entitlements_path: PathBuf::new(),
     });
@@ -509,9 +510,6 @@ async fn admin_mail_config_route() {
 #[tokio::test]
 async fn stripe_webhook_accepts_valid_signature() {
     let secret = "whsec_test";
-    unsafe {
-        env::set_var("STRIPE_WEBHOOK_SECRET", secret);
-    }
 
     let cfg = SmtpConfig::default();
     let email = Arc::new(EmailService::new(cfg.clone()).unwrap());
@@ -532,7 +530,7 @@ async fn stripe_webhook_accepts_valid_signature() {
             id: "basic".into(),
             price_cents: 1000,
         }]),
-        stripe: StripeClient::new(),
+        store: Arc::new(StripeClient::new(secret)),
         entitlements: EntitlementStore::default(),
         entitlements_path: PathBuf::new(),
     });
@@ -572,17 +570,11 @@ async fn stripe_webhook_accepts_valid_signature() {
     assert_eq!(response.status(), StatusCode::OK);
     assert!(state.entitlements.has(user, "basic"));
     assert!(state.analytics.events().iter().any(|e| matches!(e, Event::PurchaseCompleted { sku, user: u } if sku == "basic" && u == &user.to_string())));
-    unsafe {
-        env::remove_var("STRIPE_WEBHOOK_SECRET");
-    }
 }
 
 #[tokio::test]
 async fn stripe_webhook_rejects_invalid_signature() {
     let secret = "whsec_test";
-    unsafe {
-        env::set_var("STRIPE_WEBHOOK_SECRET", secret);
-    }
 
     let cfg = SmtpConfig::default();
     let email = Arc::new(EmailService::new(cfg.clone()).unwrap());
@@ -603,7 +595,7 @@ async fn stripe_webhook_rejects_invalid_signature() {
             id: "basic".into(),
             price_cents: 1000,
         }]),
-        stripe: StripeClient::new(),
+        store: Arc::new(StripeClient::new(secret)),
         entitlements: EntitlementStore::default(),
         entitlements_path: PathBuf::new(),
     });
@@ -635,9 +627,6 @@ async fn stripe_webhook_rejects_invalid_signature() {
         .unwrap();
     assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
     assert!(!state.entitlements.has(user, "basic"));
-    unsafe {
-        env::remove_var("STRIPE_WEBHOOK_SECRET");
-    }
 }
 
 #[tokio::test]
@@ -665,7 +654,7 @@ async fn round_scores_appear_in_leaderboard() {
             id: "basic".into(),
             price_cents: 1000,
         }]),
-        stripe: StripeClient::new(),
+        store: Arc::new(StripeClient::new(String::new())),
         entitlements: EntitlementStore::default(),
         entitlements_path: std::path::PathBuf::new(),
     });

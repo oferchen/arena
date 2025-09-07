@@ -3,7 +3,7 @@ use std::{net::SocketAddr, path::PathBuf, sync::Arc};
 use anyhow::{Result, anyhow};
 
 use crate::email::{EmailService, SmtpConfig, StartTls};
-use ::payments::{Catalog, EntitlementList, EntitlementStore, Sku, StripeClient};
+use ::payments::{Catalog, EntitlementList, EntitlementStore, Sku, StoreProvider, StripeClient};
 use analytics::{Analytics, Event};
 use axum::{
     Router,
@@ -31,9 +31,7 @@ mod room;
 mod test_logger;
 #[cfg(test)]
 mod tests;
-use hmac::{Hmac, Mac};
 use prometheus::{Encoder, TextEncoder};
-use sha2::Sha256;
 use tower_http::{services::ServeDir, set_header::SetResponseHeaderLayer};
 
 #[derive(Parser, Debug)]
@@ -56,7 +54,7 @@ pub(crate) struct AppState {
     analytics: Analytics,
     leaderboard: ::leaderboard::LeaderboardService,
     catalog: Catalog,
-    stripe: StripeClient,
+    store: Arc<dyn StoreProvider>,
     entitlements: EntitlementStore,
     entitlements_path: std::path::PathBuf,
 }
@@ -305,8 +303,11 @@ async fn purchase_start_handler(
     Json(req): Json<PurchaseRequest>,
 ) -> Json<PurchaseResponse> {
     state.analytics.dispatch(Event::PurchaseInitiated);
-    let session_id = ::payments::initiate_purchase(&req.user, &req.sku);
-    Json(PurchaseResponse { session_id })
+    let sku = state.catalog.get(&req.sku).expect("sku not found");
+    let session = state.store.create_checkout_session(sku).await;
+    Json(PurchaseResponse {
+        session_id: session.url,
+    })
 }
 
 #[derive(Deserialize)]
@@ -336,11 +337,6 @@ async fn stripe_webhook_handler(
     headers: HeaderMap,
     body: Bytes,
 ) -> StatusCode {
-    let secret = match std::env::var("STRIPE_WEBHOOK_SECRET") {
-        Ok(s) => s,
-        Err(_) => return StatusCode::UNAUTHORIZED,
-    };
-
     let sig_header = match headers
         .get("Stripe-Signature")
         .and_then(|v| v.to_str().ok())
@@ -349,7 +345,7 @@ async fn stripe_webhook_handler(
         None => return StatusCode::UNAUTHORIZED,
     };
 
-    if !verify_stripe_signature(sig_header, &body, &secret) {
+    if !state.store.verify_webhook(sig_header, &body) {
         return StatusCode::UNAUTHORIZED;
     }
 
@@ -385,38 +381,6 @@ async fn stripe_webhook_handler(
     } else {
         StatusCode::BAD_REQUEST
     }
-}
-
-fn verify_stripe_signature(header: &str, payload: &[u8], secret: &str) -> bool {
-    let mut timestamp = "";
-    let mut signature = "";
-    for part in header.split(',') {
-        let mut kv = part.splitn(2, '=');
-        match (kv.next(), kv.next()) {
-            (Some("t"), Some(t)) => timestamp = t,
-            (Some("v1"), Some(s)) => signature = s,
-            _ => {}
-        }
-    }
-
-    if timestamp.is_empty() || signature.is_empty() {
-        return false;
-    }
-
-    let signed_payload = match std::str::from_utf8(payload) {
-        Ok(body) => format!("{}.{}", timestamp, body),
-        Err(_) => return false,
-    };
-
-    let mut mac = Hmac::<Sha256>::new_from_slice(secret.as_bytes()).unwrap();
-    mac.update(signed_payload.as_bytes());
-
-    let expected = match hex::decode(signature) {
-        Ok(v) => v,
-        Err(_) => return false,
-    };
-
-    mac.verify_slice(&expected).is_ok()
 }
 
 async fn entitlements_handler(
@@ -474,7 +438,8 @@ async fn setup(smtp: SmtpConfig, analytics: Analytics) -> Result<AppState> {
         id: "basic".to_string(),
         price_cents: 1000,
     }]);
-    let stripe = StripeClient::new();
+    let webhook_secret = std::env::var("STRIPE_WEBHOOK_SECRET").unwrap_or_default();
+    let store: Arc<dyn StoreProvider> = Arc::new(StripeClient::new(webhook_secret));
     let entitlements_path = PathBuf::from("entitlements.json");
     let entitlements = EntitlementStore::default();
     if let Err(e) = entitlements.load(&entitlements_path) {
@@ -490,7 +455,7 @@ async fn setup(smtp: SmtpConfig, analytics: Analytics) -> Result<AppState> {
         analytics,
         leaderboard,
         catalog,
-        stripe,
+        store,
         entitlements,
         entitlements_path,
     })

@@ -4,6 +4,11 @@ use std::path::Path;
 use std::sync::RwLock;
 pub use uuid::Uuid as UserId;
 
+use async_trait::async_trait;
+use hmac::{Hmac, Mac};
+use sha2::Sha256;
+use hex;
+
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Sku {
     pub id: String,
@@ -33,18 +38,82 @@ pub struct CheckoutSession {
     pub url: String,
 }
 
-#[derive(Clone, Default)]
-pub struct StripeClient;
+/// Provider for creating checkout sessions and validating webhooks.
+#[async_trait]
+pub trait StoreProvider: Send + Sync {
+    async fn create_checkout_session(&self, sku: &Sku) -> CheckoutSession;
+
+    /// Verify a webhook payload using the provider's signing secret.
+    fn verify_webhook(&self, signature: &str, payload: &[u8]) -> bool;
+}
+
+#[derive(Clone)]
+pub struct StripeClient {
+    secret: String,
+}
 
 impl StripeClient {
-    pub fn new() -> Self {
-        Self
+    pub fn new(secret: impl Into<String>) -> Self {
+        Self {
+            secret: secret.into(),
+        }
     }
+}
 
-    pub async fn create_checkout_session(&self, sku: &Sku) -> CheckoutSession {
+#[async_trait]
+impl StoreProvider for StripeClient {
+    async fn create_checkout_session(&self, sku: &Sku) -> CheckoutSession {
         CheckoutSession {
             url: format!("https://payments.example/checkout/{}", sku.id),
         }
+    }
+
+    fn verify_webhook(&self, signature: &str, payload: &[u8]) -> bool {
+        let mut timestamp = "";
+        let mut sig = "";
+        for part in signature.split(',') {
+            let mut kv = part.splitn(2, '=');
+            match (kv.next(), kv.next()) {
+                (Some("t"), Some(t)) => timestamp = t,
+                (Some("v1"), Some(s)) => sig = s,
+                _ => {}
+            }
+        }
+
+        if timestamp.is_empty() || sig.is_empty() {
+            return false;
+        }
+
+        let signed_payload = match std::str::from_utf8(payload) {
+            Ok(body) => format!("{}.{}", timestamp, body),
+            Err(_) => return false,
+        };
+
+        let mut mac = Hmac::<Sha256>::new_from_slice(self.secret.as_bytes()).unwrap();
+        mac.update(signed_payload.as_bytes());
+
+        let expected = match hex::decode(sig) {
+            Ok(v) => v,
+            Err(_) => return false,
+        };
+
+        mac.verify_slice(&expected).is_ok()
+    }
+}
+
+#[derive(Clone, Default)]
+pub struct MockStoreProvider;
+
+#[async_trait]
+impl StoreProvider for MockStoreProvider {
+    async fn create_checkout_session(&self, sku: &Sku) -> CheckoutSession {
+        CheckoutSession {
+            url: format!("https://mock.store/checkout/{}", sku.id),
+        }
+    }
+
+    fn verify_webhook(&self, _signature: &str, _payload: &[u8]) -> bool {
+        true
     }
 }
 

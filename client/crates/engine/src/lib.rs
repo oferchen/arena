@@ -138,6 +138,9 @@ pub struct LeaderboardScreen;
 #[derive(Component)]
 pub struct ReplayPedestal;
 
+#[derive(Component)]
+pub struct StorePanel;
+
 const HELP_DOCS: [(&str, &str); 5] = [
     ("Netcode", "docs/netcode.md"),
     ("Modules", "docs/modules.md"),
@@ -226,6 +229,36 @@ pub fn setup_lobby(
         .as_ref()
         .map(|s| s.load("fonts/FiraSans-Bold.ttf"))
         .unwrap_or_default();
+
+    // Basic store panel showcasing purchasable items.
+    commands
+        .spawn((
+            PbrBundle {
+                mesh: pad_mesh.clone(),
+                material: pad_material.clone(),
+                transform: Transform::from_xyz(0.0, 0.5, -2.5),
+                ..default()
+            },
+            Collider::cuboid(0.5, 0.5, 0.5),
+            Sensor,
+            ActiveEvents::COLLISION_EVENTS,
+            StorePanel,
+            LobbyEntity,
+        ))
+        .with_children(|parent| {
+            parent.spawn(Text2dBundle {
+                text: Text::from_section(
+                    "Store",
+                    TextStyle {
+                        font: font.clone(),
+                        font_size: 20.0,
+                        color: Color::WHITE,
+                    },
+                ),
+                transform: Transform::from_xyz(0.0, 0.75, 0.0),
+                ..default()
+            });
+        });
 
     if registry.modules.is_empty() {
         for (i, &(label, url)) in HELP_DOCS.iter().enumerate() {

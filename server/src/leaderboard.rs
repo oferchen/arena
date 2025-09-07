@@ -196,7 +196,7 @@ mod tests {
                 id: "basic".into(),
                 price_cents: 1000,
             }]),
-            stripe: StripeClient::new(),
+            store: Arc::new(StripeClient::new(String::new())),
             entitlements: EntitlementStore::default(),
             entitlements_path: PathBuf::new(),
         });
@@ -235,7 +235,7 @@ mod tests {
             analytics: Analytics::new(true, None, false),
             leaderboard: leaderboard.clone(),
             catalog: Catalog::new(vec![]),
-            stripe: StripeClient::new(),
+            store: Arc::new(StripeClient::new(String::new())),
             entitlements: EntitlementStore::default(),
             entitlements_path: PathBuf::new(),
         });
@@ -277,7 +277,7 @@ mod tests {
             analytics: Analytics::new(true, None, false),
             leaderboard: leaderboard.clone(),
             catalog: Catalog::new(vec![]),
-            stripe: StripeClient::new(),
+            store: Arc::new(StripeClient::new(String::new())),
             entitlements: EntitlementStore::default(),
             entitlements_path: PathBuf::new(),
         });
