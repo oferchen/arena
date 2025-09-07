@@ -4,6 +4,18 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-bevy = { version = "0.12", default-features = false, features = ["bevy_winit", "bevy_render", "bevy_core_pipeline", "bevy_pbr", "bevy_ui", "bevy_text", "bevy_audio", "x11"] }
+bevy = { version = "0.12", default-features = false, features = [
+    "bevy_winit",
+    "bevy_render",
+    "bevy_core_pipeline",
+    "bevy_pbr",
+    "bevy_ui",
+    "bevy_text",
+    "x11",
+] }
 bitflags = "2"
 anyhow = "1"
+
+[features]
+default = []
+audio = ["bevy/bevy_audio"]

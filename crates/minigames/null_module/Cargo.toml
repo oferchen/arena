@@ -4,6 +4,15 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-bevy = "0.12"
+bevy = { version = "0.12", default-features = false, features = [
+    "bevy_render",
+    "bevy_core_pipeline",
+    "bevy_pbr",
+    "bevy_text",
+] }
 platform-api = { path = "../../platform-api" }
 anyhow = "1"
+
+[features]
+default = []
+audio = ["bevy/bevy_audio"]
