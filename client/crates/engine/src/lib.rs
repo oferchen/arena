@@ -109,6 +109,19 @@ pub struct LobbyPad {
     pub state: AppState,
 }
 
+#[derive(Component)]
+pub struct DocPad {
+    pub url: &'static str,
+}
+
+const HELP_DOCS: [(&str, &str); 5] = [
+    ("Netcode", "docs/netcode.md"),
+    ("Modules", "docs/modules.md"),
+    ("Duck Hunt", "docs/DuckHunt.md"),
+    ("Ops", "docs/ops.md"),
+    ("Email", "docs/Email.md"),
+];
+
 pub fn setup_lobby(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
@@ -162,42 +175,42 @@ pub fn setup_lobby(
 
     let pad_mesh = meshes.add(Mesh::from(shape::Cube { size: 1.0 }));
     let pad_material = materials.add(Color::rgb(0.8, 0.2, 0.2).into());
+    let font = asset_server
+        .as_ref()
+        .map(|s| s.load("fonts/FiraSans-Bold.ttf"))
+        .unwrap_or_default();
 
     if registry.modules.is_empty() {
-        let font = asset_server
-            .as_ref()
-            .map(|s| s.load("fonts/FiraSans-Bold.ttf"))
-            .unwrap_or_default();
-        commands.spawn((
-            Text2dBundle {
-                text: Text::from_section(
-                    "No modules installed",
-                    TextStyle {
-                        font: font.clone(),
-                        font_size: 30.0,
-                        color: Color::WHITE,
+        for (i, &(label, url)) in HELP_DOCS.iter().enumerate() {
+            commands
+                .spawn((
+                    PbrBundle {
+                        mesh: pad_mesh.clone(),
+                        material: pad_material.clone(),
+                        transform: Transform::from_xyz(i as f32 * 3.0 - 6.0, 0.5, 0.0),
+                        ..default()
                     },
-                ),
-                transform: Transform::from_xyz(0.0, 1.0, 0.0),
-                ..default()
-            },
-            LobbyEntity,
-        ));
-        commands.spawn((
-            Text2dBundle {
-                text: Text::from_section(
-                    "See docs/modules.md for installation instructions",
-                    TextStyle {
-                        font,
-                        font_size: 20.0,
-                        color: Color::WHITE,
-                    },
-                ),
-                transform: Transform::from_xyz(0.0, 0.5, 0.0),
-                ..default()
-            },
-            LobbyEntity,
-        ));
+                    Collider::cuboid(0.5, 0.5, 0.5),
+                    Sensor,
+                    ActiveEvents::COLLISION_EVENTS,
+                    DocPad { url },
+                    LobbyEntity,
+                ))
+                .with_children(|parent| {
+                    parent.spawn(Text2dBundle {
+                        text: Text::from_section(
+                            label,
+                            TextStyle {
+                                font: font.clone(),
+                                font_size: 20.0,
+                                color: Color::WHITE,
+                            },
+                        ),
+                        transform: Transform::from_xyz(0.0, 0.75, 0.0),
+                        ..default()
+                    });
+                });
+        }
     } else {
         for (i, info) in registry.modules.iter().enumerate() {
             if !info.capabilities.contains(CapabilityFlags::LOBBY_PAD) {
@@ -220,10 +233,6 @@ pub fn setup_lobby(
                     LobbyEntity,
                 ))
                 .with_children(|parent| {
-                    let font = asset_server
-                        .as_ref()
-                        .map(|s| s.load("fonts/FiraSans-Bold.ttf"))
-                        .unwrap_or_default();
                     let label = if LOBBY_KEYS.get(i).is_some() {
                         format!("[{}] {} v{}", i + 1, info.name, info.version)
                     } else {
@@ -233,7 +242,7 @@ pub fn setup_lobby(
                         text: Text::from_section(
                             label,
                             TextStyle {
-                                font,
+                                font: font.clone(),
                                 font_size: 20.0,
                                 color: Color::WHITE,
                             },
@@ -341,6 +350,7 @@ fn pad_trigger(
     mut collisions: EventReader<CollisionEvent>,
     player: Query<Entity, With<Player>>,
     pads: Query<&LobbyPad>,
+    docs: Query<&DocPad>,
     mut next_state: ResMut<NextState<AppState>>,
 ) {
     let Ok(player_entity) = player.get_single() else {
@@ -357,6 +367,17 @@ fn pad_trigger(
             };
             if let Ok(pad) = pads.get(other) {
                 next_state.set(pad.state.clone());
+            } else if let Ok(doc) = docs.get(other) {
+                #[cfg(target_arch = "wasm32")]
+                {
+                    if let Some(window) = web_sys::window() {
+                        let _ = window.open_with_url(doc.url);
+                    }
+                }
+                #[cfg(not(target_arch = "wasm32"))]
+                {
+                    let _ = doc;
+                }
             }
         }
     }
