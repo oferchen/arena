@@ -1,9 +1,10 @@
 use anyhow::Result;
+use bevy_ecs::prelude::Resource;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::Path;
 
-#[derive(Serialize, Deserialize, Default, Debug)]
+#[derive(Resource, Serialize, Deserialize, Default, Debug)]
 pub struct Level {
     pub id: String,
     pub name: String,
