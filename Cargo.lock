@@ -2366,6 +2366,10 @@ name = "duck_hunt_server"
 version = "0.1.0"
 dependencies = [
  "glam",
+ "net",
+ "postcard",
+ "serde",
+ "tokio",
 ]
 
 [[package]]
