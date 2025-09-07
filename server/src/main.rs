@@ -66,6 +66,7 @@ impl Cli {
 
 #[derive(Clone)]
 struct AppState {
+    #[allow(dead_code)]
     db: PgPool,
     email: Arc<EmailService>,
     rooms: room::RoomManager,
