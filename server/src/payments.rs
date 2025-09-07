@@ -43,7 +43,7 @@ async fn webhook_handler(
     State(state): State<Arc<AppState>>,
     Json(evt): Json<WebhookEvent>,
 ) -> StatusCode {
-    state.entitlements.grant(evt.user_id, evt.sku_id);
-    state.analytics.dispatch(Event::PurchaseCompleted);
+    state.entitlements.grant(evt.user_id, evt.sku_id.clone());
+    state.analytics.dispatch(Event::PurchaseCompleted { sku: evt.sku_id, user: evt.user_id.to_string() });
     StatusCode::OK
 }

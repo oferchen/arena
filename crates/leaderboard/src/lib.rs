@@ -56,6 +56,16 @@ impl LeaderboardService {
         )
         .execute(&pool)
         .await?;
+        sqlx::query(
+            "CREATE TABLE IF NOT EXISTS purchases (
+                id TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                sku TEXT NOT NULL,
+                created_at TEXT NOT NULL
+            )"
+        )
+        .execute(&pool)
+        .await?;
         tokio::fs::create_dir_all(&replay_dir).await.map_err(|e| sqlx::Error::Io(e))?;
         let (tx, _) = broadcast::channel(16);
         Ok(Self { pool, replay_dir, tx })
@@ -130,6 +140,24 @@ impl LeaderboardService {
         scores_for_window(&self.pool, leaderboard, window)
             .await
             .unwrap_or_default()
+    }
+
+    pub async fn record_purchase(
+        &self,
+        user_id: Uuid,
+        sku: &str,
+    ) -> Result<Uuid, sqlx::Error> {
+        let id = Uuid::new_v4();
+        sqlx::query(
+            "INSERT INTO purchases (id, user_id, sku, created_at) VALUES (?, ?, ?, ?)"
+        )
+        .bind(id)
+        .bind(user_id)
+        .bind(sku)
+        .bind(chrono::Utc::now())
+        .execute(&self.pool)
+        .await?;
+        Ok(id)
     }
 
     pub fn subscribe(&self) -> broadcast::Receiver<LeaderboardSnapshot> {

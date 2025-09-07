@@ -345,15 +345,27 @@ async fn stripe_webhook_handler(
 
     if event.r#type == "checkout.session.completed" {
         if let Some(meta) = event.data.object.metadata {
-            ::payments::complete_purchase(
-                &state.entitlements,
-                &event.data.object.client_reference_id,
-                &meta.sku,
-            );
-            let _ = state.entitlements.save(&state.entitlements_path);
-            state.analytics.dispatch(Event::PurchaseSucceeded);
-            state.analytics.dispatch(Event::EntitlementGranted);
-            StatusCode::OK
+            if let Ok(user) = ::payments::UserId::parse_str(&event.data.object.client_reference_id) {
+                ::payments::complete_purchase(
+                    &state.entitlements,
+                    &event.data.object.client_reference_id,
+                    &meta.sku,
+                );
+                let _ = state
+                    .leaderboard
+                    .record_purchase(user, &meta.sku)
+                    .await;
+                let _ = state.entitlements.save(&state.entitlements_path);
+                state.analytics.dispatch(Event::PurchaseCompleted {
+                    sku: meta.sku.clone(),
+                    user: event.data.object.client_reference_id.clone(),
+                });
+                state.analytics.dispatch(Event::PurchaseSucceeded);
+                state.analytics.dispatch(Event::EntitlementGranted);
+                StatusCode::OK
+            } else {
+                StatusCode::BAD_REQUEST
+            }
         } else {
             StatusCode::BAD_REQUEST
         }

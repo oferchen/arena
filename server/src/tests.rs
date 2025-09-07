@@ -1,5 +1,5 @@
 use super::*;
-use analytics::Analytics;
+use analytics::{Analytics, Event};
 use axum::body::Body;
 use axum::extract::{Json, Query, State};
 use axum::http::Request;
@@ -571,6 +571,7 @@ async fn stripe_webhook_accepts_valid_signature() {
         .unwrap();
     assert_eq!(response.status(), StatusCode::OK);
     assert!(state.entitlements.has(user, "basic"));
+    assert!(state.analytics.events().iter().any(|e| matches!(e, Event::PurchaseCompleted { sku, user: u } if sku == "basic" && u == &user.to_string())));
     unsafe {
         env::remove_var("STRIPE_WEBHOOK_SECRET");
     }
