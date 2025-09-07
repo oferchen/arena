@@ -3,6 +3,7 @@ use bevy::prelude::*;
 use bevy::render::mesh::shape::UVSphere;
 use net::{
     CurrentFrame,
+    client::ConnectionEvent,
     message::{InputFrame, Snapshot},
 };
 use platform_api::{
@@ -67,6 +68,7 @@ impl Plugin for DuckHuntPlugin {
                 apply_score_snapshots,
                 update_hud,
                 update_round_timer,
+                log_connection_events,
             ),
         );
     }
@@ -264,6 +266,10 @@ fn update_round_timer(
         }
     }
 }
+
+fn log_connection_events(mut events: EventReader<ConnectionEvent>) {
+    for ev in events.read() {
+        info!("connection event: {ev:?}");
 
 #[cfg(test)]
 mod tests {
