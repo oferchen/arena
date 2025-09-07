@@ -8,6 +8,7 @@ use axum::{
     extract::{
         State,
         ws::{Message, WebSocket, WebSocketUpgrade},
+        Query, Json,
     },
     http::{HeaderName, HeaderValue, StatusCode, header::CACHE_CONTROL},
     response::IntoResponse,
@@ -15,6 +16,8 @@ use axum::{
 };
 use clap::Parser;
 use net::server::ServerConnector;
+use serde::Deserialize;
+use email_address::EmailAddress;
 use webrtc::peer_connection::sdp::sdp_type::RTCSdpType;
 use webrtc::peer_connection::sdp::session_description::RTCSessionDescription;
 
@@ -115,8 +118,26 @@ async fn handle_socket(mut socket: WebSocket) {
     while let Some(Ok(_)) = socket.recv().await {}
 }
 
-async fn mail_test_handler(State(state): State<Arc<AppState>>) -> StatusCode {
-    match state.email.send_test(state.email.from_address()) {
+#[derive(Deserialize)]
+struct MailTestParams {
+    to: String,
+}
+
+async fn mail_test_handler(
+    State(state): State<Arc<AppState>>,
+    query: Option<Query<MailTestParams>>,
+    body: Option<Json<MailTestParams>>,
+) -> StatusCode {
+    let to = query
+        .map(|q| q.0.to)
+        .or_else(|| body.map(|b| b.0.to))
+        .unwrap_or_else(|| state.email.from_address().to_string());
+
+    if !EmailAddress::is_valid(&to) {
+        return StatusCode::BAD_REQUEST;
+    }
+
+    match state.email.send_test(&to) {
         Ok(_) => StatusCode::OK,
         Err(_) => StatusCode::INTERNAL_SERVER_ERROR,
     }
@@ -240,7 +261,9 @@ async fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use axum::extract::{Json, Query, State};
     use futures_util::{SinkExt, StreamExt};
+    use serial_test::serial;
     use sqlx::postgres::PgPoolOptions;
     use std::env;
     use tokio_tungstenite::tungstenite::Message;
@@ -341,5 +364,81 @@ mod tests {
         answer.sdp = answer_sdp;
         pc.set_remote_description(answer).await.unwrap();
         assert!(pc.remote_description().await.is_some());
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn mail_test_defaults_to_from_address() {
+        let db = PgPoolOptions::new()
+            .connect_lazy("postgres://localhost")
+            .unwrap();
+        let mut cfg = SmtpConfig::default();
+        cfg.from = "default@example.com".into();
+        let email = Arc::new(EmailService::new(cfg).unwrap());
+        let rooms = room::RoomManager::new();
+        let state = Arc::new(AppState { db, email, rooms });
+
+        assert_eq!(
+            mail_test_handler(State(state.clone()), None, None).await,
+            StatusCode::OK
+        );
+        assert_eq!(
+            mail_test_handler(State(state.clone()), None, None).await,
+            StatusCode::INTERNAL_SERVER_ERROR
+        );
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn mail_test_accepts_user_address_query() {
+        let db = PgPoolOptions::new()
+            .connect_lazy("postgres://localhost")
+            .unwrap();
+        let mut cfg = SmtpConfig::default();
+        cfg.from = "query@example.com".into();
+        let email = Arc::new(EmailService::new(cfg).unwrap());
+        let rooms = room::RoomManager::new();
+        let state = Arc::new(AppState { db, email, rooms });
+
+        assert_eq!(
+            mail_test_handler(State(state.clone()), None, None).await,
+            StatusCode::OK
+        );
+
+        let query = Query(MailTestParams {
+            to: "user_q@example.com".into(),
+        });
+
+        assert_eq!(
+            mail_test_handler(State(state.clone()), Some(query), None).await,
+            StatusCode::OK
+        );
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn mail_test_accepts_user_address_body() {
+        let db = PgPoolOptions::new()
+            .connect_lazy("postgres://localhost")
+            .unwrap();
+        let mut cfg = SmtpConfig::default();
+        cfg.from = "body@example.com".into();
+        let email = Arc::new(EmailService::new(cfg).unwrap());
+        let rooms = room::RoomManager::new();
+        let state = Arc::new(AppState { db, email, rooms });
+
+        assert_eq!(
+            mail_test_handler(State(state.clone()), None, None).await,
+            StatusCode::OK
+        );
+
+        let body = Json(MailTestParams {
+            to: "user_b@example.com".into(),
+        });
+
+        assert_eq!(
+            mail_test_handler(State(state.clone()), None, Some(body)).await,
+            StatusCode::OK
+        );
     }
 }
