@@ -4,6 +4,7 @@ use analytics::{Analytics, Event};
 use bevy::prelude::*;
 use duck_hunt::DuckHuntPlugin;
 use engine::{AppExt, EnginePlugin};
+mod lobby;
 use null_module::NullModule;
 use payments::{EntitlementList, EntitlementStore, UserId}; // fetch_entitlements and entitlements
 use physics::PhysicsPlugin;
@@ -42,7 +43,8 @@ fn main() {
     app.insert_resource(Time::<Fixed>::from_seconds(1.0 / 60.0));
     app.add_plugins(RenderPlugin)
         .add_plugins(PhysicsPlugin)
-        .add_plugins(EnginePlugin);
+        .add_plugins(EnginePlugin)
+        .add_plugins(lobby::LobbyPlugin);
     if entitlements.has(user, "duck_hunt") {
         app.add_game_module::<DuckHuntPlugin>();
     }
