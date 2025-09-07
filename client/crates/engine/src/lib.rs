@@ -1,3 +1,4 @@
+use anyhow::Error as AnyError;
 use bevy::ecs::schedule::common_conditions::resource_changed;
 #[cfg(target_arch = "wasm32")]
 use bevy::tasks::{AsyncComputeTaskPool, Task};
@@ -10,8 +11,6 @@ use gloo_timers::future::TimeoutFuture;
 #[cfg(not(target_arch = "wasm32"))]
 use notify::{RecommendedWatcher, RecursiveMode, Watcher};
 use platform_api::{AppState, CapabilityFlags, GameModule, ModuleContext, ModuleMetadata};
-use thiserror::Error;
-use anyhow::Error as AnyError;
 use serde::Deserialize;
 #[cfg(not(target_arch = "wasm32"))]
 use std::fs;
@@ -21,6 +20,7 @@ use std::path::Path;
 use std::sync::mpsc;
 #[cfg(not(target_arch = "wasm32"))]
 use std::sync::mpsc::Receiver;
+use thiserror::Error;
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen_futures::spawn_local;
 
@@ -492,8 +492,16 @@ fn read_modules_from_disk() -> Vec<ModuleMetadata> {
             }
         };
         let state = match manifest.state.as_str() {
+            "Lobby" => AppState::Lobby,
             "DuckHunt" => AppState::DuckHunt,
-            _ => AppState::Lobby,
+            other => {
+                log::error!(
+                    "unknown module state '{}' for module '{}', skipping",
+                    other,
+                    manifest.id
+                );
+                continue;
+            }
         };
         let mut caps = CapabilityFlags::default();
         for cap in manifest.capabilities {
@@ -546,10 +554,18 @@ pub fn discover_modules(
             match serde_json::from_str::<Vec<ModuleManifest>>(&data) {
                 Ok(manifests) => manifests
                     .into_iter()
-                    .map(|manifest| {
+                    .filter_map(|manifest| {
                         let state = match manifest.state.as_str() {
+                            "Lobby" => AppState::Lobby,
                             "DuckHunt" => AppState::DuckHunt,
-                            _ => AppState::Lobby,
+                            other => {
+                                log::error!(
+                                    "unknown module state '{}' for module '{}', skipping",
+                                    other,
+                                    manifest.id
+                                );
+                                return None;
+                            }
                         };
                         let mut caps = CapabilityFlags::default();
                         for cap in manifest.capabilities {
@@ -563,7 +579,7 @@ pub fn discover_modules(
                                 _ => {}
                             }
                         }
-                        ModuleMetadata {
+                        Some(ModuleMetadata {
                             id: manifest.id,
                             name: manifest.name,
                             version: manifest.version,
@@ -572,7 +588,7 @@ pub fn discover_modules(
                             capabilities: caps,
                             max_players: manifest.max_players,
                             icon: Handle::default(),
-                        }
+                        })
                     })
                     .collect::<Vec<_>>(),
                 Err(_) => Vec::new(),
