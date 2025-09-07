@@ -26,12 +26,17 @@ shot events with their crosshair position, and the server performs lag
 compensation before validating hits. Successful hits result in score updates
 that are broadcast to all players.
 
+Scores are also submitted to a leaderboard via the `leaderboard` crate. Each
+shot is recorded and saved as a deterministic replay so runs can be
+independently verified.
+
 ## Assets
 
 - Duck sprite sheet with animation frames
 - Background images for sky and ground
 - Sound effects for quacks, shots, and reloading
 - `module.toml` descriptor under `assets/modules/duck_hunt/`
+- Reference level data under `assets/levels/duck_hunt_range/`
 
 ## Lifecycle
 

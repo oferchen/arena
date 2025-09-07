@@ -11,4 +11,10 @@ glam = { version = "0.24", features = ["serde"] }
 net = { path = "../../net" }
 postcard = { version = "1", features = ["alloc"] }
 serde = { version = "1", features = ["derive"] }
-tokio = { version = "1", features = ["sync"] }
+tokio = { version = "1", features = ["sync", "macros", "rt-multi-thread"] }
+leaderboard = { path = "../../leaderboard" }
+uuid = { version = "1", features = ["v4", "serde"] }
+chrono = { version = "0.4", features = ["serde", "clock"] }
+
+[dev-dependencies]
+tempfile = "3"

@@ -4,7 +4,21 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-bevy = "0.12"
+bevy = { version = "0.12", default-features = false, features = [
+    "bevy_asset",
+    "bevy_winit",
+    "bevy_core_pipeline",
+    "bevy_pbr",
+    "bevy_render",
+    "bevy_sprite",
+    "bevy_text",
+    "bevy_ui",
+    "multi-threaded",
+    "png",
+    "x11",
+    "tonemapping_luts",
+    "default_font",
+] }
 platform-api = { path = "../../../../crates/platform-api" }
 anyhow = "1"
 postcard = { version = "1", features = ["alloc"] }

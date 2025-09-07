@@ -21,7 +21,20 @@ struct Score(pub u32);
 struct RoundTimer(pub Timer);
 
 #[derive(Resource, Default)]
-struct DuckSpawnTimer(pub Timer);
+struct TargetSpawnTimer(pub Timer);
+
+#[derive(Resource, Default)]
+struct Weapon {
+    ammo: u32,
+    max_ammo: u32,
+}
+
+#[derive(Resource)]
+struct HudProfile {
+    font: Handle<Font>,
+    font_size: f32,
+    color: Color,
+}
 
 #[derive(Resource)]
 struct SpawnRng(pub StdRng);
@@ -94,16 +107,25 @@ fn setup(world: &mut World) {
 
     world.insert_resource(Score(0));
     world.insert_resource(RoundTimer(Timer::from_seconds(90.0, TimerMode::Once)));
-    world.insert_resource(DuckSpawnTimer(Timer::from_seconds(
+    world.insert_resource(TargetSpawnTimer(Timer::from_seconds(
         2.0,
         TimerMode::Repeating,
     )));
     world.insert_resource(SpawnRng(StdRng::seed_from_u64(0)));
+    world.insert_resource(Weapon {
+        ammo: 6,
+        max_ammo: 6,
+    });
 
     let Some(asset_server) = world.get_resource::<AssetServer>() else {
         return;
     };
     let font = asset_server.load("fonts/FiraSans-Bold.ttf");
+    world.insert_resource(HudProfile {
+        font: font.clone(),
+        font_size: 24.0,
+        color: Color::WHITE,
+    });
 
     world.spawn((
         TextBundle::from_section(
@@ -136,8 +158,10 @@ fn cleanup(world: &mut World) {
 
     world.remove_resource::<Score>();
     world.remove_resource::<RoundTimer>();
-    world.remove_resource::<DuckSpawnTimer>();
+    world.remove_resource::<TargetSpawnTimer>();
     world.remove_resource::<SpawnRng>();
+    world.remove_resource::<Weapon>();
+    world.remove_resource::<HudProfile>();
 }
 
 impl GameModule for DuckHuntPlugin {
@@ -174,7 +198,7 @@ impl GameModule for DuckHuntPlugin {
 fn spawn_ducks(
     mut commands: Commands,
     time: Res<Time>,
-    mut timer: ResMut<DuckSpawnTimer>,
+    mut timer: ResMut<TargetSpawnTimer>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut rng: ResMut<SpawnRng>,
@@ -235,14 +259,21 @@ fn move_ducks(
 
 fn fire_weapon(
     buttons: Res<Input<MouseButton>>,
+    keys: Res<Input<KeyCode>>,
     q: Query<(Entity, &Transform), With<Duck>>,
     camera: Query<&Transform, With<Camera3d>>,
     time: Res<Time>,
+    mut weapon: ResMut<Weapon>,
     mut commands: Commands,
     mut writer: EventWriter<InputFrame>,
     frame: Res<CurrentFrame>,
 ) {
-    if buttons.just_pressed(MouseButton::Left) {
+    if keys.just_pressed(KeyCode::R) {
+        weapon.ammo = weapon.max_ammo;
+    }
+
+    if buttons.just_pressed(MouseButton::Left) && weapon.ammo > 0 {
+        weapon.ammo -= 1;
         if let Ok(cam) = camera.get_single() {
             let origin = cam.translation;
             let direction = cam.forward();
@@ -278,11 +309,19 @@ fn ray_sphere_intersect(origin: Vec3, dir: Vec3, center: Vec3, radius: f32) -> b
     discriminant >= 0.0
 }
 
-fn update_hud(score: Res<Score>, timer: Res<RoundTimer>, mut q: Query<&mut Text, With<HudText>>) {
-    if score.is_changed() || timer.is_changed() {
+fn update_hud(
+    score: Res<Score>,
+    timer: Res<RoundTimer>,
+    weapon: Res<Weapon>,
+    mut q: Query<&mut Text, With<HudText>>,
+) {
+    if score.is_changed() || timer.is_changed() || weapon.is_changed() {
         for mut text in &mut q {
             let remaining = timer.0.remaining_secs().ceil() as u32;
-            text.sections[0].value = format!("Score: {}\nTime: {remaining}", score.0);
+            text.sections[0].value = format!(
+                "Score: {}\nTime: {remaining}\nAmmo: {}",
+                score.0, weapon.ammo
+            );
         }
     }
 }
