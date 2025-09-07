@@ -11,7 +11,7 @@ use gloo_timers::future::TimeoutFuture;
 #[cfg(not(target_arch = "wasm32"))]
 use notify::{RecommendedWatcher, RecursiveMode, Watcher};
 use platform_api::{
-    AppState, CapabilityFlags, GameModule, ModuleContext, ModuleManifest, ModuleMetadata,
+    AppState, CapabilityFlags, GameModule, ModuleContext, ModuleMetadata,
     discover_local_modules,
 };
 #[cfg(not(target_arch = "wasm32"))]
