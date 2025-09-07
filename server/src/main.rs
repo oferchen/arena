@@ -119,6 +119,11 @@ struct MailTestParams {
     to: String,
 }
 
+#[derive(Serialize, Deserialize, Debug, PartialEq)]
+struct MailTestResponse {
+    queued: bool,
+}
+
 #[derive(Serialize)]
 struct RedactedSmtpConfig {
     host: String,
@@ -154,20 +159,15 @@ async fn mail_test_handler(
     State(state): State<Arc<AppState>>,
     query: Option<Query<MailTestParams>>,
     body: Option<Json<MailTestParams>>,
-) -> StatusCode {
+) -> Json<MailTestResponse> {
     let to = query
         .map(|q| q.0.to)
         .or_else(|| body.map(|b| b.0.to))
         .unwrap_or_else(|| state.email.from_address().to_string());
 
-    if !EmailAddress::is_valid(&to) {
-        return StatusCode::BAD_REQUEST;
-    }
+    let queued = EmailAddress::is_valid(&to) && state.email.send_test(&to).is_ok();
 
-    match state.email.send_test(&to) {
-        Ok(_) => StatusCode::OK,
-        Err(_) => StatusCode::INTERNAL_SERVER_ERROR,
-    }
+    Json(MailTestResponse { queued })
 }
 
 async fn shutdown_signal() {
@@ -399,11 +399,11 @@ mod tests {
 
         assert_eq!(
             mail_test_handler(State(state.clone()), None, None).await,
-            StatusCode::OK
+            Json(MailTestResponse { queued: true })
         );
         assert_eq!(
             mail_test_handler(State(state.clone()), None, None).await,
-            StatusCode::INTERNAL_SERVER_ERROR
+            Json(MailTestResponse { queued: false })
         );
     }
 
@@ -422,7 +422,7 @@ mod tests {
 
         assert_eq!(
             mail_test_handler(State(state.clone()), None, None).await,
-            StatusCode::OK
+            Json(MailTestResponse { queued: true })
         );
 
         let query = Query(MailTestParams {
@@ -431,7 +431,7 @@ mod tests {
 
         assert_eq!(
             mail_test_handler(State(state.clone()), Some(query), None).await,
-            StatusCode::OK
+            Json(MailTestResponse { queued: true })
         );
     }
 
@@ -450,7 +450,7 @@ mod tests {
 
         assert_eq!(
             mail_test_handler(State(state.clone()), None, None).await,
-            StatusCode::OK
+            Json(MailTestResponse { queued: true })
         );
 
         let body = Json(MailTestParams {
@@ -459,7 +459,7 @@ mod tests {
 
         assert_eq!(
             mail_test_handler(State(state.clone()), None, Some(body)).await,
-            StatusCode::OK
+            Json(MailTestResponse { queued: true })
         );
     }
 

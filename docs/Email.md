@@ -42,8 +42,14 @@ attempt a warning is logged.
 ## Test endpoint
 
 POST `/admin/mail/test` sends a test message to the configured
-`ARENA_SMTP_FROM` address. A `200` response indicates the message was
-queued successfully.
+`ARENA_SMTP_FROM` address. The endpoint responds with JSON indicating
+whether the message was queued, for example:
+
+```json
+{ "queued": true }
+```
+
+A `queued` value of `false` means the message could not be queued.
 
 ## Sample configuration
 
