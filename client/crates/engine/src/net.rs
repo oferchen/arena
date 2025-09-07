@@ -45,7 +45,7 @@ pub struct NetClientPlugin;
 impl Plugin for NetClientPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<PredictionState>()
-            .add_systems(Update, client_prediction)
-            .add_systems(Update, reconcile_snapshots);
+            .add_systems(FixedUpdate, client_prediction)
+            .add_systems(FixedUpdate, reconcile_snapshots);
     }
 }

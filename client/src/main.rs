@@ -36,6 +36,7 @@ fn main() {
 
     // Initialize the Bevy application
     let mut app = App::new();
+    app.insert_resource(Time::<Fixed>::from_seconds(1.0 / 60.0));
     app.add_plugins(RenderPlugin)
         .add_plugins(PhysicsPlugin)
         .add_plugins(EnginePlugin);

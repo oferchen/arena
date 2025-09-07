@@ -13,7 +13,7 @@ use webrtc::data_channel::data_channel_message::DataChannelMessage;
 use webrtc::peer_connection::RTCPeerConnection;
 use webrtc::peer_connection::configuration::RTCConfiguration;
 
-use crate::message::{InputFrame, ServerMessage, Snapshot, apply_delta};
+use crate::message::{ClientMessage, InputFrame, ServerMessage, Snapshot, apply_delta};
 
 #[async_trait]
 pub trait DataSender: Send + Sync {
@@ -176,11 +176,29 @@ pub fn send_input_frames(mut reader: EventReader<InputFrame>) {
         .clone()
     {
         for frame in reader.read() {
-            let bytes = match postcard::to_allocvec(frame) {
+            let msg = ClientMessage::Input(frame.clone());
+            let bytes = match postcard::to_allocvec(&msg) {
                 Ok(b) => b,
                 Err(_) => continue,
             };
             let dc = Arc::clone(&dc);
+            spawn_local(async move {
+                send_bytes(dc, bytes).await;
+            });
+        }
+    }
+}
+
+/// Update the server with a new interest mask describing which entities this
+/// client cares about. The mask is sent over the data channel.
+pub fn set_interest_mask(mask: u64) {
+    if let Some(dc) = DATA_CHANNEL
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .clone()
+    {
+        let msg = ClientMessage::Interest(mask);
+        if let Ok(bytes) = postcard::to_allocvec(&msg) {
             spawn_local(async move {
                 send_bytes(dc, bytes).await;
             });

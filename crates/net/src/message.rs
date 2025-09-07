@@ -11,6 +11,15 @@ pub struct InputFrame {
     pub data: Vec<u8>,
 }
 
+/// Message sent from clients to the server.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ClientMessage {
+    /// An input frame for the given simulation step.
+    Input(InputFrame),
+    /// Update the client's interest mask for snapshot filtering.
+    Interest(u64),
+}
+
 /// Full state snapshot from the server.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Event)]
 pub struct Snapshot {

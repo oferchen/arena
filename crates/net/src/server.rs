@@ -16,7 +16,7 @@ use webrtc::data_channel::data_channel_message::DataChannelMessage;
 use webrtc::peer_connection::RTCPeerConnection;
 use webrtc::peer_connection::configuration::RTCConfiguration;
 
-use crate::message::{InputFrame, ServerMessage};
+use crate::message::{ClientMessage, InputFrame, ServerMessage};
 
 static DECODE_FAILURES: AtomicUsize = AtomicUsize::new(0);
 
@@ -28,6 +28,8 @@ pub struct ServerConnector {
     pub input_rx: Receiver<InputFrame>,
     /// Channel used to send snapshots to the client.
     pub snapshot_tx: Sender<ServerMessage>,
+    /// Incoming interest mask updates from the client.
+    pub interest_rx: Receiver<u64>,
 }
 
 impl ServerConnector {
@@ -39,24 +41,30 @@ impl ServerConnector {
         let pc = api.new_peer_connection(RTCConfiguration::default()).await?;
         let (snapshot_tx, snapshot_rx) = mpsc::channel(32);
         let (input_tx, input_rx) = mpsc::channel(32);
+        let (interest_tx, interest_rx) = mpsc::channel(8);
 
         let snapshot_rx = Arc::new(Mutex::new(snapshot_rx));
         pc.on_data_channel(Box::new(move |dc: Arc<RTCDataChannel>| {
             let input_tx = input_tx.clone();
+            let interest_tx = interest_tx.clone();
             let snapshot_rx = Arc::clone(&snapshot_rx);
             Box::pin(async move {
                 dc.on_message(Box::new(move |msg: DataChannelMessage| {
                     let input_tx = input_tx.clone();
+                    let interest_tx = interest_tx.clone();
                     Box::pin(async move {
                         if !msg.is_string {
-                            match postcard::from_bytes::<InputFrame>(&msg.data) {
-                                Ok(frame) => {
+                            match postcard::from_bytes::<ClientMessage>(&msg.data) {
+                                Ok(ClientMessage::Input(frame)) => {
                                     let _ = input_tx.send(frame).await;
+                                }
+                                Ok(ClientMessage::Interest(mask)) => {
+                                    let _ = interest_tx.send(mask).await;
                                 }
                                 Err(e) => {
                                     let count = DECODE_FAILURES.fetch_add(1, Ordering::Relaxed) + 1;
                                     if count <= 5 || count % 100 == 0 {
-                                        bevy::log::warn!("failed to decode input frame: {e} ({count} total failures)");
+                                        bevy::log::warn!("failed to decode client message: {e} ({count} total failures)");
                                     }
                                 }
                             }
@@ -86,6 +94,7 @@ impl ServerConnector {
             pc,
             input_rx,
             snapshot_tx,
+            interest_rx,
         })
     }
 

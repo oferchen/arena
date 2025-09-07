@@ -7,19 +7,19 @@ use tokio::time::{self, Duration};
 use once_cell::sync::Lazy;
 use prometheus::{IntCounter, register_int_counter};
 
-use duck_hunt_server::{DuckState, Server as DuckServer, validate_hit, replicate, spawn_duck};
-use glam::Vec3;
-use net::message::{InputFrame, ServerMessage, Snapshot, delta_compress};
-use net::server::ServerConnector;
-use serde::{Deserialize, Serialize};
-use uuid::Uuid;
-use chrono::Utc;
 use ::leaderboard::{
     LeaderboardService,
     models::{LeaderboardWindow, Run, Score},
 };
+use chrono::Utc;
+use duck_hunt_server::{DuckState, Server as DuckServer, replicate, spawn_duck, validate_hit};
+use glam::Vec3;
+use net::message::{InputFrame, ServerMessage, Snapshot, delta_compress};
+use net::server::ServerConnector;
+use serde::{Deserialize, Serialize};
 #[cfg(test)]
 use std::sync::atomic::{AtomicBool, Ordering};
+use uuid::Uuid;
 
 #[cfg(test)]
 static FORCE_SERIALIZATION_ERROR: AtomicBool = AtomicBool::new(false);
@@ -37,6 +37,8 @@ struct ConnectorHandle {
     snapshot_tx: Sender<ServerMessage>,
     /// Bitmask describing which updates this client is interested in.
     interest_mask: u64,
+    /// Receives interest mask updates from the network layer.
+    interest_rx: Receiver<u64>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -57,6 +59,7 @@ struct Room {
     player_ids: Vec<Uuid>,
     leaderboard: LeaderboardService,
     leaderboard_id: Uuid,
+    start_time: std::time::Instant,
 }
 
 impl Room {
@@ -82,16 +85,23 @@ impl Room {
             player_ids: Vec::new(),
             leaderboard,
             leaderboard_id: LEADERBOARD_ID,
+            start_time: std::time::Instant::now(),
         }
     }
 
     fn add_connector(&mut self, connector: ServerConnector) -> usize {
-        let ServerConnector { input_rx, snapshot_tx, .. } = connector;
+        let ServerConnector {
+            input_rx,
+            snapshot_tx,
+            interest_rx,
+            ..
+        } = connector;
         self.duck_server.snapshot_txs.push(snapshot_tx.clone());
         self.connectors.push(ConnectorHandle {
             input_rx,
             snapshot_tx,
             interest_mask: u64::MAX,
+            interest_rx,
         });
         self.scores.push(0);
         self.player_ids.push(Uuid::new_v4());
@@ -112,6 +122,9 @@ impl Room {
         self.frame = self.frame.wrapping_add(1);
         // Consume all pending input frames.
         for (i, conn) in self.connectors.iter_mut().enumerate() {
+            while let Ok(mask) = conn.interest_rx.try_recv() {
+                conn.interest_mask = mask;
+            }
             while let Ok(frame) = conn.input_rx.try_recv() {
                 if frame.frame != self.frame {
                     continue;
@@ -156,11 +169,8 @@ impl Room {
             match delta_compress(base, &snapshot) {
                 Ok(delta) => {
                     if let Ok(prev_scores) = postcard::from_bytes::<Vec<u32>>(&base.data) {
-                        for (i, (prev, curr)) in prev_scores
-                            .iter()
-                            .zip(&self.scores)
-                            .enumerate()
-                            .take(64)
+                        for (i, (prev, curr)) in
+                            prev_scores.iter().zip(&self.scores).enumerate().take(64)
                         {
                             if prev != curr {
                                 diff_mask |= 1 << i;
@@ -183,12 +193,7 @@ impl Room {
 
         let mut closed = Vec::new();
         let diff_masks = vec![diff_mask; self.connectors.len()];
-        for (i, (conn, &diff_mask)) in self
-            .connectors
-            .iter()
-            .zip(diff_masks.iter())
-            .enumerate()
-        {
+        for (i, (conn, &diff_mask)) in self.connectors.iter().zip(diff_masks.iter()).enumerate() {
             if conn.interest_mask & diff_mask == 0 {
                 continue;
             }
@@ -314,18 +319,16 @@ mod tests {
     use crate::test_logger::{INIT, LOGGER};
     use log::LevelFilter;
     use net::message::apply_delta;
-    use std::sync::atomic::Ordering;
-    use tokio::sync::mpsc;
     use serial_test::serial;
     use std::path::PathBuf;
+    use std::sync::atomic::Ordering;
+    use tokio::sync::mpsc;
 
     async fn test_room() -> Room {
-        let leaderboard = ::leaderboard::LeaderboardService::new(
-            "sqlite::memory:",
-            PathBuf::from("replays"),
-        )
-        .await
-        .unwrap();
+        let leaderboard =
+            ::leaderboard::LeaderboardService::new("sqlite::memory:", PathBuf::from("replays"))
+                .await
+                .unwrap();
         Room::new(leaderboard)
     }
 
@@ -336,13 +339,15 @@ mod tests {
 
         // Attach a dummy connector so messages are sent.
         let (_input_tx, input_rx) = mpsc::channel(1);
+        let (_interest_tx, interest_rx) = mpsc::channel(1);
         let (snapshot_tx, mut snapshot_rx) = mpsc::channel(8);
         room.connectors.push(ConnectorHandle {
             input_rx,
             snapshot_tx,
             interest_mask: u64::MAX,
+            interest_rx,
         });
-    room.scores.push(0);
+        room.scores.push(0);
 
         // First tick sends a baseline snapshot.
         room.tick().await;
@@ -376,18 +381,22 @@ mod tests {
     async fn multiplayer_scoring() {
         let mut room = test_room().await;
         let (tx1, rx1) = mpsc::channel(1);
+        let (_i1tx, i1rx) = mpsc::channel(1);
         let (snap_tx1, mut snap_rx1) = mpsc::channel(8);
         room.connectors.push(ConnectorHandle {
             input_rx: rx1,
             snapshot_tx: snap_tx1,
             interest_mask: u64::MAX,
+            interest_rx: i1rx,
         });
         let (tx2, rx2) = mpsc::channel(1);
+        let (_i2tx, i2rx) = mpsc::channel(1);
         let (snap_tx2, mut snap_rx2) = mpsc::channel(8);
         room.connectors.push(ConnectorHandle {
             input_rx: rx2,
             snapshot_tx: snap_tx2,
             interest_mask: u64::MAX,
+            interest_rx: i2rx,
         });
         room.scores.push(0);
         room.scores.push(0);
@@ -463,34 +472,50 @@ mod tests {
         let mut room = test_room().await;
 
         let (_tx1, rx1) = mpsc::channel(1);
+        let (_i1tx, i1rx) = mpsc::channel(1);
         let (snap_tx1, mut snap_rx1) = mpsc::channel(8);
         room.connectors.push(ConnectorHandle {
             input_rx: rx1,
             snapshot_tx: snap_tx1,
             interest_mask: 1,
+            interest_rx: i1rx,
         });
         let (_tx2, rx2) = mpsc::channel(1);
+        let (_i2tx, i2rx) = mpsc::channel(1);
         let (snap_tx2, mut snap_rx2) = mpsc::channel(8);
         room.connectors.push(ConnectorHandle {
             input_rx: rx2,
             snapshot_tx: snap_tx2,
             interest_mask: 1 << 1,
+            interest_rx: i2rx,
         });
         room.scores.push(0);
         room.scores.push(0);
 
         room.tick().await; // baseline
-        assert!(matches!(snap_rx1.try_recv().unwrap(), ServerMessage::Baseline(_)));
-        assert!(matches!(snap_rx2.try_recv().unwrap(), ServerMessage::Baseline(_)));
+        assert!(matches!(
+            snap_rx1.try_recv().unwrap(),
+            ServerMessage::Baseline(_)
+        ));
+        assert!(matches!(
+            snap_rx2.try_recv().unwrap(),
+            ServerMessage::Baseline(_)
+        ));
 
         room.scores[0] = 1;
         room.tick().await;
-        assert!(matches!(snap_rx1.try_recv().unwrap(), ServerMessage::Delta(_)));
+        assert!(matches!(
+            snap_rx1.try_recv().unwrap(),
+            ServerMessage::Delta(_)
+        ));
         assert!(snap_rx2.try_recv().is_err());
 
         room.scores[1] = 1;
         room.tick().await;
-        assert!(matches!(snap_rx2.try_recv().unwrap(), ServerMessage::Delta(_)));
+        assert!(matches!(
+            snap_rx2.try_recv().unwrap(),
+            ServerMessage::Delta(_)
+        ));
         assert!(snap_rx1.try_recv().is_err());
     }
 
@@ -507,11 +532,13 @@ mod tests {
 
         let mut room = test_room().await;
         let (_input_tx, input_rx) = mpsc::channel(1);
+        let (_interest_tx, interest_rx) = mpsc::channel(1);
         let (snapshot_tx, mut snapshot_rx) = mpsc::channel(1);
         room.connectors.push(ConnectorHandle {
             input_rx,
             snapshot_tx,
             interest_mask: u64::MAX,
+            interest_rx,
         });
 
         room.tick().await;
@@ -539,11 +566,13 @@ mod tests {
 
         let mut room = test_room().await;
         let (_input_tx, input_rx) = mpsc::channel(1);
+        let (_interest_tx, interest_rx) = mpsc::channel(1);
         let (snapshot_tx, snapshot_rx) = mpsc::channel(1);
         room.connectors.push(ConnectorHandle {
             input_rx,
             snapshot_tx,
             interest_mask: u64::MAX,
+            interest_rx,
         });
         room.scores.push(0);
 
@@ -575,11 +604,13 @@ mod tests {
     async fn duck_spawn_and_position_updates() {
         let mut room = test_room().await;
         let (_input_tx, input_rx) = mpsc::channel(1);
+        let (_interest_tx, interest_rx) = mpsc::channel(1);
         let (snapshot_tx, mut snapshot_rx) = mpsc::channel(8);
         room.connectors.push(ConnectorHandle {
             input_rx,
             snapshot_tx: snapshot_tx.clone(),
             interest_mask: u64::MAX,
+            interest_rx,
         });
         room.scores.push(0);
         room.duck_server.snapshot_txs.push(snapshot_tx);
@@ -618,12 +649,14 @@ mod tests {
     async fn removes_closed_connectors() {
         let mut room = test_room().await;
         let (_input_tx, input_rx) = mpsc::channel(1);
+        let (_interest_tx, interest_rx) = mpsc::channel(1);
         let (snapshot_tx, snapshot_rx) = mpsc::channel(1);
         drop(snapshot_rx);
         room.connectors.push(ConnectorHandle {
             input_rx,
             snapshot_tx,
             interest_mask: u64::MAX,
+            interest_rx,
         });
         room.scores.push(0);
 
@@ -637,11 +670,13 @@ mod tests {
     async fn set_interest_updates_mask() {
         let mut room = test_room().await;
         let (_input_tx, input_rx) = mpsc::channel(1);
+        let (_interest_tx, interest_rx) = mpsc::channel(1);
         let (snapshot_tx, mut snapshot_rx) = mpsc::channel(8);
         room.connectors.push(ConnectorHandle {
             input_rx,
             snapshot_tx,
             interest_mask: 0,
+            interest_rx,
         });
         room.scores.push(0);
 
@@ -651,6 +686,9 @@ mod tests {
         room.set_interest(0, 1);
         room.scores[0] = 1;
         room.tick().await;
-        assert!(matches!(snapshot_rx.try_recv().unwrap(), ServerMessage::Delta(_)));
+        assert!(matches!(
+            snapshot_rx.try_recv().unwrap(),
+            ServerMessage::Delta(_)
+        ));
     }
 }
