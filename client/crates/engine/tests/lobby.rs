@@ -1,6 +1,6 @@
 use bevy::ecs::system::RunSystemOnce;
 use bevy::prelude::*;
-use engine::{discover_modules, setup_lobby, LobbyPad, ModuleRegistry};
+use engine::{discover_modules, setup_lobby, DocPad, LobbyPad, ModuleRegistry};
 use std::fs;
 use std::path::Path;
 
@@ -55,25 +55,22 @@ capabilities = ["LOBBY_PAD"]
 }
 
 #[test]
-fn shows_empty_state_when_registry_empty() {
+fn spawns_help_pads_when_registry_empty() {
     let mut app = test_app();
     app.world.run_system_once(setup_lobby);
 
-    let mut texts = app.world.query::<&Text>();
-    let mut found_msg = false;
-    let mut found_link = false;
-    for text in texts.iter(&app.world) {
-        for section in &text.sections {
-            if section.value.contains("No modules installed") {
-                found_msg = true;
-            }
-            if section.value.contains("docs/modules.md") {
-                found_link = true;
-            }
-        }
+    let pads: Vec<_> = app.world.query::<&DocPad>().iter(&app.world).collect();
+    assert_eq!(pads.len(), 5);
+    let expected = [
+        "docs/netcode.md",
+        "docs/modules.md",
+        "docs/DuckHunt.md",
+        "docs/ops.md",
+        "docs/Email.md",
+    ];
+    for url in expected {
+        assert!(pads.iter().any(|pad| pad.url == url), "missing pad for {url}");
     }
-    assert!(found_msg, "missing empty-state message");
-    assert!(found_link, "missing docs link");
 }
 
 #[test]
