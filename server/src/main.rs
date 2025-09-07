@@ -44,6 +44,8 @@ struct Cli {
     posthog_key: Option<String>,
     #[arg(long, env = "ENABLE_OTEL", default_value_t = false)]
     enable_otel: bool,
+    #[arg(long, env = "ARENA_ANALYTICS_OPT_OUT", default_value_t = false)]
+    analytics_opt_out: bool,
 }
 
 #[derive(Clone)]
@@ -65,6 +67,7 @@ fn auth_routes() -> Router<Arc<AppState>> {
 
 async fn ws_handler(State(state): State<Arc<AppState>>, ws: WebSocketUpgrade) -> impl IntoResponse {
     state.analytics.dispatch(Event::WsConnected);
+    state.analytics.dispatch(Event::SessionStart);
     ws.on_upgrade(|socket| async move {
         handle_socket(socket).await;
     })
@@ -75,6 +78,7 @@ async fn signal_ws_handler(
     ws: WebSocketUpgrade,
 ) -> impl IntoResponse {
     state.analytics.dispatch(Event::WsConnected);
+    state.analytics.dispatch(Event::SessionStart);
     ws.on_upgrade(move |socket| async move {
         handle_signal_socket(state, socket).await;
     })
@@ -272,6 +276,7 @@ struct StoreResponse {
 
 async fn store_handler(State(state): State<Arc<AppState>>) -> Json<StoreResponse> {
     state.analytics.dispatch(Event::StoreViewed);
+    state.analytics.dispatch(Event::StoreOpen);
     Json(StoreResponse {
         items: state.catalog.all().to_vec(),
     })
@@ -466,6 +471,7 @@ async fn setup(smtp: SmtpConfig, analytics: Analytics) -> Result<AppState> {
     let entitlements = EntitlementStore::default();
     if let Err(e) = entitlements.load(&entitlements_path) {
         log::warn!("failed to load entitlements: {e}");
+        analytics.dispatch(Event::Error { message: e.to_string() });
     }
     Ok(AppState {
         email,
@@ -481,7 +487,11 @@ async fn setup(smtp: SmtpConfig, analytics: Analytics) -> Result<AppState> {
 }
 
 async fn run(cli: Cli) -> Result<()> {
-    let analytics = Analytics::new(cli.posthog_key.clone(), cli.enable_otel);
+    let analytics = Analytics::new(
+        !cli.analytics_opt_out,
+        cli.posthog_key.clone(),
+        cli.enable_otel,
+    );
     let smtp = cli.smtp;
     let state = Arc::new(setup(smtp, analytics).await?);
 

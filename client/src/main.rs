@@ -28,7 +28,10 @@ fn fetch_entitlements() -> Vec<String> {
 }
 
 fn main() {
-    let analytics = Analytics::new(None, false);
+    let enabled = std::env::var("ARENA_ANALYTICS_OPT_OUT").is_err();
+    let analytics = Analytics::new(enabled, None, false);
+    analytics.dispatch(Event::SessionStart);
+    analytics.dispatch(Event::LevelStart { level: 1 });
     let entitlements = EntitlementStore::default();
     let user = UserId::new_v4();
     let _ = entitlements.has(user, "basic");

@@ -12,7 +12,7 @@
   "panels": [
     {
       "type": "graph",
-      "title": "Analytics Events",
+      "title": "Mission Events",
       "targets": [
         {
           "expr": "sum(rate(analytics_events_total[5m])) by (event)",
@@ -22,5 +22,5 @@
     }
   ],
   "title": "Arena Analytics",
-  "version": 1
+  "version": 2
 }

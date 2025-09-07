@@ -18,6 +18,11 @@ pub enum Event {
     EntitlementChecked,
     RunVerificationFailed,
 
+    SessionStart,
+    LevelStart { level: u32 },
+    StoreOpen,
+    Error { message: String },
+
     // Gameplay
     PlayerJoined,
     PlayerJumped,
@@ -37,6 +42,24 @@ pub enum Event {
     EntitlementGranted,
 }
 
+#[derive(Default)]
+struct ColumnarStore {
+    names: Vec<&'static str>,
+    data: Vec<Option<String>>,
+    events: Vec<Event>,
+}
+
+impl ColumnarStore {
+    fn push(&mut self, name: &'static str, data: Option<String>, event: Event) {
+        self.names.push(name);
+        self.data.push(data);
+        self.events.push(event);
+    }
+
+    fn events(&self) -> Vec<Event> {
+        self.events.clone()
+    }
+}
 impl Event {
     pub fn name(&self) -> &'static str {
         match self {
@@ -45,6 +68,10 @@ impl Event {
             Event::PurchaseCompleted { .. } => "purchase_completed",
             Event::EntitlementChecked => "entitlement_checked",
             Event::RunVerificationFailed => "run_verification_failed",
+            Event::SessionStart => "session_start",
+            Event::LevelStart { .. } => "level_start",
+            Event::StoreOpen => "store_open",
+            Event::Error { .. } => "error",
             Event::PlayerJoined => "player_joined",
             Event::PlayerJumped => "player_jumped",
             Event::PlayerDied => "player_died",
@@ -64,7 +91,8 @@ impl Event {
 
 #[derive(Clone)]
 pub struct Analytics {
-    store: Arc<Mutex<Vec<Event>>>,
+    enabled: bool,
+    store: Arc<Mutex<ColumnarStore>>,
     #[cfg(feature = "prometheus")]
     counter: IntCounterVec,
     #[cfg(feature = "posthog")]
@@ -74,8 +102,8 @@ pub struct Analytics {
 }
 
 impl Analytics {
-    pub fn new(posthog_key: Option<String>, enable_otel: bool) -> Self {
-        let store = Arc::new(Mutex::new(Vec::new()));
+    pub fn new(enabled: bool, posthog_key: Option<String>, enable_otel: bool) -> Self {
+        let store = Arc::new(Mutex::new(ColumnarStore::default()));
 
         #[cfg(feature = "prometheus")]
         let counter = {
@@ -110,6 +138,7 @@ impl Analytics {
         let _ = enable_otel;
 
         Self {
+            enabled,
             store,
             #[cfg(feature = "prometheus")]
             counter,
@@ -121,8 +150,18 @@ impl Analytics {
     }
 
     pub fn dispatch(&self, event: Event) {
-        self.store.lock().unwrap().push(event.clone());
+        if !self.enabled {
+            return;
+        }
         let name = event.name();
+        let data = match &event {
+            Event::Error { message } => Some(message.clone()),
+            _ => None,
+        };
+        self.store
+            .lock()
+            .unwrap()
+            .push(name, data, event.clone());
 
         #[cfg(feature = "prometheus")]
         self.counter.with_label_values(&[name]).inc();
@@ -149,7 +188,7 @@ impl Analytics {
     }
 
     pub fn events(&self) -> Vec<Event> {
-        self.store.lock().unwrap().clone()
+        self.store.lock().unwrap().events()
     }
 
     #[cfg(feature = "prometheus")]
@@ -174,7 +213,7 @@ mod tests {
     #[cfg(feature = "prometheus")]
     #[test]
     fn store_and_prometheus() {
-        let analytics = Analytics::new(None, false);
+        let analytics = Analytics::new(true, None, false);
         analytics.dispatch(Event::PlayerJoined);
         assert_eq!(analytics.events(), vec![Event::PlayerJoined]);
         assert_eq!(analytics.counter_value("player_joined"), 1);
@@ -183,7 +222,7 @@ mod tests {
     #[cfg(not(feature = "prometheus"))]
     #[test]
     fn store() {
-        let analytics = Analytics::new(None, false);
+        let analytics = Analytics::new(true, None, false);
         analytics.dispatch(Event::PlayerJoined);
         assert_eq!(analytics.events(), vec![Event::PlayerJoined]);
     }
@@ -204,7 +243,7 @@ mod tests {
             std::env::set_var("POSTHOG_ENDPOINT", server.url("/capture/"));
         }
 
-        let analytics = Analytics::new(Some("test_key".into()), false);
+        let analytics = Analytics::new(true, Some("test_key".into()), false);
         analytics.dispatch(Event::PlayerJoined);
 
         tokio::time::sleep(Duration::from_millis(50)).await;
@@ -214,7 +253,7 @@ mod tests {
     #[cfg(feature = "otlp")]
     #[test]
     fn otlp_counter() {
-        let analytics = Analytics::new(None, true);
+        let analytics = Analytics::new(true, None, true);
         analytics.dispatch(Event::PlayerJoined);
         assert_eq!(analytics.otlp_count(), 1);
     }

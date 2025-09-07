@@ -23,7 +23,7 @@ async fn setup_succeeds_without_env_vars() {
         env::remove_var("DATABASE_URL");
     }
 
-    let analytics = Analytics::new(None, false);
+    let analytics = Analytics::new(true, None, false);
     assert!(setup(SmtpConfig::default(), analytics).await.is_ok());
 }
 
@@ -82,7 +82,7 @@ async fn websocket_signaling_completes_handshake() {
         email,
         rooms,
         smtp: cfg,
-        analytics: Analytics::new(None, false),
+        analytics: Analytics::new(true, None, false),
         leaderboard: leaderboard.clone(),
         catalog: Catalog::new(vec![Sku {
             id: "basic".into(),
@@ -149,7 +149,7 @@ async fn websocket_signaling_invalid_sdp_logs_and_closes() {
         email,
         rooms,
         smtp: cfg,
-        analytics: Analytics::new(None, false),
+        analytics: Analytics::new(true, None, false),
         leaderboard: leaderboard.clone(),
         catalog: Catalog::new(vec![Sku {
             id: "basic".into(),
@@ -209,7 +209,7 @@ async fn websocket_signaling_unexpected_binary_logs_and_closes() {
         email,
         rooms,
         smtp: cfg,
-        analytics: Analytics::new(None, false),
+        analytics: Analytics::new(true, None, false),
         leaderboard: leaderboard.clone(),
         catalog: Catalog::new(vec![Sku {
             id: "basic".into(),
@@ -269,7 +269,7 @@ async fn websocket_logs_unexpected_messages_and_closes() {
         email,
         rooms,
         smtp: cfg,
-        analytics: Analytics::new(None, false),
+        analytics: Analytics::new(true, None, false),
         leaderboard: leaderboard.clone(),
         catalog: Catalog::new(vec![Sku {
             id: "basic".into(),
@@ -319,7 +319,7 @@ async fn mail_test_defaults_to_from_address() {
         email,
         rooms,
         smtp: cfg.clone(),
-        analytics: Analytics::new(None, false),
+        analytics: Analytics::new(true, None, false),
         leaderboard: leaderboard.clone(),
         catalog: Catalog::new(vec![Sku {
             id: "basic".into(),
@@ -357,7 +357,7 @@ async fn mail_test_accepts_user_address_query() {
         email,
         rooms,
         smtp: cfg.clone(),
-        analytics: Analytics::new(None, false),
+        analytics: Analytics::new(true, None, false),
         leaderboard: leaderboard.clone(),
         catalog: Catalog::new(vec![Sku {
             id: "basic".into(),
@@ -402,7 +402,7 @@ async fn mail_test_accepts_user_address_body() {
         email,
         rooms,
         smtp: cfg.clone(),
-        analytics: Analytics::new(None, false),
+        analytics: Analytics::new(true, None, false),
         leaderboard: leaderboard.clone(),
         catalog: Catalog::new(vec![Sku {
             id: "basic".into(),
@@ -446,7 +446,7 @@ async fn mail_config_redacts_password() {
         email,
         rooms,
         smtp: cfg.clone(),
-        analytics: Analytics::new(None, false),
+        analytics: Analytics::new(true, None, false),
         leaderboard: leaderboard.clone(),
         catalog: Catalog::new(vec![Sku {
             id: "basic".into(),
@@ -477,7 +477,7 @@ async fn admin_mail_config_route() {
         email,
         rooms,
         smtp: cfg,
-        analytics: Analytics::new(None, false),
+        analytics: Analytics::new(true, None, false),
         leaderboard: leaderboard.clone(),
         catalog: Catalog::new(vec![Sku {
             id: "basic".into(),
@@ -526,7 +526,7 @@ async fn stripe_webhook_accepts_valid_signature() {
         email,
         rooms,
         smtp: cfg.clone(),
-        analytics: Analytics::new(None, false),
+        analytics: Analytics::new(true, None, false),
         leaderboard,
         catalog: Catalog::new(vec![Sku {
             id: "basic".into(),
@@ -597,7 +597,7 @@ async fn stripe_webhook_rejects_invalid_signature() {
         email,
         rooms,
         smtp: cfg.clone(),
-        analytics: Analytics::new(None, false),
+        analytics: Analytics::new(true, None, false),
         leaderboard,
         catalog: Catalog::new(vec![Sku {
             id: "basic".into(),
@@ -659,7 +659,7 @@ async fn round_scores_appear_in_leaderboard() {
         email,
         rooms: rooms.clone(),
         smtp: cfg,
-        analytics: Analytics::new(None, false),
+        analytics: Analytics::new(true, None, false),
         leaderboard: leaderboard.clone(),
         catalog: Catalog::new(vec![Sku {
             id: "basic".into(),
