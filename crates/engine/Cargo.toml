@@ -1,0 +1,12 @@
+[package]
+name = "arena-engine"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+bevy = { version = "0.12", default-features = false, features = ["bevy_render", "bevy_core_pipeline", "bevy_pbr", "bevy_text"] }
+bevy_rapier3d = { version = "0.24", default-features = false, features = ["dim3"] }
+platform-api = { path = "../platform-api" }
+
+[features]
+default = []
