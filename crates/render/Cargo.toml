@@ -1,8 +1,7 @@
 [package]
-name = "client"
+name = "render"
 version = "0.1.0"
 edition = "2024"
-
 
 [dependencies]
 bevy = { version = "0.12", default-features = false, features = [
@@ -28,18 +27,9 @@ bevy = { version = "0.12", default-features = false, features = [
     "tonemapping_luts",
     "default_font",
 ] }
-engine = { path = "crates/engine" }
-duck_hunt = { path = "crates/minigames/duck_hunt" }
-null_module = { path = "../crates/minigames/null_module" }
-physics = { path = "crates/physics" }
-editor = { path = "../crates/editor" }
-render = { path = "../crates/render" }
+bevy_webgl2 = { path = "../bevy_webgl2", optional = true }
+uuid = { version = "1", default-features = false, features = ["js"] }
 
 [features]
-default = ["audio"]
-audio = ["bevy/bevy_audio"]
-webgl2 = ["render/webgl2"]
-
-[target.'cfg(target_arch = "wasm32")'.dependencies]
-wee_alloc = { version = "0.4" }
-wasm-bindgen = "0.2"
+default = []
+webgl2 = ["bevy/webgl2", "bevy_webgl2"]
