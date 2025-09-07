@@ -247,6 +247,7 @@ where
 mod tests {
     use super::*;
     use std::sync::atomic::{AtomicUsize, Ordering};
+    use serial_test::serial;
 
     fn clear_limits() {
         let mut map = match RATE_LIMITS.lock() {
@@ -260,6 +261,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn rate_limiting() {
         clear_limits();
         assert!(EmailService::allowed("a@example.com").unwrap());
@@ -267,6 +269,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn invalid_address() {
         clear_limits();
         let mut cfg = SmtpConfig::default();
@@ -279,6 +282,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn lock_poisoned() {
         clear_limits();
         let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
@@ -294,6 +298,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn retries_on_failure() {
         let attempts = AtomicUsize::new(0);
         send_with_retry(|| {
