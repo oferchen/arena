@@ -8,7 +8,6 @@ use lettre::address::AddressError;
 use lettre::transport::smtp::{
     authentication::Credentials,
     client::{Tls, TlsParameters},
-    Error as SmtpError,
 };
 use lettre::{AsyncSmtpTransport, AsyncTransport, Message, Tokio1Executor};
 use once_cell::sync::Lazy;
