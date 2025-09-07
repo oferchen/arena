@@ -12,11 +12,11 @@ use chrono::Utc;
 use serde::Deserialize;
 use uuid::Uuid;
 
-use analytics::Event;
 use ::leaderboard::{
     LeaderboardService,
     models::{LeaderboardWindow, Run, Score},
 };
+use analytics::Event;
 
 use crate::AppState;
 
@@ -64,9 +64,7 @@ async fn post_run(
     };
     let verified = verify_score(&replay_bytes);
     if verified != Some(payload.points) {
-        state
-            .analytics
-            .dispatch(Event::RunVerificationFailed);
+        state.analytics.dispatch(Event::RunVerificationFailed);
         return StatusCode::BAD_REQUEST;
     }
 
@@ -181,30 +179,31 @@ mod tests {
         email::{EmailService, SmtpConfig},
         room,
     };
+    use ::leaderboard::LeaderboardWindow;
+    use ::payments::{Catalog, EntitlementStore, Sku, StripeClient};
     use analytics::Analytics;
     use axum::Json;
     use axum::extract::{Path, State};
-    use ::payments::{Catalog, EntitlementStore, StripeClient, Sku};
-    use ::leaderboard::LeaderboardWindow;
 
     #[tokio::test]
     async fn post_run_rejects_malformed_base64() {
         let cfg = SmtpConfig::default();
         let email = Arc::new(EmailService::new(cfg.clone()).unwrap());
         let rooms = room::RoomManager::new();
-        let leaderboard = ::leaderboard::LeaderboardService::new(
-            "sqlite::memory:",
-            PathBuf::from("replays"),
-        )
-        .await
-        .unwrap();
+        let leaderboard =
+            ::leaderboard::LeaderboardService::new("sqlite::memory:", PathBuf::from("replays"))
+                .await
+                .unwrap();
         let state = Arc::new(AppState {
             email,
             rooms,
             smtp: cfg,
             analytics: Analytics::new(None, false),
             leaderboard: ::leaderboard::LeaderboardService::default(),
-            catalog: Catalog::new(vec![Sku { id: "basic".into(), price_cents: 1000 }]),
+            catalog: Catalog::new(vec![Sku {
+                id: "basic".into(),
+                price_cents: 1000,
+            }]),
             stripe: StripeClient::new(),
             entitlements: EntitlementStore::default(),
         });
@@ -284,14 +283,20 @@ mod tests {
         };
         let status = post_run(Path(leaderboard_id), State(state.clone()), Json(payload)).await;
         assert_eq!(status, StatusCode::CREATED);
-        let scores = state.leaderboard.get_scores(leaderboard_id).await;
+        let scores = state
+            .leaderboard
+            .get_scores(leaderboard_id, LeaderboardWindow::AllTime)
+            .await;
         assert_eq!(scores.len(), 1);
         let run_id = scores[0].run_id;
         assert!(!scores[0].verified);
 
         let status = post_verify(Path((leaderboard_id, run_id)), State(state.clone())).await;
         assert_eq!(status, StatusCode::OK);
-        let scores = state.leaderboard.get_scores(leaderboard_id).await;
+        let scores = state
+            .leaderboard
+            .get_scores(leaderboard_id, LeaderboardWindow::AllTime)
+            .await;
         assert!(scores[0].verified);
     }
 }

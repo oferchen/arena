@@ -1,13 +1,13 @@
 #![cfg_attr(target_arch = "wasm32", feature(web_worker))]
 
+use analytics::{Analytics, Event};
 use bevy::prelude::*;
 use duck_hunt::DuckHuntPlugin;
 use engine::{AppExt, EnginePlugin};
 use null_module::NullModule;
+use payments::{EntitlementList, EntitlementStore, UserId};
 use physics::PhysicsPlugin;
 use render::RenderPlugin;
-use analytics::{Analytics, Event};
-use payments::{EntitlementStore, UserId};
 
 #[cfg(all(target_arch = "wasm32", not(target_os = "emscripten")))]
 #[global_allocator]
@@ -34,11 +34,11 @@ fn main() {
     let _ = entitlements.has(user, "basic");
     analytics.dispatch(Event::EntitlementChecked);
 
-    App::new()
-        .add_plugins(RenderPlugin)
+    let mut app = App::new();
+    app.add_plugins(RenderPlugin)
         .add_plugins(PhysicsPlugin)
         .add_plugins(EnginePlugin);
-    if entitlements.contains(&"duck_hunt".to_string()) {
+    if entitlements.has(user, "duck_hunt") {
         app.add_game_module::<DuckHuntPlugin>();
     }
     app.add_game_module::<NullModule>().run();

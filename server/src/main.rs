@@ -3,11 +3,12 @@ use std::{net::SocketAddr, path::PathBuf, sync::Arc};
 use anyhow::{Result, anyhow};
 
 use crate::email::{EmailService, SmtpConfig, StartTls};
+use ::payments::{Catalog, EntitlementList, EntitlementStore, Sku, StripeClient};
 use analytics::{Analytics, Event};
 use axum::{
     Router,
     extract::{
-        Json, Query, State, Path,
+        Json, Path, Query, State,
         ws::{Message, WebSocket, WebSocketUpgrade},
     },
     http::{HeaderName, HeaderValue, StatusCode, header::CACHE_CONTROL},
@@ -20,8 +21,6 @@ use net::server::ServerConnector;
 use serde::{Deserialize, Serialize};
 use webrtc::peer_connection::sdp::sdp_type::RTCSdpType;
 use webrtc::peer_connection::sdp::session_description::RTCSessionDescription;
-use analytics::{Analytics, Event};
-use ::payments::{Catalog, EntitlementStore, Sku, StripeClient};
 
 mod email;
 mod leaderboard;
@@ -192,7 +191,7 @@ struct StoreResponse {
 async fn store_handler(State(state): State<Arc<AppState>>) -> Json<StoreResponse> {
     state.analytics.dispatch(Event::StoreViewed);
     Json(StoreResponse {
-        items: payments::catalog().to_vec(),
+        items: state.catalog.all().to_vec(),
     })
 }
 
@@ -212,7 +211,7 @@ async fn purchase_start_handler(
     Json(req): Json<PurchaseRequest>,
 ) -> Json<PurchaseResponse> {
     state.analytics.dispatch(Event::PurchaseInitiated);
-    let session_id = payments::initiate_purchase(&req.user, &req.sku);
+    let session_id = ::payments::initiate_purchase(&req.user, &req.sku);
     Json(PurchaseResponse { session_id })
 }
 
@@ -244,14 +243,12 @@ async fn stripe_webhook_handler(
 ) -> StatusCode {
     if event.r#type == "checkout.session.completed" {
         if let Some(meta) = event.data.object.metadata {
-            payments::complete_purchase(
+            ::payments::complete_purchase(
                 &state.entitlements,
                 &event.data.object.client_reference_id,
                 &meta.sku,
             );
-            let _ = state
-                .entitlements
-                .save(&state.entitlements_path);
+            let _ = state.entitlements.save(&state.entitlements_path);
             state.analytics.dispatch(Event::PurchaseSucceeded);
             state.analytics.dispatch(Event::EntitlementGranted);
             StatusCode::OK
@@ -311,10 +308,23 @@ async fn setup(smtp: SmtpConfig, analytics: Analytics) -> Result<AppState> {
 
     let rooms = room::RoomManager::new();
     let leaderboard = ::leaderboard::LeaderboardService::default();
-    let catalog = Catalog::new(vec![Sku { id: "basic".to_string(), price_cents: 1000 }]);
+    let catalog = Catalog::new(vec![Sku {
+        id: "basic".to_string(),
+        price_cents: 1000,
+    }]);
     let stripe = StripeClient::new();
     let entitlements = EntitlementStore::default();
-    Ok(AppState { email, rooms, smtp, analytics, leaderboard, catalog, stripe, entitlements })
+    Ok(AppState {
+        email,
+        rooms,
+        smtp,
+        analytics,
+        leaderboard,
+        catalog,
+        stripe,
+        entitlements,
+        entitlements_path: PathBuf::new(),
+    })
 }
 
 async fn run(cli: Cli) -> Result<()> {
