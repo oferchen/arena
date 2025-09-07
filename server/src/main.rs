@@ -23,6 +23,7 @@ use analytics::{Analytics, Event};
 
 mod email;
 mod room;
+mod leaderboard;
 #[cfg(test)]
 mod test_logger;
 #[cfg(test)]
@@ -41,11 +42,12 @@ struct Cli {
 }
 
 #[derive(Clone)]
-struct AppState {
+pub(crate) struct AppState {
     email: Arc<EmailService>,
     rooms: room::RoomManager,
     smtp: SmtpConfig,
     analytics: Analytics,
+    leaderboard: ::leaderboard::LeaderboardService,
 }
 
 fn auth_routes() -> Router<Arc<AppState>> {
@@ -217,7 +219,8 @@ async fn setup(smtp: SmtpConfig, analytics: Analytics) -> Result<AppState> {
     })?);
 
     let rooms = room::RoomManager::new();
-    Ok(AppState { email, rooms, smtp, analytics })
+    let leaderboard = ::leaderboard::LeaderboardService::default();
+    Ok(AppState { email, rooms, smtp, analytics, leaderboard })
 }
 
 async fn run(cli: Cli) -> Result<()> {
@@ -238,6 +241,7 @@ async fn run(cli: Cli) -> Result<()> {
         .route("/signal", get(signal_ws_handler))
         .route("/admin/mail/test", post(mail_test_handler))
         .route("/admin/mail/config", get(mail_config_handler))
+        .nest("/leaderboard", leaderboard::routes())
         .nest_service("/assets", assets_service)
         .fallback_service(ServeDir::new("static"))
         .layer(SetResponseHeaderLayer::if_not_present(
