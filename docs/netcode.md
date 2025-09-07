@@ -5,6 +5,9 @@ DataChannels. The server drives a 60 Hz tick to keep clients in sync.
 
 ## Setup
 
+Before starting, build the client and server as described in the
+[README's building section](../README.md#building).
+
 1. Start the server with networking enabled:
    ```bash
    cargo run -p server

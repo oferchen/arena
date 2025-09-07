@@ -1,6 +1,8 @@
 # Email
 
-This guide covers configuration of Arena's outgoing email system.
+This guide covers configuration of Arena's outgoing email system. Build the
+project as outlined in the [README](../README.md#building) before configuring
+email.
 
 ## Environment variables and CLI flags
 
