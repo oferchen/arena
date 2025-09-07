@@ -11,7 +11,8 @@ use axum::{
         Json, Path, Query, State,
         ws::{Message, WebSocket, WebSocketUpgrade},
     },
-    http::{HeaderName, HeaderValue, StatusCode, header::CACHE_CONTROL},
+    body::Bytes,
+    http::{HeaderMap, HeaderName, HeaderValue, StatusCode, header::CACHE_CONTROL},
     response::IntoResponse,
     routing::{get, get_service, post},
 };
@@ -32,6 +33,8 @@ mod test_logger;
 mod tests;
 use prometheus::{Encoder, TextEncoder};
 use tower_http::{services::ServeDir, set_header::SetResponseHeaderLayer};
+use hmac::{Hmac, Mac};
+use sha2::Sha256;
 
 #[derive(Parser, Debug)]
 struct Cli {
@@ -318,8 +321,28 @@ struct StripeMetadata {
 
 async fn stripe_webhook_handler(
     State(state): State<Arc<AppState>>,
-    Json(event): Json<StripeWebhook>,
+    headers: HeaderMap,
+    body: Bytes,
 ) -> StatusCode {
+    let secret = match std::env::var("STRIPE_WEBHOOK_SECRET") {
+        Ok(s) => s,
+        Err(_) => return StatusCode::UNAUTHORIZED,
+    };
+
+    let sig_header = match headers.get("Stripe-Signature").and_then(|v| v.to_str().ok()) {
+        Some(h) => h,
+        None => return StatusCode::UNAUTHORIZED,
+    };
+
+    if !verify_stripe_signature(sig_header, &body, &secret) {
+        return StatusCode::UNAUTHORIZED;
+    }
+
+    let event: StripeWebhook = match serde_json::from_slice(&body) {
+        Ok(e) => e,
+        Err(_) => return StatusCode::BAD_REQUEST,
+    };
+
     if event.r#type == "checkout.session.completed" {
         if let Some(meta) = event.data.object.metadata {
             ::payments::complete_purchase(
@@ -337,6 +360,38 @@ async fn stripe_webhook_handler(
     } else {
         StatusCode::BAD_REQUEST
     }
+}
+
+fn verify_stripe_signature(header: &str, payload: &[u8], secret: &str) -> bool {
+    let mut timestamp = "";
+    let mut signature = "";
+    for part in header.split(',') {
+        let mut kv = part.splitn(2, '=');
+        match (kv.next(), kv.next()) {
+            (Some("t"), Some(t)) => timestamp = t,
+            (Some("v1"), Some(s)) => signature = s,
+            _ => {}
+        }
+    }
+
+    if timestamp.is_empty() || signature.is_empty() {
+        return false;
+    }
+
+    let signed_payload = match std::str::from_utf8(payload) {
+        Ok(body) => format!("{}.{}", timestamp, body),
+        Err(_) => return false,
+    };
+
+    let mut mac = Hmac::<Sha256>::new_from_slice(secret.as_bytes()).unwrap();
+    mac.update(signed_payload.as_bytes());
+
+    let expected = match hex::decode(signature) {
+        Ok(v) => v,
+        Err(_) => return false,
+    };
+
+    mac.verify_slice(&expected).is_ok()
 }
 
 async fn entitlements_handler(
