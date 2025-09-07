@@ -270,6 +270,8 @@ fn update_round_timer(
 fn log_connection_events(mut events: EventReader<ConnectionEvent>) {
     for ev in events.read() {
         info!("connection event: {ev:?}");
+    }
+}
 
 #[cfg(test)]
 mod tests {
@@ -281,8 +283,13 @@ mod tests {
             points: vec![Vec3::new(1.0, 2.0, 3.0)],
             duration: 1.0,
         };
-        assert_eq!(spline.sample(0.5), Vec3::ZERO);
+        assert_eq!(sample_at(&spline, 0.5), Vec3::ZERO);
+    }
+
     fn sample_at(spline: &Spline, t: f32) -> Vec3 {
+        if spline.points.len() < 2 {
+            return Vec3::ZERO;
+        }
         let segments = spline.points.len() - 1;
         let seg_t = t * segments as f32;
         let segment = seg_t.floor().min((segments - 1) as f32) as usize;
