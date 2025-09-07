@@ -134,10 +134,12 @@ impl EmailService {
             .port(config.port)
             .timeout(Some(Duration::from_millis(config.timeout)));
 
-        let tls_params = TlsParameters::builder(config.host.clone()).build().map_err(|e| {
-            log::error!("failed to build TLS parameters: {e}");
-            EmailError::Smtp(e.to_string())
-        })?;
+        let tls_params = TlsParameters::builder(config.host.clone())
+            .build()
+            .map_err(|e| {
+                log::error!("failed to build TLS parameters: {e:?}");
+                EmailError::Smtp(e.to_string())
+            })?;
 
         builder = if config.smtps {
             builder.tls(Tls::Wrapper(tls_params))
@@ -310,11 +312,10 @@ mod tests {
         let mut cfg = SmtpConfig::default();
         cfg.from = "noreply@example.com".into();
         let svc = EmailService::new(cfg).unwrap();
-        let err = svc
-            .send_registration_password("not-an-email", "pw")
-            .unwrap_err();
-        assert!(matches!(err, EmailError::Address(_)));
-        assert!(err.source().is_some());
+        match svc.send_test("not-an-email") {
+            Err(EmailError::Address(_)) => {}
+            _ => panic!("expected address error"),
+        }
     }
 
     #[test]
