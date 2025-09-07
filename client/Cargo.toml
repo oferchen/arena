@@ -36,6 +36,7 @@ editor = { path = "../crates/editor" }
 render = { path = "../crates/render" }
 analytics = { path = "../crates/analytics" }
 payments = { path = "../crates/payments" }
+reqwest = { version = "0.12", features = ["json", "blocking"], optional = true }
 
 
 [features]
@@ -46,6 +47,9 @@ webgl2 = ["render/webgl2"]
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 wee_alloc = { version = "0.4" }
 wasm-bindgen = "0.2"
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+reqwest = { version = "0.12", features = ["json", "blocking"] }
 
 [dev-dependencies]
 wasm-bindgen-test = "0.3"
