@@ -347,14 +347,11 @@ mod tests {
     #[tokio::test]
     #[serial]
     async fn mail_test_defaults_to_from_address() {
-        let db = PgPoolOptions::new()
-            .connect_lazy("postgres://localhost")
-            .unwrap();
         let mut cfg = SmtpConfig::default();
         cfg.from = "default@example.com".into();
         let email = Arc::new(EmailService::new(cfg).unwrap());
         let rooms = room::RoomManager::new();
-        let state = Arc::new(AppState { db, email, rooms });
+        let state = Arc::new(AppState { email, rooms });
 
         assert_eq!(
             mail_test_handler(State(state.clone()), None, None).await,
@@ -369,14 +366,11 @@ mod tests {
     #[tokio::test]
     #[serial]
     async fn mail_test_accepts_user_address_query() {
-        let db = PgPoolOptions::new()
-            .connect_lazy("postgres://localhost")
-            .unwrap();
         let mut cfg = SmtpConfig::default();
         cfg.from = "query@example.com".into();
         let email = Arc::new(EmailService::new(cfg).unwrap());
         let rooms = room::RoomManager::new();
-        let state = Arc::new(AppState { db, email, rooms });
+        let state = Arc::new(AppState { email, rooms });
 
         assert_eq!(
             mail_test_handler(State(state.clone()), None, None).await,
@@ -396,14 +390,11 @@ mod tests {
     #[tokio::test]
     #[serial]
     async fn mail_test_accepts_user_address_body() {
-        let db = PgPoolOptions::new()
-            .connect_lazy("postgres://localhost")
-            .unwrap();
         let mut cfg = SmtpConfig::default();
         cfg.from = "body@example.com".into();
         let email = Arc::new(EmailService::new(cfg).unwrap());
         let rooms = room::RoomManager::new();
-        let state = Arc::new(AppState { db, email, rooms });
+        let state = Arc::new(AppState { email, rooms });
 
         assert_eq!(
             mail_test_handler(State(state.clone()), None, None).await,
