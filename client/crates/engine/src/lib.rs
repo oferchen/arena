@@ -19,6 +19,9 @@ use std::path::Path;
 use std::sync::mpsc;
 #[cfg(not(target_arch = "wasm32"))]
 use std::sync::mpsc::Receiver;
+#[cfg(target_arch = "wasm32")]
+use wasm_bindgen_futures::spawn_local;
+
 
 #[cfg(feature = "flight")]
 pub mod flight;
@@ -29,6 +32,19 @@ pub mod vehicle;
 use flight::FlightPlugin;
 #[cfg(feature = "vehicle")]
 use vehicle::VehiclePlugin;
+
+/// Numeric hotkeys usable in the lobby to select modules.
+const LOBBY_KEYS: [KeyCode; 9] = [
+    KeyCode::Key1,
+    KeyCode::Key2,
+    KeyCode::Key3,
+    KeyCode::Key4,
+    KeyCode::Key5,
+    KeyCode::Key6,
+    KeyCode::Key7,
+    KeyCode::Key8,
+    KeyCode::Key9,
+];
 
 /// Stores metadata for all registered game modules.
 #[derive(Resource, Default)]
@@ -208,9 +224,14 @@ pub fn setup_lobby(
                         .as_ref()
                         .map(|s| s.load("fonts/FiraSans-Bold.ttf"))
                         .unwrap_or_default();
+                    let label = if LOBBY_KEYS.get(i).is_some() {
+                        format!("[{}] {} v{}", i + 1, info.name, info.version)
+                    } else {
+                        format!("{} v{}", info.name, info.version)
+                    };
                     parent.spawn(Text2dBundle {
                         text: Text::from_section(
-                            format!("{} v{}", info.name, info.version),
+                            label,
                             TextStyle {
                                 font,
                                 font_size: 20.0,
@@ -231,22 +252,16 @@ fn cleanup_lobby(mut commands: Commands, q: Query<Entity, With<LobbyEntity>>) {
     }
 }
 
-fn lobby_keyboard(
+pub fn lobby_keyboard(
     keys: Res<Input<KeyCode>>,
     registry: Res<ModuleRegistry>,
     mut next_state: ResMut<NextState<AppState>>,
 ) {
     for (i, info) in registry.modules.iter().enumerate() {
-        let key = match i {
-            0 => KeyCode::Key1,
-            1 => KeyCode::Key2,
-            2 => KeyCode::Key3,
-            3 => KeyCode::Key4,
-            4 => KeyCode::Key5,
-            _ => continue,
-        };
-        if keys.just_pressed(key) {
-            next_state.set(info.state.clone());
+        if let Some(&key) = LOBBY_KEYS.get(i) {
+            if keys.just_pressed(key) {
+                next_state.set(info.state.clone());
+            }
         }
     }
 }
