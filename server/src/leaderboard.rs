@@ -180,11 +180,11 @@ mod tests {
     async fn post_run_rejects_malformed_base64() {
         let cfg = SmtpConfig::default();
         let email = Arc::new(EmailService::new(cfg.clone()).unwrap());
-        let rooms = room::RoomManager::new();
         let leaderboard =
             ::leaderboard::LeaderboardService::new("sqlite::memory:", PathBuf::from("replays"))
                 .await
                 .unwrap();
+        let rooms = room::RoomManager::new(leaderboard.clone());
         let state = Arc::new(AppState {
             email,
             rooms,
@@ -222,11 +222,11 @@ mod tests {
     async fn post_run_rejects_invalid_score() {
         let cfg = SmtpConfig::default();
         let email = Arc::new(EmailService::new(cfg.clone()).unwrap());
-        let rooms = room::RoomManager::new();
         let leaderboard =
             ::leaderboard::LeaderboardService::new("sqlite::memory:", PathBuf::from("replays"))
                 .await
                 .unwrap();
+        let rooms = room::RoomManager::new(leaderboard.clone());
         let state = Arc::new(AppState {
             email,
             rooms,
@@ -264,11 +264,11 @@ mod tests {
     async fn verify_endpoint_marks_score_verified() {
         let cfg = SmtpConfig::default();
         let email = Arc::new(EmailService::new(cfg.clone()).unwrap());
-        let rooms = room::RoomManager::new();
         let leaderboard =
             ::leaderboard::LeaderboardService::new("sqlite::memory:", PathBuf::from("replays"))
                 .await
                 .unwrap();
+        let rooms = room::RoomManager::new(leaderboard.clone());
         let state = Arc::new(AppState {
             email,
             rooms,
