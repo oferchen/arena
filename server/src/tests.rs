@@ -83,7 +83,7 @@ async fn websocket_signaling_completes_handshake() {
         rooms,
         smtp: cfg,
         analytics: Analytics::new(None, false),
-        leaderboard: ::leaderboard::LeaderboardService::default(),
+        leaderboard: leaderboard.clone(),
         catalog: Catalog::new(vec![Sku {
             id: "basic".into(),
             price_cents: 1000,
@@ -270,7 +270,7 @@ async fn websocket_logs_unexpected_messages_and_closes() {
         rooms,
         smtp: cfg,
         analytics: Analytics::new(None, false),
-        leaderboard: ::leaderboard::LeaderboardService::default(),
+        leaderboard: leaderboard.clone(),
         catalog: Catalog::new(vec![Sku {
             id: "basic".into(),
             price_cents: 1000,
@@ -320,7 +320,7 @@ async fn mail_test_defaults_to_from_address() {
         rooms,
         smtp: cfg.clone(),
         analytics: Analytics::new(None, false),
-        leaderboard: ::leaderboard::LeaderboardService::default(),
+        leaderboard: leaderboard.clone(),
         catalog: Catalog::new(vec![Sku {
             id: "basic".into(),
             price_cents: 1000,
@@ -358,7 +358,7 @@ async fn mail_test_accepts_user_address_query() {
         rooms,
         smtp: cfg.clone(),
         analytics: Analytics::new(None, false),
-        leaderboard: ::leaderboard::LeaderboardService::default(),
+        leaderboard: leaderboard.clone(),
         catalog: Catalog::new(vec![Sku {
             id: "basic".into(),
             price_cents: 1000,
@@ -403,7 +403,7 @@ async fn mail_test_accepts_user_address_body() {
         rooms,
         smtp: cfg.clone(),
         analytics: Analytics::new(None, false),
-        leaderboard: ::leaderboard::LeaderboardService::default(),
+        leaderboard: leaderboard.clone(),
         catalog: Catalog::new(vec![Sku {
             id: "basic".into(),
             price_cents: 1000,
@@ -447,7 +447,7 @@ async fn mail_config_redacts_password() {
         rooms,
         smtp: cfg.clone(),
         analytics: Analytics::new(None, false),
-        leaderboard: ::leaderboard::LeaderboardService::default(),
+        leaderboard: leaderboard.clone(),
         catalog: Catalog::new(vec![Sku {
             id: "basic".into(),
             price_cents: 1000,
@@ -478,7 +478,7 @@ async fn admin_mail_config_route() {
         rooms,
         smtp: cfg,
         analytics: Analytics::new(None, false),
-        leaderboard: ::leaderboard::LeaderboardService::default(),
+        leaderboard: leaderboard.clone(),
         catalog: Catalog::new(vec![Sku {
             id: "basic".into(),
             price_cents: 1000,

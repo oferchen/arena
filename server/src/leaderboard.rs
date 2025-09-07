@@ -83,25 +83,15 @@ async fn post_run(
         points: payload.points,
         window: LeaderboardWindow::AllTime,
         verified: false,
+        created_at: Utc::now(),
     };
-    for window in [
-        LeaderboardWindow::Daily,
-        LeaderboardWindow::Weekly,
-        LeaderboardWindow::AllTime,
-    ] {
-        let replay = if matches!(window, LeaderboardWindow::AllTime) {
-            replay_bytes.clone()
-        } else {
-            Vec::new()
-        };
-        if state
-            .leaderboard
-            .submit_score(id, window, score.clone(), run.clone(), replay)
-            .await
-            .is_err()
-        {
-            return StatusCode::INTERNAL_SERVER_ERROR;
-        }
+    if state
+        .leaderboard
+        .submit_score(id, score, run, replay_bytes)
+        .await
+        .is_err()
+    {
+        return StatusCode::INTERNAL_SERVER_ERROR;
     }
     StatusCode::CREATED
 }
@@ -200,7 +190,7 @@ mod tests {
             rooms,
             smtp: cfg,
             analytics: Analytics::new(None, false),
-            leaderboard: ::leaderboard::LeaderboardService::default(),
+            leaderboard: leaderboard.clone(),
             catalog: Catalog::new(vec![Sku {
                 id: "basic".into(),
                 price_cents: 1000,
@@ -233,12 +223,16 @@ mod tests {
         let cfg = SmtpConfig::default();
         let email = Arc::new(EmailService::new(cfg.clone()).unwrap());
         let rooms = room::RoomManager::new();
+        let leaderboard =
+            ::leaderboard::LeaderboardService::new("sqlite::memory:", PathBuf::from("replays"))
+                .await
+                .unwrap();
         let state = Arc::new(AppState {
             email,
             rooms,
             smtp: cfg,
             analytics: Analytics::new(None, false),
-            leaderboard: ::leaderboard::LeaderboardService::default(),
+            leaderboard: leaderboard.clone(),
             catalog: Catalog::new(vec![]),
             stripe: StripeClient::new(),
             entitlements: EntitlementStore::default(),
@@ -271,12 +265,16 @@ mod tests {
         let cfg = SmtpConfig::default();
         let email = Arc::new(EmailService::new(cfg.clone()).unwrap());
         let rooms = room::RoomManager::new();
+        let leaderboard =
+            ::leaderboard::LeaderboardService::new("sqlite::memory:", PathBuf::from("replays"))
+                .await
+                .unwrap();
         let state = Arc::new(AppState {
             email,
             rooms,
             smtp: cfg,
             analytics: Analytics::new(None, false),
-            leaderboard: ::leaderboard::LeaderboardService::default(),
+            leaderboard: leaderboard.clone(),
             catalog: Catalog::new(vec![]),
             stripe: StripeClient::new(),
             entitlements: EntitlementStore::default(),
