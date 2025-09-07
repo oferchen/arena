@@ -1,13 +1,11 @@
 use std::sync::Arc;
 use std::time::Duration as StdDuration;
 
-use tokio::sync::{
-    mpsc::error::TrySendError, mpsc::Receiver, mpsc::Sender, Mutex,
-};
+use tokio::sync::{Mutex, mpsc::Receiver, mpsc::Sender, mpsc::error::TrySendError};
 use tokio::time::{self, Duration};
 
 use once_cell::sync::Lazy;
-use prometheus::{register_int_counter, IntCounter};
+use prometheus::{IntCounter, register_int_counter};
 
 use duck_hunt_server::{DuckState, Server as DuckServer, validate_hit};
 use glam::Vec3;
@@ -31,6 +29,8 @@ static SNAPSHOT_CHANNEL_FULL: Lazy<IntCounter> = Lazy::new(|| {
 struct ConnectorHandle {
     input_rx: Receiver<InputFrame>,
     snapshot_tx: Sender<ServerMessage>,
+    /// Bitmask describing which updates this client is interested in.
+    interest_mask: u64,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -69,6 +69,7 @@ impl Room {
         self.connectors.push(ConnectorHandle {
             input_rx: connector.input_rx,
             snapshot_tx: connector.snapshot_tx,
+            interest_mask: u64::MAX,
         });
         self.scores.push(0);
     }
@@ -115,9 +116,13 @@ impl Room {
             frame: self.frame,
             data,
         };
+        let diff_mask = u64::MAX;
         if let Some(ref base) = self.last_snapshot {
             if let Ok(delta) = delta_compress(base, &snapshot) {
                 for conn in &self.connectors {
+                    if conn.interest_mask & diff_mask == 0 {
+                        continue;
+                    }
                     let msg = ServerMessage::Delta(delta.clone());
                     if let Err(err) = conn.snapshot_tx.try_send(msg) {
                         match err {
@@ -135,6 +140,9 @@ impl Room {
                 self.last_snapshot = Some(snapshot);
             } else {
                 for conn in &self.connectors {
+                    if conn.interest_mask & diff_mask == 0 {
+                        continue;
+                    }
                     let msg = ServerMessage::Baseline(snapshot.clone());
                     if let Err(err) = conn.snapshot_tx.try_send(msg) {
                         match err {
@@ -153,6 +161,9 @@ impl Room {
             }
         } else {
             for conn in &self.connectors {
+                if conn.interest_mask & diff_mask == 0 {
+                    continue;
+                }
                 let msg = ServerMessage::Baseline(snapshot.clone());
                 if let Err(err) = conn.snapshot_tx.try_send(msg) {
                     match err {
@@ -215,6 +226,7 @@ mod tests {
         room.connectors.push(ConnectorHandle {
             input_rx,
             snapshot_tx,
+            interest_mask: u64::MAX,
         });
 
         // First tick sends a baseline snapshot.
@@ -250,12 +262,14 @@ mod tests {
         room.connectors.push(ConnectorHandle {
             input_rx: rx1,
             snapshot_tx: snap_tx1,
+            interest_mask: u64::MAX,
         });
         let (tx2, rx2) = mpsc::channel(1);
         let (snap_tx2, mut snap_rx2) = mpsc::channel(8);
         room.connectors.push(ConnectorHandle {
             input_rx: rx2,
             snapshot_tx: snap_tx2,
+            interest_mask: u64::MAX,
         });
         room.scores.push(0);
         room.scores.push(0);
@@ -341,6 +355,7 @@ mod tests {
         room.connectors.push(ConnectorHandle {
             input_rx,
             snapshot_tx,
+            interest_mask: u64::MAX,
         });
 
         room.tick().await;
@@ -371,6 +386,7 @@ mod tests {
         room.connectors.push(ConnectorHandle {
             input_rx,
             snapshot_tx,
+            interest_mask: u64::MAX,
         });
 
         // First tick fills the channel with a baseline snapshot.
@@ -389,8 +405,7 @@ mod tests {
 
         let logs = LOGGER.messages.lock().unwrap();
         assert!(
-            logs.iter()
-                .any(|msg| msg.contains("snapshot channel full")),
+            logs.iter().any(|msg| msg.contains("snapshot channel full")),
             "expected warning not found: {:?}",
             *logs
         );

@@ -2238,6 +2238,7 @@ dependencies = [
  "gloo-timers",
  "log",
  "logtest",
+ "net",
  "notify",
  "platform-api",
  "serde_json",

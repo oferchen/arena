@@ -11,15 +11,15 @@ use gloo_timers::future::TimeoutFuture;
 #[cfg(not(target_arch = "wasm32"))]
 use notify::{RecommendedWatcher, RecursiveMode, Watcher};
 use platform_api::{
-    discover_local_modules, AppState, CapabilityFlags, GameModule, ModuleContext, ModuleManifest,
-    ModuleMetadata,
+    AppState, CapabilityFlags, GameModule, ModuleContext, ModuleManifest, ModuleMetadata,
+    discover_local_modules,
 };
+#[cfg(not(target_arch = "wasm32"))]
+use std::path::Path;
 #[cfg(not(target_arch = "wasm32"))]
 use std::sync::mpsc;
 #[cfg(not(target_arch = "wasm32"))]
 use std::sync::mpsc::Receiver;
-#[cfg(not(target_arch = "wasm32"))]
-use std::path::Path;
 use thiserror::Error;
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen_futures::spawn_local;
@@ -27,16 +27,19 @@ use wasm_bindgen_futures::spawn_local;
 pub mod core;
 #[cfg(feature = "flight")]
 pub mod flight;
+pub mod motion;
+pub mod net;
 #[cfg(feature = "vehicle")]
 pub mod vehicle;
-pub mod motion;
 
+use crate::net::NetClientPlugin;
+use core::CorePlugin;
 #[cfg(feature = "flight")]
 use flight::FlightPlugin;
+use motion::{Controller, MotionPlugin, Player, PlayerCamera};
+use netcode::NetPlugin as NetworkPlugin;
 #[cfg(feature = "vehicle")]
 use vehicle::VehiclePlugin;
-use core::CorePlugin;
-use motion::{Controller, MotionPlugin, Player, PlayerCamera};
 
 /// Numeric hotkeys usable in the lobby to select modules.
 const LOBBY_KEYS: [KeyCode; 9] = [
@@ -77,7 +80,8 @@ pub struct EnginePlugin;
 
 impl Plugin for EnginePlugin {
     fn build(&self, app: &mut App) {
-        app.add_plugins(CorePlugin)
+        app.add_plugins(NetworkPlugin)
+            .add_plugins(CorePlugin)
             .add_plugins(MotionPlugin)
             .init_resource::<ModuleRegistry>()
             .init_resource::<FrameInterpolation>()
@@ -86,10 +90,7 @@ impl Plugin for EnginePlugin {
             .add_systems(OnEnter(AppState::Lobby), setup_lobby)
             .add_systems(OnExit(AppState::Lobby), cleanup_lobby)
             .add_systems(Update, lobby_keyboard.run_if(in_state(AppState::Lobby)))
-            .add_systems(
-                FixedUpdate,
-                pad_trigger.run_if(in_state(AppState::Lobby)),
-            )
+            .add_systems(FixedUpdate, pad_trigger.run_if(in_state(AppState::Lobby)))
             .add_systems(Update, exit_to_lobby)
             .add_systems(Update, update_frame_interpolation);
 
@@ -109,12 +110,13 @@ impl Plugin for EnginePlugin {
         app.add_plugins(VehiclePlugin);
         #[cfg(feature = "flight")]
         app.add_plugins(FlightPlugin);
+
+        app.add_plugins(NetClientPlugin);
     }
 }
 
 #[derive(Component)]
 struct LobbyEntity;
-
 
 #[derive(Component)]
 pub struct LobbyPad {
@@ -403,7 +405,6 @@ fn exit_module<M: GameModule>(world: &mut World) {
 }
 
 #[derive(Deserialize)]
-
 #[cfg(target_arch = "wasm32")]
 #[derive(Resource)]
 struct ModuleDiscoveryTask(Task<Vec<ModuleMetadata>>);

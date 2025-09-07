@@ -1,4 +1,5 @@
 use bevy::{input::mouse::MouseMotion, prelude::*, window::CursorGrabMode};
+use bevy_rapier3d::prelude::KinematicCharacterController;
 use platform_api::AppState;
 
 #[derive(Component)]
