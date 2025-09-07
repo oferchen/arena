@@ -9,7 +9,10 @@ use net::{
 use platform_api::{
     AppState, CapabilityFlags, GameModule, ModuleContext, ModuleMetadata, ServerApp,
 };
+use rand::{Rng, SeedableRng, rngs::StdRng};
 use serde::{Deserialize, Serialize};
+
+const DUCK_RADIUS: f32 = 0.5;
 
 #[derive(Resource, Default)]
 struct Score(pub u32);
@@ -19,6 +22,9 @@ struct RoundTimer(pub Timer);
 
 #[derive(Resource, Default)]
 struct DuckSpawnTimer(pub Timer);
+
+#[derive(Resource)]
+struct SpawnRng(pub StdRng);
 
 #[derive(Component)]
 struct Duck {
@@ -54,6 +60,12 @@ struct Shot {
     time: f32,
 }
 
+#[derive(Serialize, Deserialize)]
+struct GameState {
+    seed: u64,
+    scores: Vec<u32>,
+}
+
 #[derive(Default)]
 pub struct DuckHuntPlugin;
 
@@ -65,7 +77,7 @@ impl Plugin for DuckHuntPlugin {
                 spawn_ducks,
                 move_ducks,
                 fire_weapon,
-                apply_score_snapshots,
+                apply_state_snapshots,
                 update_hud,
                 update_round_timer,
                 log_connection_events,
@@ -86,6 +98,7 @@ fn setup(world: &mut World) {
         2.0,
         TimerMode::Repeating,
     )));
+    world.insert_resource(SpawnRng(StdRng::seed_from_u64(0)));
 
     let Some(asset_server) = world.get_resource::<AssetServer>() else {
         return;
@@ -124,6 +137,7 @@ fn cleanup(world: &mut World) {
     world.remove_resource::<Score>();
     world.remove_resource::<RoundTimer>();
     world.remove_resource::<DuckSpawnTimer>();
+    world.remove_resource::<SpawnRng>();
 }
 
 impl GameModule for DuckHuntPlugin {
@@ -163,23 +177,34 @@ fn spawn_ducks(
     mut timer: ResMut<DuckSpawnTimer>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
+    mut rng: ResMut<SpawnRng>,
 ) {
     if timer.0.tick(time.delta()).just_finished() {
         let mesh = meshes.add(Mesh::from(UVSphere {
-            radius: 0.25,
+            radius: DUCK_RADIUS,
             ..default()
         }));
         let material = materials.add(Color::rgb(0.2, 0.8, 0.2).into());
+
+        let start_y = rng.0.gen_range(0.5..2.0);
+        let end_y = rng.0.gen_range(0.5..2.5);
+        let left_to_right = rng.0.gen_bool(0.5);
+        let (start, end) = if left_to_right {
+            (Vec3::new(-5.0, start_y, 0.0), Vec3::new(5.0, end_y, 0.0))
+        } else {
+            (Vec3::new(5.0, start_y, 0.0), Vec3::new(-5.0, end_y, 0.0))
+        };
+
         commands.spawn((
             PbrBundle {
                 mesh,
                 material,
-                transform: Transform::from_translation(Vec3::new(-5.0, 0.5, 0.0)),
+                transform: Transform::from_translation(start),
                 ..default()
             },
             Duck {
                 spline: Spline {
-                    points: vec![Vec3::new(-5.0, 0.5, 0.0), Vec3::new(5.0, 2.0, 0.0)],
+                    points: vec![start, end],
                     duration: 5.0,
                 },
                 t: 0.0,
@@ -219,9 +244,11 @@ fn fire_weapon(
 ) {
     if buttons.just_pressed(MouseButton::Left) {
         if let Ok(cam) = camera.get_single() {
+            let origin = cam.translation;
+            let direction = cam.forward();
             let shot = Shot {
-                origin: cam.translation.to_array(),
-                direction: cam.forward().to_array(),
+                origin: origin.to_array(),
+                direction: direction.to_array(),
                 time: time.elapsed_seconds_f64() as f32,
             };
             if let Ok(data) = postcard::to_allocvec(&shot) {
@@ -230,11 +257,25 @@ fn fire_weapon(
                     data,
                 });
             }
-        }
-        if let Some((entity, _)) = q.iter().next() {
-            commands.entity(entity).despawn_recursive();
+
+            if let Some((entity, _)) = q.iter().find(|(_, transform)| {
+                ray_sphere_intersect(origin, direction, transform.translation, DUCK_RADIUS)
+            }) {
+                commands.entity(entity).despawn_recursive();
+            }
         }
     }
+}
+
+fn ray_sphere_intersect(origin: Vec3, dir: Vec3, center: Vec3, radius: f32) -> bool {
+    let m = origin - center;
+    let b = m.dot(dir);
+    let c = m.length_squared() - radius * radius;
+    if c > 0.0 && b > 0.0 {
+        return false;
+    }
+    let discriminant = b * b - c;
+    discriminant >= 0.0
 }
 
 fn update_hud(score: Res<Score>, timer: Res<RoundTimer>, mut q: Query<&mut Text, With<HudText>>) {
@@ -246,10 +287,15 @@ fn update_hud(score: Res<Score>, timer: Res<RoundTimer>, mut q: Query<&mut Text,
     }
 }
 
-fn apply_score_snapshots(mut reader: EventReader<Snapshot>, mut score: ResMut<Score>) {
+fn apply_state_snapshots(
+    mut reader: EventReader<Snapshot>,
+    mut score: ResMut<Score>,
+    mut rng: ResMut<SpawnRng>,
+) {
     for snap in reader.read() {
-        if let Ok(scores) = postcard::from_bytes::<Vec<u32>>(&snap.data) {
-            score.0 = scores.get(0).copied().unwrap_or(0);
+        if let Ok(state) = postcard::from_bytes::<GameState>(&snap.data) {
+            score.0 = state.scores.get(0).copied().unwrap_or(0);
+            rng.0 = StdRng::seed_from_u64(state.seed);
         }
     }
 }

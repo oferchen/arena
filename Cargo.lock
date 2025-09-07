@@ -2112,6 +2112,7 @@ dependencies = [
  "net",
  "platform-api",
  "postcard",
+ "rand",
  "serde",
 ]
 
