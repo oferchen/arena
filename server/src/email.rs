@@ -7,6 +7,7 @@ use std::collections::HashMap;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 use tokio::sync::mpsc::{self, UnboundedSender};
+use thiserror::Error;
 
 // -- Configuration ---------------------------------------------------------
 
@@ -90,12 +91,17 @@ const RETRY_BASE: Duration = Duration::from_millis(1);
 #[cfg(not(test))]
 const RETRY_BASE: Duration = Duration::from_millis(1000);
 
-#[derive(Debug)]
+#[derive(Debug, Error)]
 pub enum EmailError {
+    #[error("rate limited")]
     RateLimited,
+    #[error("{0}")]
     Smtp(String),
+    #[error("{0}")]
     Address(AddressError),
+    #[error("{0}")]
     Build(lettre::error::Error),
+    #[error("lock poisoned")]
     LockPoisoned,
 }
 
@@ -111,7 +117,7 @@ impl EmailService {
             .timeout(Some(Duration::from_millis(config.timeout)));
 
         let tls_params = TlsParameters::builder(config.host.clone()).build().map_err(|e| {
-            log::error!("failed to build TLS parameters: {e:?}");
+            log::error!("failed to build TLS parameters: {e}");
             EmailError::Smtp(e.to_string())
         })?;
 
