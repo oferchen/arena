@@ -11,9 +11,10 @@ use gloo_timers::future::TimeoutFuture;
 #[cfg(not(target_arch = "wasm32"))]
 use notify::{RecommendedWatcher, RecursiveMode, Watcher};
 use platform_api::{
-    AppState, CapabilityFlags, GameModule, ModuleContext, ModuleMetadata,
-    discover_local_modules,
+    AppState, CapabilityFlags, GameModule, ModuleContext, ModuleMetadata, discover_local_modules,
 };
+#[cfg(target_arch = "wasm32")]
+use platform_api::ModuleManifest;
 #[cfg(not(target_arch = "wasm32"))]
 use std::path::Path;
 #[cfg(not(target_arch = "wasm32"))]
@@ -128,6 +129,9 @@ pub struct DocPad {
     pub url: &'static str,
 }
 
+#[derive(Component)]
+pub struct NoModulesSign;
+
 const HELP_DOCS: [(&str, &str); 5] = [
     ("Netcode", "docs/netcode.md"),
     ("Modules", "docs/modules.md"),
@@ -229,7 +233,7 @@ pub fn setup_lobby(
         commands.spawn((
             Text2dBundle {
                 text: Text::from_section(
-                    "No modules installed – see Docs pads for setup instructions",
+                    "No modules installed",
                     TextStyle {
                         font: font.clone(),
                         font_size: 40.0,
@@ -240,6 +244,7 @@ pub fn setup_lobby(
                     .looking_at(Vec3::new(0.0, 1.5, 5.0), Vec3::Y),
                 ..default()
             },
+            NoModulesSign,
             LobbyEntity,
         ));
     } else {
@@ -265,9 +270,20 @@ pub fn setup_lobby(
                 ))
                 .with_children(|parent| {
                     let label = if LOBBY_KEYS.get(i).is_some() {
-                        format!("[{}] {} v{}", i + 1, info.name, info.version)
+                        format!(
+                            "[{}] {} v{}\nPlayers: {}\nPing: 0ms",
+                            i + 1,
+                            info.name,
+                            info.version,
+                            info.max_players
+                        )
                     } else {
-                        format!("{} v{}", info.name, info.version)
+                        format!(
+                            "{} v{}\nPlayers: {}\nPing: 0ms",
+                            info.name,
+                            info.version,
+                            info.max_players
+                        )
                     };
                     parent.spawn(Text2dBundle {
                         text: Text::from_section(
@@ -349,6 +365,8 @@ fn pad_trigger(
                 continue;
             };
             if let Ok(pad) = pads.get(other) {
+                // Changing the app state triggers the module's `GameModule::enter` hook
+                // via the associated state transition.
                 next_state.set(pad.state.clone());
             } else if let Ok(doc) = docs.get(other) {
                 #[cfg(target_arch = "wasm32")]
@@ -572,7 +590,7 @@ pub fn update_lobby_pads(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     asset_server: Option<Res<AssetServer>>,
-    pads: Query<Entity, With<LobbyPad>>,
+    pads: Query<Entity, Or<(With<LobbyPad>, With<DocPad>, With<NoModulesSign>)>>,
 ) {
     for entity in pads.iter() {
         commands.entity(entity).despawn_recursive();
@@ -580,6 +598,62 @@ pub fn update_lobby_pads(
 
     let pad_mesh = meshes.add(Mesh::from(shape::Cube { size: 1.0 }));
     let pad_material = materials.add(Color::rgb(0.8, 0.2, 0.2).into());
+    let font = asset_server
+        .as_ref()
+        .map(|s| s.load("fonts/FiraSans-Bold.ttf"))
+        .unwrap_or_default();
+
+    if registry.modules.is_empty() {
+        for (i, &(label, url)) in HELP_DOCS.iter().enumerate() {
+            commands
+                .spawn((
+                    PbrBundle {
+                        mesh: pad_mesh.clone(),
+                        material: pad_material.clone(),
+                        transform: Transform::from_xyz(i as f32 * 3.0 - 6.0, 0.5, 0.0),
+                        ..default()
+                    },
+                    Collider::cuboid(0.5, 0.5, 0.5),
+                    Sensor,
+                    ActiveEvents::COLLISION_EVENTS,
+                    DocPad { url },
+                    LobbyEntity,
+                ))
+                .with_children(|parent| {
+                    parent.spawn(Text2dBundle {
+                        text: Text::from_section(
+                            label,
+                            TextStyle {
+                                font: font.clone(),
+                                font_size: 20.0,
+                                color: Color::WHITE,
+                            },
+                        ),
+                        transform: Transform::from_xyz(0.0, 0.75, 0.0),
+                        ..default()
+                    });
+                });
+        }
+
+        commands.spawn((
+            Text2dBundle {
+                text: Text::from_section(
+                    "No modules installed",
+                    TextStyle {
+                        font: font.clone(),
+                        font_size: 40.0,
+                        color: Color::WHITE,
+                    },
+                ),
+                transform: Transform::from_xyz(0.0, 2.5, 3.0)
+                    .looking_at(Vec3::new(0.0, 1.5, 5.0), Vec3::Y),
+                ..default()
+            },
+            NoModulesSign,
+            LobbyEntity,
+        ));
+        return;
+    }
 
     for (i, info) in registry.modules.iter().enumerate() {
         if !info.capabilities.contains(CapabilityFlags::LOBBY_PAD) {
@@ -602,15 +676,16 @@ pub fn update_lobby_pads(
                 LobbyEntity,
             ))
             .with_children(|parent| {
-                let font = asset_server
-                    .as_ref()
-                    .map(|s| s.load("fonts/FiraSans-Bold.ttf"))
-                    .unwrap_or_default();
                 parent.spawn(Text2dBundle {
                     text: Text::from_section(
-                        format!("{} v{}", info.name, info.version),
+                        format!(
+                            "{} v{}\nPlayers: {}\nPing: 0ms",
+                            info.name,
+                            info.version,
+                            info.max_players
+                        ),
                         TextStyle {
-                            font,
+                            font: font.clone(),
                             font_size: 20.0,
                             color: Color::WHITE,
                         },
