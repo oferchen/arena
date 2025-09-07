@@ -72,13 +72,14 @@ impl LeaderboardService {
 
     pub async fn verify_run(&self, run_id: Uuid) -> bool {
         let mut scores = self.scores.lock().unwrap();
+        let mut found = false;
         for list in scores.values_mut() {
             if let Some(score) = list.iter_mut().find(|s| s.run_id == run_id) {
                 score.verified = true;
-                return true;
+                found = true;
             }
         }
-        false
+        found
     }
 }
 
