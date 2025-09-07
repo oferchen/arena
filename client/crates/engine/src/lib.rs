@@ -22,6 +22,7 @@ use std::sync::mpsc::Receiver;
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen_futures::spawn_local;
 
+
 #[cfg(feature = "flight")]
 pub mod flight;
 #[cfg(feature = "vehicle")]
@@ -456,6 +457,10 @@ fn read_modules_from_disk() -> Vec<ModuleMetadata> {
 #[derive(Resource)]
 struct ModuleDiscoveryTask(Task<Vec<ModuleMetadata>>);
 
+#[cfg(target_arch = "wasm32")]
+#[derive(Resource)]
+struct ModuleDiscoveryLoop(Task<()>);
+
 pub fn discover_modules(
     #[cfg_attr(not(target_arch = "wasm32"), allow(unused_mut))] mut commands: Commands,
     mut registry: ResMut<ModuleRegistry>,
@@ -569,15 +574,28 @@ pub fn hotload_modules(app: &mut App) {
 
     #[cfg(target_arch = "wasm32")]
     {
-        let world_ptr = app.world_mut() as *mut World;
-        spawn_local(async move {
-            loop {
-                TimeoutFuture::new(1000).await;
-                unsafe {
-                    (*world_ptr).run_system_once(discover_modules);
-                }
-            }
-        });
+        app.insert_resource(ModuleDiscoveryLoop(spawn_module_discovery_task()));
+        app.add_systems(Update, poll_module_discovery_loop);
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
+fn spawn_module_discovery_task() -> Task<()> {
+    AsyncComputeTaskPool::get().spawn_local(async move {
+        TimeoutFuture::new(1000).await;
+    })
+}
+
+#[cfg(target_arch = "wasm32")]
+fn poll_module_discovery_loop(
+    mut task: ResMut<ModuleDiscoveryLoop>,
+    mut commands: Commands,
+    mut registry: ResMut<ModuleRegistry>,
+    asset_server: Option<Res<AssetServer>>,
+) {
+    if future::block_on(future::poll_once(&mut task.0)).is_some() {
+        discover_modules(commands, registry, asset_server);
+        task.0 = spawn_module_discovery_task();
     }
 }
 
