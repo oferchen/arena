@@ -11,6 +11,10 @@ use lettre::transport::smtp::{
 };
 use lettre::{AsyncSmtpTransport, AsyncTransport, Message, Tokio1Executor};
 use once_cell::sync::Lazy;
+use prometheus::{
+    register_gauge, register_int_counter, register_int_gauge_vec, Gauge, IntCounter,
+    IntGaugeVec,
+};
 use serde::Serialize;
 use std::collections::HashMap;
 use std::sync::Mutex;
@@ -94,6 +98,19 @@ static CLEANUP: Lazy<JoinHandle<()>> = Lazy::new(|| {
 const RATE_LIMIT: Duration = Duration::from_secs(60);
 const CLEANUP_INTERVAL: Duration = Duration::from_secs(60);
 
+static EMAIL_QUEUED: Lazy<IntCounter> =
+    Lazy::new(|| register_int_counter!("email_queued_total", "Emails queued").unwrap());
+static EMAIL_SENT: Lazy<IntCounter> =
+    Lazy::new(|| register_int_counter!("email_sent_total", "Emails sent").unwrap());
+static EMAIL_FAILED: Lazy<IntCounter> =
+    Lazy::new(|| register_int_counter!("email_failed_total", "Emails failed").unwrap());
+static EMAIL_LAST_ERROR: Lazy<IntGaugeVec> = Lazy::new(|| {
+    register_int_gauge_vec!("email_last_error", "Last email error", &["error"]).unwrap()
+});
+static EMAIL_LAST_LATENCY: Lazy<Gauge> = Lazy::new(|| {
+    register_gauge!("email_last_latency_seconds", "Last email latency seconds").unwrap()
+});
+
 /// Access the cleanup task's [`JoinHandle`].
 ///
 /// The task is started on first use and can be aborted during shutdown
@@ -159,14 +176,19 @@ impl EmailService {
         Ok(Self::new_with_transport(config.from, transport))
     }
 
-    fn new_with_transport(from: String, transport: AsyncSmtpTransport<Tokio1Executor>) -> Self {
+    pub(crate) fn new_with_transport<T>(from: String, transport: T) -> Self
+    where
+        T: AsyncTransport + Clone + Send + Sync + 'static,
+        T::Error: std::fmt::Display,
+    {
         // Start periodic cleanup once
         cleanup_handle();
         let (tx, mut rx) = mpsc::unbounded_channel::<Message>();
         tokio::spawn(async move {
             while let Some(msg) = rx.recv().await {
                 let mailer = transport.clone();
-                send_with_retry(|| {
+                let start = Instant::now();
+                let res = send_with_retry(|| {
                     let mailer = mailer.clone();
                     let msg = msg.clone();
                     async move {
@@ -178,6 +200,19 @@ impl EmailService {
                     }
                 })
                 .await;
+                let latency = start.elapsed().as_secs_f64();
+                EMAIL_LAST_LATENCY.set(latency);
+                match res {
+                    Ok(()) => {
+                        EMAIL_SENT.inc();
+                        EMAIL_LAST_ERROR.reset();
+                    }
+                    Err(e) => {
+                        EMAIL_FAILED.inc();
+                        EMAIL_LAST_ERROR.reset();
+                        EMAIL_LAST_ERROR.with_label_values(&[&e]).set(1);
+                    }
+                }
             }
         });
         Self { from, sender: tx }
@@ -197,6 +232,7 @@ impl EmailService {
     }
 
     fn queue_mail(&self, email: Message) {
+        EMAIL_QUEUED.inc();
         if self.sender.send(email).is_err() {
             log::warn!("email queue disconnected");
         }
@@ -254,27 +290,30 @@ impl EmailService {
     }
 }
 
-async fn send_with_retry<F, Fut, E>(mut send: F)
+async fn send_with_retry<F, Fut, E>(mut send: F) -> Result<(), E>
 where
     F: FnMut() -> Fut,
     Fut: std::future::Future<Output = Result<(), E>>,
     E: std::fmt::Display,
 {
     let mut delay = RETRY_BASE;
+    let mut last_err = None;
     for _ in 0..MAX_RETRIES {
         match send().await {
-            Ok(_) => return,
+            Ok(_) => return Ok(()),
             Err(e) => {
                 log::warn!(
                     "failed to send email: {e}; retrying in {}ms",
                     delay.as_millis()
                 );
+                last_err = Some(e);
                 tokio::time::sleep(delay).await;
                 delay *= 2;
             }
         }
     }
     log::warn!("giving up after {MAX_RETRIES} attempts");
+    Err(last_err.expect("no error recorded"))
 }
 
 // -- Tests ----------------------------------------------------------------
@@ -339,11 +378,46 @@ mod tests {
     #[serial]
     async fn retries_on_failure() {
         let attempts = AtomicUsize::new(0);
-        send_with_retry(|| {
+        let res = send_with_retry(|| {
             let n = attempts.fetch_add(1, Ordering::SeqCst);
             async move { if n < 2 { Err("fail") } else { Ok(()) } }
         })
         .await;
+        assert!(res.is_ok());
         assert_eq!(attempts.load(Ordering::SeqCst), 3);
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn metrics_counters_increment() {
+        EMAIL_QUEUED.reset();
+        EMAIL_SENT.reset();
+        EMAIL_FAILED.reset();
+        EMAIL_LAST_ERROR.reset();
+        EMAIL_LAST_LATENCY.set(0.0);
+
+        let transport = lettre::transport::stub::AsyncStubTransport::new_ok();
+        let svc = EmailService::new_with_transport("noreply@example.com".into(), transport);
+        svc.send_test("ok@example.com").unwrap();
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        assert_eq!(EMAIL_QUEUED.get(), 1);
+        assert_eq!(EMAIL_SENT.get(), 1);
+        assert_eq!(EMAIL_FAILED.get(), 0);
+
+        EMAIL_QUEUED.reset();
+        EMAIL_SENT.reset();
+        EMAIL_FAILED.reset();
+        EMAIL_LAST_ERROR.reset();
+        let transport = lettre::transport::stub::AsyncStubTransport::new_error();
+        let svc = EmailService::new_with_transport("noreply@example.com".into(), transport);
+        svc.send_test("fail@example.com").unwrap();
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        assert_eq!(EMAIL_QUEUED.get(), 1);
+        assert_eq!(EMAIL_SENT.get(), 0);
+        assert_eq!(EMAIL_FAILED.get(), 1);
+        let gauge = EMAIL_LAST_ERROR
+            .get_metric_with_label_values(&["stub error"])
+            .unwrap();
+        assert_eq!(gauge.get(), 1);
     }
 }
