@@ -11,16 +11,17 @@ use lettre::transport::smtp::{
 };
 use lettre::{AsyncSmtpTransport, AsyncTransport, Message, Tokio1Executor};
 use once_cell::sync::Lazy;
+use serde::Serialize;
 use std::collections::HashMap;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
-use tokio::sync::mpsc::{self, UnboundedSender};
 use thiserror::Error;
+use tokio::sync::mpsc::{self, UnboundedSender};
 use tokio::task::JoinHandle;
 
 // -- Configuration ---------------------------------------------------------
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub enum StartTls {
     Auto,
     Always,
@@ -281,9 +282,9 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serial_test::serial;
     use std::error::Error as _;
     use std::sync::atomic::{AtomicUsize, Ordering};
-    use serial_test::serial;
 
     fn clear_limits() {
         let mut map = match RATE_LIMITS.lock() {
