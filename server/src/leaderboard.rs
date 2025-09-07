@@ -1,18 +1,21 @@
 use std::sync::Arc;
 
+use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::{
+    Json, Router,
     extract::{Path, State},
     http::StatusCode,
     response::IntoResponse,
     routing::{get, post},
-    Json, Router,
 };
-use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use chrono::Utc;
 use serde::Deserialize;
 use uuid::Uuid;
 
-use ::leaderboard::{models::{Run, Score}, LeaderboardService};
+use ::leaderboard::{
+    LeaderboardService,
+    models::{Run, Score},
+};
 
 use crate::AppState;
 
@@ -43,7 +46,10 @@ async fn post_run(
 ) -> StatusCode {
     let run_id = Uuid::new_v4();
     let score_id = Uuid::new_v4();
-    let replay_bytes = base64::decode(payload.replay).unwrap_or_default();
+    let replay_bytes = match base64::decode(payload.replay) {
+        Ok(bytes) => bytes,
+        Err(_) => return StatusCode::BAD_REQUEST,
+    };
     let run = Run {
         id: run_id,
         leaderboard_id: id,
@@ -103,5 +109,48 @@ async fn handle_ws(mut socket: WebSocket, id: Uuid, service: LeaderboardService)
                 break;
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{
+        email::{EmailService, SmtpConfig},
+        room,
+    };
+    use analytics::Analytics;
+    use axum::Json;
+    use axum::extract::{Path, State};
+
+    #[tokio::test]
+    async fn post_run_rejects_malformed_base64() {
+        let cfg = SmtpConfig::default();
+        let email = Arc::new(EmailService::new(cfg.clone()).unwrap());
+        let rooms = room::RoomManager::new();
+        let state = Arc::new(AppState {
+            email,
+            rooms,
+            smtp: cfg,
+            analytics: Analytics::new(None, false),
+            leaderboard: ::leaderboard::LeaderboardService::default(),
+        });
+
+        let leaderboard_id = Uuid::new_v4();
+        let payload = SubmitRun {
+            player_id: Uuid::new_v4(),
+            points: 42,
+            replay: "not base64".into(),
+        };
+
+        let status = post_run(Path(leaderboard_id), State(state.clone()), Json(payload)).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert!(
+            state
+                .leaderboard
+                .get_scores(leaderboard_id)
+                .await
+                .is_empty()
+        );
     }
 }
