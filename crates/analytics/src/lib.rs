@@ -171,12 +171,21 @@ impl Analytics {
 mod tests {
     use super::*;
 
+    #[cfg(feature = "prometheus")]
     #[test]
     fn store_and_prometheus() {
         let analytics = Analytics::new(None, false);
         analytics.dispatch(Event::PlayerJoined);
         assert_eq!(analytics.events(), vec![Event::PlayerJoined]);
         assert_eq!(analytics.counter_value("player_joined"), 1);
+    }
+
+    #[cfg(not(feature = "prometheus"))]
+    #[test]
+    fn store() {
+        let analytics = Analytics::new(None, false);
+        analytics.dispatch(Event::PlayerJoined);
+        assert_eq!(analytics.events(), vec![Event::PlayerJoined]);
     }
 
     #[cfg(feature = "posthog")]
