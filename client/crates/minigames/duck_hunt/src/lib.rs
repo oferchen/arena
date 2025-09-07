@@ -3,6 +3,7 @@ use bevy::prelude::*;
 use bevy::render::mesh::shape::UVSphere;
 use net::{
     CurrentFrame,
+    client::ConnectionEvent,
     message::{InputFrame, Snapshot},
 };
 use platform_api::{
@@ -32,13 +33,14 @@ struct Spline {
 }
 
 impl Spline {
-    fn sample(&self, t: f32) -> Vec3 {
+    fn sample(&self, segment: usize, t: f32) -> Vec3 {
         if self.points.len() < 2 {
             return Vec3::ZERO;
         }
-        let start = self.points.first().copied().unwrap_or(Vec3::ZERO);
-        let end = self.points.last().copied().unwrap_or(Vec3::ZERO);
-        start.lerp(end, t)
+        let seg = segment.min(self.points.len() - 2);
+        let start = self.points[seg];
+        let end = self.points[seg + 1];
+        start.lerp(end, t.clamp(0.0, 1.0))
     }
 }
 
@@ -66,6 +68,7 @@ impl Plugin for DuckHuntPlugin {
                 apply_score_snapshots,
                 update_hud,
                 update_round_timer,
+                log_connection_events,
             ),
         );
     }
@@ -196,7 +199,11 @@ fn move_ducks(
         if duck.t >= 1.0 {
             commands.entity(e).despawn_recursive();
         } else {
-            transform.translation = duck.spline.sample(duck.t);
+            let segments = duck.spline.points.len().saturating_sub(1) as f32;
+            let seg_t = duck.t * segments;
+            let segment = seg_t.floor() as usize;
+            let local_t = seg_t - segment as f32;
+            transform.translation = duck.spline.sample(segment, local_t);
         }
     }
 }
@@ -260,6 +267,10 @@ fn update_round_timer(
     }
 }
 
+fn log_connection_events(mut events: EventReader<ConnectionEvent>) {
+    for ev in events.read() {
+        info!("connection event: {ev:?}");
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -271,5 +282,36 @@ mod tests {
             duration: 1.0,
         };
         assert_eq!(spline.sample(0.5), Vec3::ZERO);
+    fn sample_at(spline: &Spline, t: f32) -> Vec3 {
+        let segments = spline.points.len() - 1;
+        let seg_t = t * segments as f32;
+        let segment = seg_t.floor().min((segments - 1) as f32) as usize;
+        let local_t = seg_t - segment as f32;
+        spline.sample(segment, local_t)
+    }
+
+    #[test]
+    fn spline_handles_multiple_segments() {
+        let spline = Spline {
+            points: vec![
+                Vec3::new(0.0, 0.0, 0.0),
+                Vec3::new(1.0, 0.0, 0.0),
+                Vec3::new(1.0, 1.0, 0.0),
+                Vec3::new(2.0, 1.0, 0.0),
+            ],
+            duration: 1.0,
+        };
+        let checks = [
+            (0.0, Vec3::new(0.0, 0.0, 0.0)),
+            (1.0 / 3.0, Vec3::new(1.0, 0.0, 0.0)),
+            (2.0 / 3.0, Vec3::new(1.0, 1.0, 0.0)),
+            (1.0, Vec3::new(2.0, 1.0, 0.0)),
+            (1.0 / 6.0, Vec3::new(0.5, 0.0, 0.0)),
+            (0.5, Vec3::new(1.0, 0.5, 0.0)),
+            (5.0 / 6.0, Vec3::new(1.5, 1.0, 0.0)),
+        ];
+        for (t, expected) in checks {
+            assert!(sample_at(&spline, t).distance(expected) < 1e-5);
+        }
     }
 }
