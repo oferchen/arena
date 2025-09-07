@@ -22,7 +22,6 @@ use std::sync::mpsc::Receiver;
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen_futures::spawn_local;
 
-
 #[cfg(feature = "flight")]
 pub mod flight;
 #[cfg(feature = "vehicle")]
@@ -211,6 +210,23 @@ pub fn setup_lobby(
                     });
                 });
         }
+
+        commands.spawn((
+            Text2dBundle {
+                text: Text::from_section(
+                    "No modules installed – see Docs pads for setup instructions",
+                    TextStyle {
+                        font: font.clone(),
+                        font_size: 40.0,
+                        color: Color::WHITE,
+                    },
+                ),
+                transform: Transform::from_xyz(0.0, 2.5, 3.0)
+                    .looking_at(Vec3::new(0.0, 1.5, 5.0), Vec3::Y),
+                ..default()
+            },
+            LobbyEntity,
+        ));
     } else {
         for (i, info) in registry.modules.iter().enumerate() {
             if !info.capabilities.contains(CapabilityFlags::LOBBY_PAD) {

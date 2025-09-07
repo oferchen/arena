@@ -1,6 +1,6 @@
 use bevy::ecs::system::RunSystemOnce;
 use bevy::prelude::*;
-use engine::{discover_modules, setup_lobby, DocPad, LobbyPad, ModuleRegistry};
+use engine::{DocPad, LobbyPad, ModuleRegistry, discover_modules, setup_lobby};
 use std::fs;
 use std::path::Path;
 
@@ -25,7 +25,8 @@ fn app_without_window() -> App {
 
 #[test]
 fn spawns_pads_for_modules() {
-    let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../assets/modules/test_mod");
+    let manifest_dir =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../assets/modules/test_mod");
     fs::create_dir_all(&manifest_dir).unwrap();
     fs::write(
         manifest_dir.join("module.toml"),
@@ -69,8 +70,18 @@ fn spawns_help_pads_when_registry_empty() {
         "docs/Email.md",
     ];
     for url in expected {
-        assert!(pads.iter().any(|pad| pad.url == url), "missing pad for {url}");
+        assert!(
+            pads.iter().any(|pad| pad.url == url),
+            "missing pad for {url}"
+        );
     }
+
+    let signage_present = app.world.query::<&Text>().iter(&app.world).any(|t| {
+        t.sections
+            .iter()
+            .any(|s| s.value == "No modules installed – see Docs pads for setup instructions")
+    });
+    assert!(signage_present, "missing no-modules signage");
 }
 
 #[test]
