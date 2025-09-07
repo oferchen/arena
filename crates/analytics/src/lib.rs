@@ -1,5 +1,5 @@
-use opentelemetry::{global, metrics::Counter, KeyValue};
-use prometheus::{opts, IntCounterVec};
+use opentelemetry::{KeyValue, global, metrics::Counter};
+use prometheus::{IntCounterVec, opts};
 use reqwest::Client;
 use serde::Serialize;
 

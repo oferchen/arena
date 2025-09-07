@@ -1,5 +1,5 @@
 use bevy_ecs::prelude::*;
-use editor::{play_in_editor, validate_level, Level};
+use editor::{Level, play_in_editor, validate_level};
 use platform_api::ModuleContext;
 
 #[test]

@@ -118,18 +118,14 @@ fn main() -> Result<()> {
                     };
                     fs::write(module_dest.join(&hashed_name), data)?;
                     module_manifest.insert(file_name, hashed_name.clone());
-                    precache.push(format!(
-                        "/assets/modules/{module_name}/{hashed_name}"
-                    ));
+                    precache.push(format!("/assets/modules/{module_name}/{hashed_name}"));
                 }
             }
             fs::write(
                 module_dest.join("manifest.json"),
                 serde_json::to_string_pretty(&module_manifest)?,
             )?;
-            precache.push(format!(
-                "/assets/modules/{module_name}/manifest.json"
-            ));
+            precache.push(format!("/assets/modules/{module_name}/manifest.json"));
         }
     }
 
@@ -141,16 +137,14 @@ fn main() -> Result<()> {
         let client_js_path = assets_dir.join(client_js);
         let mut client_js_src = fs::read_to_string(&client_js_path)?;
         if let Some(stripped) = client_bg.strip_prefix("pkg/") {
-            client_js_src =
-                client_js_src.replace("./client_bg.wasm", &format!("./{stripped}"));
+            client_js_src = client_js_src.replace("./client_bg.wasm", &format!("./{stripped}"));
         }
         fs::write(&client_js_path, client_js_src)?;
 
         if let Some(bootstrap) = manifest.get("bootstrap.js") {
             let bootstrap_path = assets_dir.join(bootstrap);
             let mut bootstrap_src = fs::read_to_string(&bootstrap_path)?;
-            bootstrap_src =
-                bootstrap_src.replace("./pkg/client.js", &format!("./{client_js}"));
+            bootstrap_src = bootstrap_src.replace("./pkg/client.js", &format!("./{client_js}"));
             fs::write(&bootstrap_path, bootstrap_src)?;
         }
     }

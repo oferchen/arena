@@ -30,4 +30,13 @@ pub struct Score {
     pub run_id: Uuid,
     pub player_id: Uuid,
     pub points: i32,
+    pub verified: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct LeaderboardWindow {
+    pub id: Uuid,
+    pub leaderboard_id: Uuid,
+    pub start: DateTime<Utc>,
+    pub end: DateTime<Utc>,
 }

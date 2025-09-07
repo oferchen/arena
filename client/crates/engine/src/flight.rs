@@ -27,4 +27,3 @@ impl Plugin for FlightPlugin {
         app.add_systems(Update, flight_motion);
     }
 }
-
