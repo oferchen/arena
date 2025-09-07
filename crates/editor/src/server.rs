@@ -1,4 +1,4 @@
-use anyhow::{Context, Result, bail};
+use anyhow::{bail, Context, Result};
 use bevy_app::{AppExit, MainScheduleOrder};
 use bevy_ecs::prelude::Resource;
 use bevy_ecs::{prelude::*, schedule::Schedules};
@@ -18,31 +18,14 @@ pub struct EditorSession {
 #[derive(Resource, Default)]
 pub struct AssetRegistry(pub HashSet<String>);
 
-/// Validate the provided level using server-side rules.
-#[allow(unused_variables)]
-pub fn validate_level(ctx: &mut ModuleContext, level: &Level) -> Result<()> {
-    // Structural checks
+/// Perform structural validation on the level definition.
+pub fn validate_structural(level: &Level) -> Result<()> {
     if level.id.trim().is_empty() {
         bail!("level id cannot be empty");
     }
     if level.name.trim().is_empty() {
         bail!("level name cannot be empty");
     }
-
-    // Verify referenced assets exist
-    if !level.references.is_empty() {
-        let registry = ctx
-            .world()
-            .get_resource::<AssetRegistry>()
-            .context("asset registry missing")?;
-        for r in &level.references {
-            if !registry.0.contains(r) {
-                bail!("missing asset reference: {}", r);
-            }
-        }
-    }
-
-    // Spawn zone validation
     if level.spawn_zones.is_empty() {
         bail!("level must define at least one spawn zone");
     }
@@ -55,12 +38,30 @@ pub fn validate_level(ctx: &mut ModuleContext, level: &Level) -> Result<()> {
             bail!("spawn zone {} out of bounds", i);
         }
     }
+    Ok(())
+}
 
-    // Gameplay/performance checks (basic limits)
+/// Validate gameplay related concerns such as asset references.
+pub fn validate_gameplay(ctx: &mut ModuleContext, level: &Level) -> Result<()> {
+    if !level.references.is_empty() {
+        let registry = ctx
+            .world()
+            .get_resource::<AssetRegistry>()
+            .context("asset registry missing")?;
+        for r in &level.references {
+            if !registry.0.contains(r) {
+                bail!("missing asset reference: {}", r);
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Validate performance budgets for the level.
+pub fn validate_performance(level: &Level) -> Result<()> {
     if level.id.len() > 64 || level.name.len() > 64 {
         bail!("level metadata too long");
     }
-
     const ENTITY_LIMIT: usize = 1000;
     if level.entity_count > ENTITY_LIMIT {
         bail!(
@@ -69,6 +70,14 @@ pub fn validate_level(ctx: &mut ModuleContext, level: &Level) -> Result<()> {
             ENTITY_LIMIT
         );
     }
+    Ok(())
+}
+
+/// Validate the provided level using server-side rules.
+pub fn validate_level(ctx: &mut ModuleContext, level: &Level) -> Result<()> {
+    validate_structural(level)?;
+    validate_gameplay(ctx, level)?;
+    validate_performance(level)?;
 
     // Ensure no other level is currently active
     if ctx.world().contains_resource::<Level>() {
@@ -132,4 +141,6 @@ pub fn stop_play_in_editor(ctx: &mut ModuleContext) {
         std::mem::swap(&mut session.app.world, &mut world);
         std::mem::swap(ctx.world(), &mut world);
     }
+    // Ensure any level resource from the play session is cleared.
+    ctx.world().remove_resource::<Level>();
 }

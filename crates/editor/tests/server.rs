@@ -4,8 +4,10 @@ use editor::{
     play_in_editor,
     stop_play_in_editor,
     validate_level,
+    AssetRegistry,
     EditorSession,
     Level,
+    SpawnZone,
 };
 use null_module::NullModule;
 use platform_api::ModuleContext;
@@ -57,6 +59,11 @@ fn round_trip_export_play_modify_replay() {
     // initial editor setup
     let entity = ctx.world().spawn(TestComponent(1)).id();
     let mut level = Level::new("roundtrip", "Round Trip");
+    level.spawn_zones.push(SpawnZone {
+        x: 0.0,
+        y: 0.0,
+        radius: 5.0,
+    });
     export_level(&level).unwrap();
 
     play_in_editor::<NullModule>(&mut ctx, &level).unwrap();

@@ -13,7 +13,8 @@ use web_sys::{
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum EditorMode {
     FirstPerson,
-    TopDown,
+    /// Orthographic top-down style editing.
+    Orthographic,
     PrefabPalette,
     CsgBrush,
     SplineVolume,
@@ -21,12 +22,47 @@ pub enum EditorMode {
 
 pub struct EditorClient {
     pub mode: EditorMode,
+    /// Whether transform gizmos are visible.
+    pub gizmos: bool,
+    /// Optional grid snapping increment.
+    pub grid_snap: Option<f32>,
+    /// Control points for the in-progress spline tool.
+    pub spline: Vec<[f32; 3]>,
 }
 
 impl EditorClient {
-    pub fn new() -> Self { Self { mode: EditorMode::FirstPerson } }
+    /// Create a new editor client with default settings.
+    pub fn new() -> Self {
+        Self {
+            mode: EditorMode::FirstPerson,
+            gizmos: true,
+            grid_snap: None,
+            spline: Vec::new(),
+        }
+    }
 
     pub fn set_mode(&mut self, mode: EditorMode) { self.mode = mode; }
+
+    /// Toggle the visibility of editing gizmos.
+    pub fn toggle_gizmos(&mut self) { self.gizmos = !self.gizmos; }
+
+    /// Enable grid snapping with the provided step size or disable it with `None`.
+    pub fn set_grid_snap(&mut self, step: Option<f32>) { self.grid_snap = step; }
+
+    /// Apply grid snapping to the provided coordinate if enabled.
+    pub fn snap_value(&self, v: f32) -> f32 {
+        if let Some(step) = self.grid_snap {
+            (v / step).round() * step
+        } else {
+            v
+        }
+    }
+
+    /// Append a control point to the active spline tool.
+    pub fn add_spline_point(&mut self, point: [f32; 3]) { self.spline.push(point); }
+
+    /// Clear any active spline being edited.
+    pub fn clear_spline(&mut self) { self.spline.clear(); }
 
     /// Persist the level locally using OPFS or IndexedDB.
     pub async fn store_level_locally(&self, level: &Level) -> Result<(), String> {
