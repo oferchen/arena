@@ -12,8 +12,8 @@ test("service worker serves cached response and refreshes asynchronously", async
     .replace("__PRECACHE_VERSION__", "test");
   eval(swSrc);
 
-  const url = `${self.location.origin}/assets/foo.txt`;
-  const cache = await caches.open("precache-test");
+  const url = `${self.location.origin}/foo.txt`;
+  const cache = await caches.open("runtime");
   await cache.put(url, new Response("old"));
 
   global.fetch = () => Promise.resolve(new Response("new"));
@@ -25,5 +25,5 @@ test("service worker serves cached response and refreshes asynchronously", async
   assert.strictEqual(await res.text(), "old");
 
   const updated = await cache.match(url);
-  assert.strictEqual(await updated.text(), "new");
+  assert.strictEqual(await updated.clone().text(), "new");
 });
