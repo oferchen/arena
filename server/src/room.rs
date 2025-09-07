@@ -9,6 +9,11 @@ use glam::Vec3;
 use net::message::{InputFrame, ServerMessage, Snapshot, delta_compress};
 use net::server::ServerConnector;
 use serde::{Deserialize, Serialize};
+#[cfg(test)]
+use std::sync::atomic::{AtomicBool, Ordering};
+
+#[cfg(test)]
+static FORCE_SERIALIZATION_ERROR: AtomicBool = AtomicBool::new(false);
 
 struct ConnectorHandle {
     input_rx: Receiver<InputFrame>,
@@ -81,7 +86,18 @@ impl Room {
         }
 
         // Build a snapshot of the world containing player scores.
-        let data = postcard::to_allocvec(&self.scores).unwrap_or_default();
+        #[cfg(test)]
+        if FORCE_SERIALIZATION_ERROR.load(Ordering::Relaxed) {
+            log::error!("failed to serialize scores snapshot: forced error");
+            return;
+        }
+        let data = match postcard::to_allocvec(&self.scores) {
+            Ok(data) => data,
+            Err(err) => {
+                log::error!("failed to serialize scores snapshot: {err}");
+                return;
+            }
+        };
         let snapshot = Snapshot {
             frame: self.frame,
             data,
@@ -140,8 +156,37 @@ impl RoomManager {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use log::{LevelFilter, Log, Metadata, Record};
     use net::message::apply_delta;
+    use std::sync::atomic::Ordering;
+    use std::sync::{Mutex, Once};
     use tokio::sync::mpsc;
+
+    struct TestLogger {
+        messages: Mutex<Vec<String>>,
+    }
+
+    impl Log for TestLogger {
+        fn enabled(&self, metadata: &Metadata) -> bool {
+            metadata.level() <= log::Level::Error
+        }
+
+        fn log(&self, record: &Record) {
+            if self.enabled(record.metadata()) {
+                self.messages
+                    .lock()
+                    .unwrap()
+                    .push(record.args().to_string());
+            }
+        }
+
+        fn flush(&self) {}
+    }
+
+    static LOGGER: TestLogger = TestLogger {
+        messages: Mutex::new(Vec::new()),
+    };
+    static INIT: Once = Once::new();
 
     #[tokio::test]
     async fn updates_snapshot_after_delta() {
@@ -261,5 +306,36 @@ mod tests {
         let snap2_p2 = apply_delta(&snap1_p2, &delta2_p2).unwrap();
         let scores: Vec<u32> = postcard::from_bytes(&snap2_p2.data).unwrap();
         assert_eq!(scores, vec![1, 1]);
+    }
+
+    #[tokio::test]
+    async fn serialization_error_logged_and_skips_snapshot() {
+        INIT.call_once(|| {
+            log::set_logger(&LOGGER).unwrap();
+            log::set_max_level(LevelFilter::Error);
+        });
+
+        LOGGER.messages.lock().unwrap().clear();
+        FORCE_SERIALIZATION_ERROR.store(true, Ordering::Relaxed);
+
+        let mut room = Room::new();
+        let (_input_tx, input_rx) = mpsc::channel(1);
+        let (snapshot_tx, mut snapshot_rx) = mpsc::channel(1);
+        room.connectors.push(ConnectorHandle {
+            input_rx,
+            snapshot_tx,
+        });
+
+        room.tick().await;
+
+        assert!(snapshot_rx.try_recv().is_err());
+        assert!(room.last_snapshot.is_none());
+
+        let logs = LOGGER.messages.lock().unwrap();
+        assert!(
+            logs.iter()
+                .any(|msg| msg.contains("failed to serialize scores snapshot"))
+        );
+        FORCE_SERIALIZATION_ERROR.store(false, Ordering::Relaxed);
     }
 }
