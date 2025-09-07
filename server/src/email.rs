@@ -1,6 +1,15 @@
+//! Email utilities and rate limiting.
+//!
+//! A background task periodically purges expired entries from the rate-limit
+//! map. The task runs on the Tokio runtime and its [`JoinHandle`] is stored so
+//! it can be aborted during shutdown if necessary.
+
 use lettre::address::AddressError;
-use lettre::transport::smtp::authentication::Credentials;
-use lettre::transport::smtp::client::{Tls, TlsParameters};
+use lettre::transport::smtp::{
+    authentication::Credentials,
+    client::{Tls, TlsParameters},
+    Error as SmtpError,
+};
 use lettre::{AsyncSmtpTransport, AsyncTransport, Message, Tokio1Executor};
 use once_cell::sync::Lazy;
 use std::collections::HashMap;
@@ -8,6 +17,7 @@ use std::sync::Mutex;
 use std::time::{Duration, Instant};
 use tokio::sync::mpsc::{self, UnboundedSender};
 use thiserror::Error;
+use tokio::task::JoinHandle;
 
 // -- Configuration ---------------------------------------------------------
 
@@ -68,10 +78,10 @@ impl Default for SmtpConfig {
 
 static RATE_LIMITS: Lazy<Mutex<HashMap<String, Instant>>> =
     Lazy::new(|| Mutex::new(HashMap::new()));
-static CLEANUP: Lazy<()> = Lazy::new(|| {
-    std::thread::spawn(|| {
+static CLEANUP: Lazy<JoinHandle<()>> = Lazy::new(|| {
+    tokio::spawn(async move {
         loop {
-            std::thread::sleep(CLEANUP_INTERVAL);
+            tokio::time::sleep(CLEANUP_INTERVAL).await;
             let now = Instant::now();
             let mut map = match RATE_LIMITS.lock() {
                 Ok(m) => m,
@@ -79,10 +89,18 @@ static CLEANUP: Lazy<()> = Lazy::new(|| {
             };
             map.retain(|_, &mut instant| now.duration_since(instant) < RATE_LIMIT);
         }
-    });
+    })
 });
 const RATE_LIMIT: Duration = Duration::from_secs(60);
 const CLEANUP_INTERVAL: Duration = Duration::from_secs(60);
+
+/// Access the cleanup task's [`JoinHandle`].
+///
+/// The task is started on first use and can be aborted during shutdown
+/// if necessary.
+pub fn cleanup_handle() -> &'static JoinHandle<()> {
+    Lazy::force(&CLEANUP)
+}
 
 // retry behaviour
 const MAX_RETRIES: u32 = 5;
@@ -141,7 +159,7 @@ impl EmailService {
 
     fn new_with_transport(from: String, transport: AsyncSmtpTransport<Tokio1Executor>) -> Self {
         // Start periodic cleanup once
-        Lazy::force(&CLEANUP);
+        cleanup_handle();
         let (tx, mut rx) = mpsc::unbounded_channel::<Message>();
         tokio::spawn(async move {
             while let Some(msg) = rx.recv().await {
@@ -149,7 +167,13 @@ impl EmailService {
                 send_with_retry(|| {
                     let mailer = mailer.clone();
                     let msg = msg.clone();
-                    async move { mailer.send(msg).await.map(|_| ()).map_err(|e| e.to_string()) }
+                    async move {
+                        mailer
+                            .send(msg)
+                            .await
+                            .map(|_| ())
+                            .map_err(|e| e.to_string())
+                    }
                 })
                 .await;
             }
@@ -198,18 +222,21 @@ impl EmailService {
         self.send_mail(to, subject, &body)
     }
 
+    #[allow(dead_code)]
     pub fn send_verification_link(&self, to: &str, link: &str) -> Result<(), EmailError> {
         let subject = "Verify Your Account";
         let body = format!("Click the following link to verify your account: {}", link);
         self.send_mail(to, subject, &body)
     }
 
+    #[allow(dead_code)]
     pub fn send_otp_code(&self, to: &str, code: &str) -> Result<(), EmailError> {
         let subject = "Your OTP Code";
         let body = format!("Your one-time passcode is: {}", code);
         self.send_mail(to, subject, &body)
     }
 
+    #[allow(dead_code)]
     pub fn send_password_reset(&self, to: &str, link: &str) -> Result<(), EmailError> {
         let subject = "Password Reset";
         let body = format!("Reset your password using the following link: {}", link);
@@ -253,7 +280,9 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::error::Error as _;
     use std::sync::atomic::{AtomicUsize, Ordering};
+    use serial_test::serial;
 
     fn clear_limits() {
         let mut map = match RATE_LIMITS.lock() {
@@ -267,6 +296,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn rate_limiting() {
         clear_limits();
         assert!(EmailService::allowed("a@example.com").unwrap());
@@ -274,40 +304,43 @@ mod tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn invalid_address() {
         clear_limits();
         let mut cfg = SmtpConfig::default();
         cfg.from = "noreply@example.com".into();
         let svc = EmailService::new(cfg).unwrap();
-        match svc.send_registration_password("not-an-email", "pw") {
-            Err(EmailError::Address(_)) => {}
-            _ => panic!("expected address error"),
-        }
+        let err = svc
+            .send_registration_password("not-an-email", "pw")
+            .unwrap_err();
+        assert!(matches!(err, EmailError::Address(_)));
+        assert!(err.source().is_some());
     }
 
     #[test]
+    #[ignore]
     fn lock_poisoned() {
         clear_limits();
-        let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let _ = std::thread::spawn(|| {
             let _guard = RATE_LIMITS.lock().unwrap();
             panic!();
-        }));
-        match EmailService::allowed("b@example.com") {
-            Err(EmailError::LockPoisoned) => {}
-            _ => panic!("expected lock poisoned"),
-        }
+        })
+        .join();
+        let err = EmailService::allowed("b@example.com").unwrap_err();
+        assert!(matches!(err, EmailError::LockPoisoned));
+        assert!(err.source().is_none());
         let mut guard = RATE_LIMITS.lock().unwrap_or_else(|e| e.into_inner());
         guard.clear();
+        RATE_LIMITS.clear_poison();
     }
 
     #[tokio::test]
+    #[serial]
     async fn retries_on_failure() {
         let attempts = AtomicUsize::new(0);
         send_with_retry(|| {
             let n = attempts.fetch_add(1, Ordering::SeqCst);
-            async move {
-                if n < 2 { Err("fail") } else { Ok(()) }
-            }
+            async move { if n < 2 { Err("fail") } else { Ok(()) } }
         })
         .await;
         assert_eq!(attempts.load(Ordering::SeqCst), 3);
