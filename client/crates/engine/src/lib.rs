@@ -52,22 +52,29 @@ pub struct ModuleRegistry {
     pub modules: Vec<ModuleMetadata>,
 }
 
+/// Stores the interpolation factor between fixed simulation steps for smooth rendering.
+#[derive(Resource, Default)]
+pub struct FrameInterpolation(pub f32);
+
 pub struct EnginePlugin;
 
 impl Plugin for EnginePlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<ModuleRegistry>()
+        app.insert_resource(Time::<Fixed>::from_seconds(1.0 / 60.0))
+            .init_resource::<ModuleRegistry>()
+            .init_resource::<FrameInterpolation>()
             .add_state::<AppState>()
-            .add_plugins(RapierPhysicsPlugin::<NoUserData>::default())
+            .add_plugins(RapierPhysicsPlugin::<NoUserData>::default().in_fixed_schedule())
             .add_systems(Startup, discover_modules)
             .add_systems(OnEnter(AppState::Lobby), setup_lobby)
             .add_systems(OnExit(AppState::Lobby), cleanup_lobby)
+            .add_systems(Update, lobby_keyboard.run_if(in_state(AppState::Lobby)))
             .add_systems(
-                Update,
-                (lobby_keyboard, player_move, player_look, pad_trigger)
-                    .run_if(in_state(AppState::Lobby)),
+                FixedUpdate,
+                (player_move, player_look, pad_trigger).run_if(in_state(AppState::Lobby)),
             )
-            .add_systems(Update, exit_to_lobby);
+            .add_systems(Update, exit_to_lobby)
+            .add_systems(Update, update_frame_interpolation);
 
         #[cfg(target_arch = "wasm32")]
         app.add_systems(Update, apply_discovered_modules);
@@ -397,6 +404,13 @@ fn pad_trigger(
             }
         }
     }
+}
+
+fn update_frame_interpolation(
+    fixed_time: Res<Time<Fixed>>,
+    mut interpolation: ResMut<FrameInterpolation>,
+) {
+    interpolation.0 = fixed_time.overstep_percentage();
 }
 
 /// Registers a [`GameModule`] and wires its lifecycle hooks.
