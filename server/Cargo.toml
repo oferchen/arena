@@ -9,7 +9,8 @@ once_cell = "1.18"
 axum = { version = "0.7", features = ["ws"] }
 tower-http = { version = "0.6", features = ["fs", "set-header"] }
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal"] }
-sqlx = { version = "0.7", features = ["runtime-tokio-rustls", "postgres", "macros"] }
+sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "postgres", "macros"] }
+sqlx-postgres = "0.8"
 net = { path = "../crates/net", features = ["webrtc"] }
 serde = { version = "1", features = ["derive"] }
 webrtc = "0.11"
@@ -20,7 +21,10 @@ clap = { version = "4", features = ["derive", "env"] }
 duck_hunt_server = { path = "../crates/minigames/duck_hunt" }
 glam = "0.24"
 postcard = { version = "1", features = ["alloc"] }
+thiserror = "1"
+email_address = "0.2"
 
 [dev-dependencies]
 tokio-tungstenite = "0.21"
 futures-util = "0.3"
+serial_test = "3"

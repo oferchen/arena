@@ -19,7 +19,6 @@ fn main() -> Result<()> {
             let path = entry.path();
             let file_name = path.file_name().unwrap().to_string_lossy().to_string();
             if file_name == "index.html" {
-                fs::copy(path, static_dir.join(&file_name))?;
                 continue;
             }
             if file_name == "manifest.json" || file_name == "sw.js" {
@@ -113,6 +112,13 @@ fn main() -> Result<()> {
         static_dir.join("manifest.json"),
         serde_json::to_string_pretty(&manifest_json)?,
     )?;
+
+    // rewrite index.html to use hashed asset filenames
+    let mut index_html = fs::read_to_string(web.join("index.html"))?;
+    for (original, hashed) in &manifest {
+        index_html = index_html.replace(&format!("/{original}"), &format!("/assets/{hashed}"));
+    }
+    fs::write(static_dir.join("index.html"), index_html)?;
 
     let precache_json = serde_json::to_string_pretty(&precache)?;
     fs::write(
