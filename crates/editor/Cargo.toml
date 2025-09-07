@@ -8,4 +8,7 @@ anyhow = "1"
 serde = { version = "1", features = ["derive"] }
 toml = "0.8"
 platform-api = { path = "../platform-api" }
+bevy_ecs = { version = "0.12", default-features = false }
+
+[dev-dependencies]
 
