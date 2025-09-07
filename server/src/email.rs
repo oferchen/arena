@@ -12,11 +12,11 @@ use lettre::transport::smtp::{
 use lettre::{AsyncSmtpTransport, AsyncTransport, Message, Tokio1Executor};
 use once_cell::sync::Lazy;
 use prometheus::{
-    register_gauge, register_int_counter, register_int_gauge_vec, Gauge, IntCounter,
-    IntGaugeVec,
+    Gauge, IntCounter, IntGaugeVec, register_gauge, register_int_counter, register_int_gauge_vec,
 };
 use serde::Serialize;
 use std::collections::HashMap;
+use std::fmt;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 use thiserror::Error;
@@ -38,15 +38,30 @@ impl Default for StartTls {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct ParseStartTlsError(String);
+
+impl fmt::Display for ParseStartTlsError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "invalid value for --smtp-starttls: {}; expected 'auto', 'always', or 'never'",
+            self.0
+        )
+    }
+}
+
+impl std::error::Error for ParseStartTlsError {}
+
 impl std::str::FromStr for StartTls {
-    type Err = ();
+    type Err = ParseStartTlsError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.to_lowercase().as_str() {
             "auto" => Ok(StartTls::Auto),
             "always" => Ok(StartTls::Always),
             "never" => Ok(StartTls::Never),
-            _ => Err(()),
+            _ => Err(ParseStartTlsError(s.to_string())),
         }
     }
 }

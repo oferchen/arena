@@ -22,8 +22,8 @@ use webrtc::peer_connection::sdp::session_description::RTCSessionDescription;
 
 mod email;
 mod room;
-use tower_http::{services::ServeDir, set_header::SetResponseHeaderLayer};
 use prometheus::{Encoder, TextEncoder};
+use tower_http::{services::ServeDir, set_header::SetResponseHeaderLayer};
 
 #[derive(Parser, Debug)]
 struct Cli {
@@ -47,10 +47,7 @@ struct Cli {
 
 impl Cli {
     fn smtp_config(&self) -> Result<SmtpConfig> {
-        let starttls = self
-            .smtp_starttls
-            .parse()
-            .map_err(|_| anyhow!("invalid value for --smtp-starttls: {}", self.smtp_starttls))?;
+        let starttls: StartTls = self.smtp_starttls.parse()?;
         Ok(SmtpConfig {
             host: self.smtp_host.clone(),
             port: self.smtp_port,
@@ -440,7 +437,9 @@ mod tests {
         });
 
         assert_eq!(
-            mail_test_handler(State(state.clone()), Some(query), None).await.0,
+            mail_test_handler(State(state.clone()), Some(query), None)
+                .await
+                .0,
             MailTestResponse { queued: true }
         );
     }
@@ -468,7 +467,9 @@ mod tests {
         });
 
         assert_eq!(
-            mail_test_handler(State(state.clone()), None, Some(body)).await.0,
+            mail_test_handler(State(state.clone()), None, Some(body))
+                .await
+                .0,
             MailTestResponse { queued: true }
         );
     }
