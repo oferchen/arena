@@ -1,4 +1,5 @@
 use bevy_ecs::prelude::*;
+use editor::{Level, play_in_editor, validate_level};
 use editor::{AssetRegistry, Level, SpawnZone, play_in_editor, validate_level};
 use platform_api::ModuleContext;
 
