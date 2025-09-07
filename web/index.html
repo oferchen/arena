@@ -21,12 +21,21 @@
   </head>
   <body>
     <canvas id="bevy-canvas"></canvas>
-    <script src="/startup.js"></script>
-    <script type="module" src="/bootstrap.js"></script>
-    <script>
-      if ("serviceWorker" in navigator) {
-        navigator.serviceWorker.register("/sw.js");
-      }
-    </script>
+    <script
+      src="/startup.js"
+      crossorigin="anonymous"
+      integrity="sha256-DLWCSxa+f8SHs4ojoLLu2M83wtSuZBfbo0uzQ3/FUHM="
+    ></script>
+    <script
+      type="module"
+      src="/bootstrap.js"
+      crossorigin="anonymous"
+      integrity="sha256-DS9kCHRN+zm/qTj/ctYVArho9OTY9/Z+s4UbZ4D8pek="
+    ></script>
+    <script
+      src="/register-sw.js"
+      crossorigin="anonymous"
+      integrity="sha256-Ki/+6Rc5qTM85683og1Cx1Kl3cTEy5rf4CoKo79CoSI="
+    ></script>
   </body>
 </html>
