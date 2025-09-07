@@ -250,6 +250,7 @@ impl EmailService {
                         EMAIL_FAILED.inc();
                         EMAIL_LAST_ERROR.reset();
                         EMAIL_LAST_ERROR.with_label_values(&[&e]).set(1);
+                        log::error!("dead-letter to {:?}: {e}", msg.envelope().to());
                     }
                 }
             }
@@ -274,7 +275,7 @@ impl EmailService {
         Ok(allowed)
     }
 
-    fn queue_mail(&self, email: Message) {
+    pub fn queue_mail(&self, email: Message) {
         EMAIL_QUEUED.inc();
         if self.sender.send(email).is_err() {
             log::warn!("email queue disconnected");

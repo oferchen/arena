@@ -7,11 +7,11 @@ use ::payments::{Catalog, EntitlementList, EntitlementStore, Sku, StripeClient};
 use analytics::{Analytics, Event};
 use axum::{
     Router,
+    body::Bytes,
     extract::{
         Json, Path, Query, State,
         ws::{Message, WebSocket, WebSocketUpgrade},
     },
-    body::Bytes,
     http::{HeaderMap, HeaderName, HeaderValue, StatusCode, header::CACHE_CONTROL},
     response::IntoResponse,
     routing::{get, get_service, post},
@@ -31,10 +31,10 @@ mod room;
 mod test_logger;
 #[cfg(test)]
 mod tests;
-use prometheus::{Encoder, TextEncoder};
-use tower_http::{services::ServeDir, set_header::SetResponseHeaderLayer};
 use hmac::{Hmac, Mac};
+use prometheus::{Encoder, TextEncoder};
 use sha2::Sha256;
+use tower_http::{services::ServeDir, set_header::SetResponseHeaderLayer};
 
 #[derive(Parser, Debug)]
 struct Cli {
@@ -90,51 +90,36 @@ async fn handle_signal_socket(state: Arc<AppState>, mut socket: WebSocket) {
 
     if let Some(msg) = socket.recv().await {
         match msg {
-            Ok(Message::Text(sdp)) => {
-                match ServerConnector::new().await {
-                    Ok(connector) => {
-                        let mut offer = RTCSessionDescription::default();
-                        offer.sdp_type = RTCSdpType::Offer;
-                        offer.sdp = sdp;
-                        if let Err(e) = connector.pc.set_remote_description(offer).await {
-                            log::warn!("invalid SDP offer: {e}");
-                            let _ = socket
-                                .send(Message::Text(
-                                    json!({ "error": "invalid SDP offer" }).to_string(),
-                                ))
-                                .await;
-                            let _ = socket
-                                .send(Message::Close(Some(CloseFrame {
-                                    code: 1002,
-                                    reason: "invalid SDP".into(),
-                                })))
-                                .await;
-                            return;
-                        }
+            Ok(Message::Text(sdp)) => match ServerConnector::new().await {
+                Ok(connector) => {
+                    let mut offer = RTCSessionDescription::default();
+                    offer.sdp_type = RTCSdpType::Offer;
+                    offer.sdp = sdp;
+                    if let Err(e) = connector.pc.set_remote_description(offer).await {
+                        log::warn!("invalid SDP offer: {e}");
+                        let _ = socket
+                            .send(Message::Text(
+                                json!({ "error": "invalid SDP offer" }).to_string(),
+                            ))
+                            .await;
+                        let _ = socket
+                            .send(Message::Close(Some(CloseFrame {
+                                code: 1002,
+                                reason: "invalid SDP".into(),
+                            })))
+                            .await;
+                        return;
+                    }
 
-                        match connector.pc.create_answer(None).await {
-                            Ok(answer) => {
-                                if connector
-                                    .pc
-                                    .set_local_description(answer.clone())
-                                    .await
-                                    .is_err()
-                                {
-                                    log::warn!("failed to set local description");
-                                    let _ = socket
-                                        .send(Message::Close(Some(CloseFrame {
-                                            code: 1011,
-                                            reason: "pc error".into(),
-                                        })))
-                                        .await;
-                                    return;
-                                }
-
-                                let _ = socket.send(Message::Text(answer.sdp.clone())).await;
-                                state.rooms.add_peer(connector).await;
-                            }
-                            Err(e) => {
-                                log::warn!("failed to create answer: {e}");
+                    match connector.pc.create_answer(None).await {
+                        Ok(answer) => {
+                            if connector
+                                .pc
+                                .set_local_description(answer.clone())
+                                .await
+                                .is_err()
+                            {
+                                log::warn!("failed to set local description");
                                 let _ = socket
                                     .send(Message::Close(Some(CloseFrame {
                                         code: 1011,
@@ -143,20 +128,33 @@ async fn handle_signal_socket(state: Arc<AppState>, mut socket: WebSocket) {
                                     .await;
                                 return;
                             }
+
+                            let _ = socket.send(Message::Text(answer.sdp.clone())).await;
+                            state.rooms.add_peer(connector).await;
+                        }
+                        Err(e) => {
+                            log::warn!("failed to create answer: {e}");
+                            let _ = socket
+                                .send(Message::Close(Some(CloseFrame {
+                                    code: 1011,
+                                    reason: "pc error".into(),
+                                })))
+                                .await;
+                            return;
                         }
                     }
-                    Err(e) => {
-                        log::warn!("failed to create peer connection: {e}");
-                        let _ = socket
-                            .send(Message::Close(Some(CloseFrame {
-                                code: 1011,
-                                reason: "pc error".into(),
-                            })))
-                            .await;
-                        return;
-                    }
                 }
-            }
+                Err(e) => {
+                    log::warn!("failed to create peer connection: {e}");
+                    let _ = socket
+                        .send(Message::Close(Some(CloseFrame {
+                            code: 1011,
+                            reason: "pc error".into(),
+                        })))
+                        .await;
+                    return;
+                }
+            },
             Ok(_) => {
                 log::warn!("expected SDP offer");
                 let _ = socket
@@ -259,12 +257,21 @@ async fn mail_test_handler(
         .map(|q| q.0.to)
         .or_else(|| body.map(|b| b.0.to))
         .unwrap_or_else(|| state.email.from_address().to_string());
-
-    let queued = EmailAddress::is_valid(&to) && state.email.send_test(&to).is_ok();
-
-    if queued {
-        state.analytics.dispatch(Event::MailTestQueued);
-    }
+    let queued = if !EmailAddress::is_valid(&to) {
+        log::warn!("invalid test email address: {to}");
+        false
+    } else {
+        match state.email.send_test(&to) {
+            Ok(()) => {
+                state.analytics.dispatch(Event::MailTestQueued);
+                true
+            }
+            Err(e) => {
+                log::warn!("failed to queue test email to {to}: {e}");
+                false
+            }
+        }
+    };
 
     Json(MailTestResponse { queued })
 }
@@ -334,7 +341,10 @@ async fn stripe_webhook_handler(
         Err(_) => return StatusCode::UNAUTHORIZED,
     };
 
-    let sig_header = match headers.get("Stripe-Signature").and_then(|v| v.to_str().ok()) {
+    let sig_header = match headers
+        .get("Stripe-Signature")
+        .and_then(|v| v.to_str().ok())
+    {
         Some(h) => h,
         None => return StatusCode::UNAUTHORIZED,
     };
@@ -350,16 +360,14 @@ async fn stripe_webhook_handler(
 
     if event.r#type == "checkout.session.completed" {
         if let Some(meta) = event.data.object.metadata {
-            if let Ok(user) = ::payments::UserId::parse_str(&event.data.object.client_reference_id) {
+            if let Ok(user) = ::payments::UserId::parse_str(&event.data.object.client_reference_id)
+            {
                 ::payments::complete_purchase(
                     &state.entitlements,
                     &event.data.object.client_reference_id,
                     &meta.sku,
                 );
-                let _ = state
-                    .leaderboard
-                    .record_purchase(user, &meta.sku)
-                    .await;
+                let _ = state.leaderboard.record_purchase(user, &meta.sku).await;
                 let _ = state.entitlements.save(&state.entitlements_path);
                 state.analytics.dispatch(Event::PurchaseCompleted {
                     sku: meta.sku.clone(),
@@ -471,7 +479,9 @@ async fn setup(smtp: SmtpConfig, analytics: Analytics) -> Result<AppState> {
     let entitlements = EntitlementStore::default();
     if let Err(e) = entitlements.load(&entitlements_path) {
         log::warn!("failed to load entitlements: {e}");
-        analytics.dispatch(Event::Error { message: e.to_string() });
+        analytics.dispatch(Event::Error {
+            message: e.to_string(),
+        });
     }
     Ok(AppState {
         email,
