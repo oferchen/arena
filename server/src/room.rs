@@ -1,8 +1,13 @@
 use std::sync::Arc;
 use std::time::Duration as StdDuration;
 
-use tokio::sync::{Mutex, mpsc::Receiver, mpsc::Sender};
+use tokio::sync::{
+    mpsc::error::TrySendError, mpsc::Receiver, mpsc::Sender, Mutex,
+};
 use tokio::time::{self, Duration};
+
+use once_cell::sync::Lazy;
+use prometheus::{register_int_counter, IntCounter};
 
 use duck_hunt_server::{DuckState, Server as DuckServer, validate_hit};
 use glam::Vec3;
@@ -14,6 +19,14 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 #[cfg(test)]
 static FORCE_SERIALIZATION_ERROR: AtomicBool = AtomicBool::new(false);
+
+static SNAPSHOT_CHANNEL_FULL: Lazy<IntCounter> = Lazy::new(|| {
+    register_int_counter!(
+        "snapshot_channel_full_total",
+        "Number of times snapshot channel was full"
+    )
+    .unwrap()
+});
 
 struct ConnectorHandle {
     input_rx: Receiver<InputFrame>,
@@ -105,24 +118,54 @@ impl Room {
         if let Some(ref base) = self.last_snapshot {
             if let Ok(delta) = delta_compress(base, &snapshot) {
                 for conn in &self.connectors {
-                    let _ = conn
-                        .snapshot_tx
-                        .try_send(ServerMessage::Delta(delta.clone()));
+                    let msg = ServerMessage::Delta(delta.clone());
+                    if let Err(err) = conn.snapshot_tx.try_send(msg) {
+                        match err {
+                            TrySendError::Full(msg) => {
+                                SNAPSHOT_CHANNEL_FULL.inc();
+                                log::warn!("snapshot channel full; falling back to send");
+                                let _ = conn.snapshot_tx.send(msg).await;
+                            }
+                            TrySendError::Closed(_) => {
+                                log::warn!("snapshot channel closed");
+                            }
+                        }
+                    }
                 }
                 self.last_snapshot = Some(snapshot);
             } else {
                 for conn in &self.connectors {
-                    let _ = conn
-                        .snapshot_tx
-                        .try_send(ServerMessage::Baseline(snapshot.clone()));
+                    let msg = ServerMessage::Baseline(snapshot.clone());
+                    if let Err(err) = conn.snapshot_tx.try_send(msg) {
+                        match err {
+                            TrySendError::Full(msg) => {
+                                SNAPSHOT_CHANNEL_FULL.inc();
+                                log::warn!("snapshot channel full; falling back to send");
+                                let _ = conn.snapshot_tx.send(msg).await;
+                            }
+                            TrySendError::Closed(_) => {
+                                log::warn!("snapshot channel closed");
+                            }
+                        }
+                    }
                 }
                 self.last_snapshot = Some(snapshot);
             }
         } else {
             for conn in &self.connectors {
-                let _ = conn
-                    .snapshot_tx
-                    .try_send(ServerMessage::Baseline(snapshot.clone()));
+                let msg = ServerMessage::Baseline(snapshot.clone());
+                if let Err(err) = conn.snapshot_tx.try_send(msg) {
+                    match err {
+                        TrySendError::Full(msg) => {
+                            SNAPSHOT_CHANNEL_FULL.inc();
+                            log::warn!("snapshot channel full; falling back to send");
+                            let _ = conn.snapshot_tx.send(msg).await;
+                        }
+                        TrySendError::Closed(_) => {
+                            log::warn!("snapshot channel closed");
+                        }
+                    }
+                }
             }
             self.last_snapshot = Some(snapshot);
         }
@@ -168,7 +211,7 @@ mod tests {
 
     impl Log for TestLogger {
         fn enabled(&self, metadata: &Metadata) -> bool {
-            metadata.level() <= log::Level::Error
+            metadata.level() <= log::Level::Warn
         }
 
         fn log(&self, record: &Record) {
@@ -337,5 +380,45 @@ mod tests {
                 .any(|msg| msg.contains("failed to serialize scores snapshot"))
         );
         FORCE_SERIALIZATION_ERROR.store(false, Ordering::Relaxed);
+    }
+
+    #[tokio::test]
+    async fn logs_warning_when_channel_full() {
+        INIT.call_once(|| {
+            log::set_logger(&LOGGER).unwrap();
+        });
+        log::set_max_level(LevelFilter::Warn);
+
+        LOGGER.messages.lock().unwrap().clear();
+
+        let mut room = Room::new();
+        let (_input_tx, input_rx) = mpsc::channel(1);
+        let (snapshot_tx, snapshot_rx) = mpsc::channel(1);
+        room.connectors.push(ConnectorHandle {
+            input_rx,
+            snapshot_tx,
+        });
+
+        // First tick fills the channel with a baseline snapshot.
+        room.tick().await;
+
+        // Drain baseline and future delta to allow fallback send to complete.
+        let drain = tokio::spawn(async move {
+            let mut rx = snapshot_rx;
+            let _ = rx.recv().await;
+            let _ = rx.recv().await;
+        });
+
+        // Second tick encounters a full channel and logs a warning.
+        room.tick().await;
+        drain.await.unwrap();
+
+        let logs = LOGGER.messages.lock().unwrap();
+        assert!(
+            logs.iter()
+                .any(|msg| msg.contains("snapshot channel full")),
+            "expected warning not found: {:?}",
+            *logs
+        );
     }
 }
