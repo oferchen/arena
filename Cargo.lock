@@ -2201,7 +2201,10 @@ dependencies = [
  "anyhow",
  "platform-api",
  "serde",
+ "serde_json",
  "toml",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
 ]
 
 [[package]]
