@@ -1,7 +1,7 @@
 use crate::level::Level;
 
 #[cfg(target_arch = "wasm32")]
-use wasm_bindgen::{prelude::*, JsCast};
+use wasm_bindgen::{JsCast, prelude::*};
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen_futures::JsFuture;
 #[cfg(target_arch = "wasm32")]
@@ -17,7 +17,10 @@ pub enum EditorMode {
     Orthographic,
     PrefabPalette,
     CsgBrush,
-    SplineVolume,
+    SplineTool,
+    Volume,
+    NavMesh,
+    Validation,
 }
 
 pub struct EditorClient {
@@ -28,6 +31,14 @@ pub struct EditorClient {
     pub grid_snap: Option<f32>,
     /// Control points for the in-progress spline tool.
     pub spline: Vec<[f32; 3]>,
+    /// Points defining editor volumes.
+    pub volumes: Vec<[f32; 3]>,
+    /// Whether the baked navigation mesh is visible.
+    pub navmesh_visible: bool,
+    /// History stack for undo operations.
+    pub undo_stack: Vec<Level>,
+    /// History stack for redo operations.
+    pub redo_stack: Vec<Level>,
 }
 
 impl EditorClient {
@@ -38,16 +49,26 @@ impl EditorClient {
             gizmos: true,
             grid_snap: None,
             spline: Vec::new(),
+            volumes: Vec::new(),
+            navmesh_visible: false,
+            undo_stack: Vec::new(),
+            redo_stack: Vec::new(),
         }
     }
 
-    pub fn set_mode(&mut self, mode: EditorMode) { self.mode = mode; }
+    pub fn set_mode(&mut self, mode: EditorMode) {
+        self.mode = mode;
+    }
 
     /// Toggle the visibility of editing gizmos.
-    pub fn toggle_gizmos(&mut self) { self.gizmos = !self.gizmos; }
+    pub fn toggle_gizmos(&mut self) {
+        self.gizmos = !self.gizmos;
+    }
 
     /// Enable grid snapping with the provided step size or disable it with `None`.
-    pub fn set_grid_snap(&mut self, step: Option<f32>) { self.grid_snap = step; }
+    pub fn set_grid_snap(&mut self, step: Option<f32>) {
+        self.grid_snap = step;
+    }
 
     /// Apply grid snapping to the provided coordinate if enabled.
     pub fn snap_value(&self, v: f32) -> f32 {
@@ -59,10 +80,57 @@ impl EditorClient {
     }
 
     /// Append a control point to the active spline tool.
-    pub fn add_spline_point(&mut self, point: [f32; 3]) { self.spline.push(point); }
+    pub fn add_spline_point(&mut self, point: [f32; 3]) {
+        self.spline.push(point);
+    }
 
     /// Clear any active spline being edited.
-    pub fn clear_spline(&mut self) { self.spline.clear(); }
+    pub fn clear_spline(&mut self) {
+        self.spline.clear();
+    }
+
+    /// Add a point to the active volume being edited.
+    pub fn add_volume_point(&mut self, point: [f32; 3]) {
+        self.volumes.push(point);
+    }
+
+    /// Clear any temporary volume definition.
+    pub fn clear_volumes(&mut self) {
+        self.volumes.clear();
+    }
+
+    /// Toggle visibility of the navigation mesh overlay.
+    pub fn toggle_navmesh(&mut self) {
+        self.navmesh_visible = !self.navmesh_visible;
+    }
+
+    /// Capture the current level state for undo operations.
+    pub fn snapshot(&mut self, level: &Level) {
+        self.undo_stack.push(level.clone());
+        self.redo_stack.clear();
+    }
+
+    /// Undo to the previous captured level state.
+    pub fn undo(&mut self, level: &mut Level) -> bool {
+        if let Some(prev) = self.undo_stack.pop() {
+            self.redo_stack.push(level.clone());
+            *level = prev;
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Redo the last undone level state.
+    pub fn redo(&mut self, level: &mut Level) -> bool {
+        if let Some(next) = self.redo_stack.pop() {
+            self.undo_stack.push(level.clone());
+            *level = next;
+            true
+        } else {
+            false
+        }
+    }
 
     /// Persist the level locally using OPFS or IndexedDB.
     pub async fn store_level_locally(&self, level: &Level) -> Result<(), String> {
@@ -222,4 +290,3 @@ async fn load_idb(id: &str) -> Result<Option<String>, JsValue> {
         Ok(val.as_string())
     }
 }
-
