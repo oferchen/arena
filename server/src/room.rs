@@ -7,7 +7,7 @@ use tokio::time::{self, Duration};
 use once_cell::sync::Lazy;
 use prometheus::{IntCounter, register_int_counter};
 
-use duck_hunt_server::{DuckState, Server as DuckServer, validate_hit};
+use duck_hunt_server::{DuckState, Server as DuckServer, validate_hit, replicate, spawn_duck};
 use glam::Vec3;
 use net::message::{InputFrame, ServerMessage, Snapshot, delta_compress};
 use net::server::ServerConnector;
@@ -54,24 +54,36 @@ impl Room {
             connectors: Vec::new(),
             last_snapshot: None,
             frame: 0,
-            duck_server: DuckServer {
-                latency: StdDuration::from_secs(0),
-                ducks: vec![DuckState {
-                    position: Vec3::new(0.0, 0.0, 5.0),
-                    velocity: Vec3::ZERO,
-                }],
+            duck_server: {
+                let mut server = DuckServer {
+                    latency: StdDuration::from_secs(0),
+                    ducks: Vec::new(),
+                    snapshot_txs: Vec::new(),
+                };
+                spawn_duck(
+                    &mut server,
+                    Vec3::new(0.0, 0.0, 5.0),
+                    Vec3::new(1.0, 0.0, 0.0),
+                );
+                server
             },
             scores: Vec::new(),
         }
     }
 
     fn add_connector(&mut self, connector: ServerConnector) {
+        let ServerConnector { input_rx, snapshot_tx, .. } = connector;
+        self.duck_server.snapshot_txs.push(snapshot_tx.clone());
         self.connectors.push(ConnectorHandle {
-            input_rx: connector.input_rx,
-            snapshot_tx: connector.snapshot_tx,
+            input_rx,
+            snapshot_tx,
             interest_mask: u64::MAX,
         });
         self.scores.push(0);
+        let ducks = self.duck_server.ducks.clone();
+        for duck in &ducks {
+            replicate(&self.duck_server, duck);
+        }
     }
 
     async fn tick(&mut self) {
@@ -166,6 +178,17 @@ impl Room {
         }
 
         self.last_snapshot = Some(snapshot);
+
+        let dt = 1.0 / 60.0;
+        let len = self.duck_server.ducks.len();
+        for i in 0..len {
+            let state = {
+                let duck = &mut self.duck_server.ducks[i];
+                duck.position += duck.velocity * dt;
+                duck.clone()
+            };
+            replicate(&self.duck_server, &state);
+        }
     }
 }
 
@@ -443,5 +466,48 @@ mod tests {
             "expected warning not found: {:?}",
             *logs
         );
+    }
+
+    #[tokio::test]
+    async fn duck_spawn_and_position_updates() {
+        let mut room = Room::new();
+        let (_input_tx, input_rx) = mpsc::channel(1);
+        let (snapshot_tx, mut snapshot_rx) = mpsc::channel(8);
+        room.connectors.push(ConnectorHandle {
+            input_rx,
+            snapshot_tx: snapshot_tx.clone(),
+            interest_mask: u64::MAX,
+        });
+        room.scores.push(0);
+        room.duck_server.snapshot_txs.push(snapshot_tx);
+
+        let ducks = room.duck_server.ducks.clone();
+        for duck in &ducks {
+            replicate(&room.duck_server, duck);
+        }
+
+        let spawn_state = loop {
+            if let ServerMessage::Baseline(b) = snapshot_rx.recv().await.unwrap() {
+                if let Ok(state) = postcard::from_bytes::<DuckState>(&b.data) {
+                    break state;
+                }
+            }
+        };
+        assert_eq!(spawn_state.position, Vec3::new(0.0, 0.0, 5.0));
+
+        room.tick().await;
+
+        let update_state = loop {
+            match snapshot_rx.recv().await {
+                Some(ServerMessage::Baseline(b)) => {
+                    if let Ok(state) = postcard::from_bytes::<DuckState>(&b.data) {
+                        break state;
+                    }
+                }
+                Some(_) => continue,
+                None => panic!("channel closed"),
+            }
+        };
+        assert!((update_state.position.x - (1.0 / 60.0)).abs() < 1e-6);
     }
 }

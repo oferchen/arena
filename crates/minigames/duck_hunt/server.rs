@@ -1,18 +1,32 @@
 use glam::Vec3;
+use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
 pub mod net {
     use super::DuckState;
+    use net::message::{ServerMessage, Snapshot};
+    use postcard;
+    use serde::Serialize;
     use std::time::Duration;
+    use tokio::sync::mpsc::Sender;
 
     #[derive(Clone)]
     pub struct Server {
         pub latency: Duration,
         pub ducks: Vec<DuckState>,
+        pub snapshot_txs: Vec<Sender<ServerMessage>>,
     }
 
     impl Server {
-        pub fn broadcast<T>(&self, _msg: &T) {}
+        pub fn broadcast<T: Serialize>(&self, msg: &T) {
+            if let Ok(data) = postcard::to_allocvec(msg) {
+                let snap = Snapshot { frame: 0, data };
+                let msg = ServerMessage::Baseline(snap);
+                for tx in &self.snapshot_txs {
+                    let _ = tx.try_send(msg.clone());
+                }
+            }
+        }
 
         pub fn latency(&self) -> Duration {
             self.latency
@@ -32,7 +46,7 @@ pub trait Leaderboard {
 
 const DUCK_RADIUS: f32 = 0.5;
 
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct DuckState {
     pub position: Vec3,
     pub velocity: Vec3,
@@ -40,11 +54,12 @@ pub struct DuckState {
 
 pub fn spawn_duck(server: &mut Server, position: Vec3, velocity: Vec3) {
     let state = DuckState { position, velocity };
+    server.ducks.push(state.clone());
     // send initial state to clients
     server.broadcast(&state);
 }
 
-pub fn replicate(server: &mut Server, state: &DuckState) {
+pub fn replicate(server: &Server, state: &DuckState) {
     server.broadcast(state);
 }
 
@@ -101,6 +116,7 @@ mod tests {
                 position: Vec3::new(0.0, 0.0, 5.0),
                 velocity: Vec3::ZERO,
             }],
+            snapshot_txs: Vec::new(),
         };
 
         let hit = validate_hit(&server, Vec3::ZERO, Vec3::Z, Duration::from_secs_f32(0.0));
@@ -115,6 +131,7 @@ mod tests {
                 position: Vec3::new(2.0, 0.0, 5.0),
                 velocity: Vec3::new(10.0, 0.0, 0.0),
             }],
+            snapshot_txs: Vec::new(),
         };
 
         let hit = validate_hit(&server, Vec3::ZERO, Vec3::Z, Duration::from_secs_f32(0.0));
@@ -129,6 +146,7 @@ mod tests {
                 position: Vec3::new(0.0, 0.0, 5.0),
                 velocity: Vec3::ZERO,
             }],
+            snapshot_txs: Vec::new(),
         };
 
         let hit = validate_hit(&server, Vec3::ZERO, Vec3::X, Duration::from_secs_f32(0.0));
@@ -151,6 +169,7 @@ mod tests {
                 position: Vec3::new(0.0, 0.0, 5.0),
                 velocity: Vec3::ZERO,
             }],
+            snapshot_txs: Vec::new(),
         };
         let mut lb = TestLeaderboard(0);
         let hit = handle_shot(

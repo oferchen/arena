@@ -7,4 +7,8 @@ edition = "2024"
 path = "server.rs"
 
 [dependencies]
-glam = "0.24"
+glam = { version = "0.24", features = ["serde"] }
+net = { path = "../../net" }
+postcard = { version = "1", features = ["alloc"] }
+serde = { version = "1", features = ["derive"] }
+tokio = { version = "1", features = ["sync"] }
