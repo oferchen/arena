@@ -1,4 +1,4 @@
-use std::{net::SocketAddr, sync::Arc};
+use std::{net::SocketAddr, path::PathBuf, sync::Arc};
 
 use anyhow::{Result, anyhow};
 
@@ -307,10 +307,12 @@ async fn setup(smtp: SmtpConfig, analytics: Analytics) -> Result<AppState> {
     })?);
 
     let rooms = room::RoomManager::new();
-    let leaderboard = ::leaderboard::LeaderboardService::default();
-    let entitlements_path = std::path::PathBuf::from("entitlements.json");
-    let entitlements = payments::EntitlementStore::load(&entitlements_path);
-    Ok(AppState { email, rooms, smtp, analytics, leaderboard, entitlements, entitlements_path })
+    let leaderboard = ::leaderboard::LeaderboardService::new(
+        "sqlite::memory:",
+        PathBuf::from("replays"),
+    )
+    .await?;
+    Ok(AppState { email, rooms, smtp, analytics, leaderboard })
 }
 
 async fn run(cli: Cli) -> Result<()> {
