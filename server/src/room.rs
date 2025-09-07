@@ -248,15 +248,16 @@ impl Room {
                 replay_path: String::new(),
                 created_at: Utc::now(),
                 flagged: false,
+                replay_index: 0,
             };
             let score = Score {
                 id: score_id,
                 run_id,
                 player_id: *player_id,
                 points: *points as i32,
-                window: LeaderboardWindow::AllTime,
                 verified: false,
                 created_at: Utc::now(),
+                window: LeaderboardWindow::AllTime,
             };
             let _ = leaderboard
                 .submit_score(leaderboard_id, score, run, Vec::new())

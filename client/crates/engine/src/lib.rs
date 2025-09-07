@@ -132,6 +132,12 @@ pub struct DocPad {
 #[derive(Component)]
 pub struct NoModulesSign;
 
+#[derive(Component)]
+pub struct LeaderboardScreen;
+
+#[derive(Component)]
+pub struct ReplayPedestal;
+
 const HELP_DOCS: [(&str, &str); 5] = [
     ("Netcode", "docs/netcode.md"),
     ("Modules", "docs/modules.md"),
@@ -188,6 +194,29 @@ pub fn setup_lobby(
             material: materials.add(Color::rgb(0.3, 0.5, 0.3).into()),
             ..default()
         },
+        LobbyEntity,
+    ));
+
+    commands.spawn((
+        PbrBundle {
+            mesh: meshes.add(Mesh::from(shape::Plane { size: 2.0, subdivisions: 0 })),
+            material: materials.add(Color::rgb(0.2, 0.2, 0.8).into()),
+            transform: Transform::from_xyz(-4.0, 1.0, -2.0)
+                .looking_at(Vec3::new(-4.0, 1.0, -1.0), Vec3::Y),
+            ..default()
+        },
+        LeaderboardScreen,
+        LobbyEntity,
+    ));
+
+    commands.spawn((
+        PbrBundle {
+            mesh: meshes.add(Mesh::from(shape::Cube { size: 1.0 })),
+            material: materials.add(Color::rgb(0.8, 0.8, 0.2).into()),
+            transform: Transform::from_xyz(4.0, 0.5, -2.0),
+            ..default()
+        },
+        ReplayPedestal,
         LobbyEntity,
     ));
 

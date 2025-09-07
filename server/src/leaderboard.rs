@@ -75,15 +75,16 @@ async fn post_run(
         replay_path: String::new(),
         created_at: Utc::now(),
         flagged: false,
+        replay_index: 0,
     };
     let score = Score {
         id: score_id,
         run_id,
         player_id: payload.player_id,
         points: payload.points,
-        window: LeaderboardWindow::AllTime,
         verified: false,
         created_at: Utc::now(),
+        window: LeaderboardWindow::AllTime,
     };
     if state
         .leaderboard

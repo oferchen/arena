@@ -107,15 +107,16 @@ pub async fn handle_shot(
             replay_path: String::new(),
             created_at: Utc::now(),
             flagged: false,
+            replay_index: 0,
         };
         let score = Score {
             id: Uuid::new_v4(),
             run_id,
             player_id,
             points: 1,
-            window: LeaderboardWindow::AllTime,
             verified: true,
             created_at: Utc::now(),
+            window: LeaderboardWindow::AllTime,
         };
         let _ = leaderboard
             .submit_score(leaderboard_id, score, run, replay)
