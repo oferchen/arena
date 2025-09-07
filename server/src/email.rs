@@ -2,7 +2,8 @@
 //!
 //! A background task periodically purges expired entries from the rate-limit
 //! map. The task runs on the Tokio runtime and its [`JoinHandle`] is stored so
-//! it can be aborted during shutdown if necessary.
+//! it can be aborted during shutdown if necessary. The cleanup task is
+//! terminated when [`EmailService`] is dropped.
 
 use clap::{Args, ValueEnum};
 use lettre::address::AddressError;
@@ -333,6 +334,13 @@ impl EmailService {
 
     pub fn abort_cleanup(&self) {
         self.cleanup.abort();
+    }
+}
+
+impl Drop for EmailService {
+    fn drop(&mut self) {
+        // Terminate the cleanup task when the service is dropped.
+        self.abort_cleanup();
     }
 }
 
