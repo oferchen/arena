@@ -251,6 +251,7 @@ mod tests {
     use webrtc::api::APIBuilder;
     use webrtc::api::media_engine::MediaEngine;
     use webrtc::peer_connection::configuration::RTCConfiguration;
+    use serial_test::serial;
 
     #[tokio::test]
     async fn setup_succeeds_without_env_vars() {
