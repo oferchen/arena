@@ -71,12 +71,19 @@ impl Clone for EntitlementStore {
 
 impl EntitlementStore {
     pub fn grant(&self, user_id: UserId, sku_id: String) {
+        let mut inner = self.inner.write().unwrap();
+        if inner
+            .iter()
+            .any(|e| e.user_id == user_id && e.sku_id == sku_id)
+        {
+            return;
+        }
         let ent = Entitlement {
             user_id,
             sku_id,
             granted_at: Utc::now(),
         };
-        self.inner.write().unwrap().push(ent);
+        inner.push(ent);
     }
 
     pub fn has(&self, user_id: UserId, sku_id: &str) -> bool {
@@ -101,10 +108,59 @@ impl EntitlementStore {
         }
     }
 
-    pub fn save(&self, path: &Path) -> std::io::Result<()> {
+    pub fn save(&self, path: &Path) -> Result<(), StoreError> {
         let data = self.inner.read().unwrap();
-        let json = serde_json::to_string(&*data).unwrap();
-        std::fs::write(path, json)
+        let json = serde_json::to_string(&*data)?;
+        std::fs::write(path, json)?;
+        Ok(())
+    }
+
+    pub fn load(&self, path: &Path) -> Result<(), StoreError> {
+        let data = match std::fs::read(path) {
+            Ok(data) => data,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+            Err(e) => return Err(e.into()),
+        };
+        let entitlements: Vec<Entitlement> = serde_json::from_slice(&data)?;
+        let mut inner = self.inner.write().unwrap();
+        for ent in entitlements {
+            if !inner
+                .iter()
+                .any(|e| e.user_id == ent.user_id && e.sku_id == ent.sku_id)
+            {
+                inner.push(ent);
+            }
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug)]
+pub enum StoreError {
+    Io(std::io::Error),
+    Json(serde_json::Error),
+}
+
+impl std::fmt::Display for StoreError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            StoreError::Io(e) => write!(f, "io error: {e}"),
+            StoreError::Json(e) => write!(f, "json error: {e}"),
+        }
+    }
+}
+
+impl std::error::Error for StoreError {}
+
+impl From<std::io::Error> for StoreError {
+    fn from(err: std::io::Error) -> Self {
+        StoreError::Io(err)
+    }
+}
+
+impl From<serde_json::Error> for StoreError {
+    fn from(err: serde_json::Error) -> Self {
+        StoreError::Json(err)
     }
 }
 
@@ -133,5 +189,31 @@ mod tests {
         let user = UserId::new_v4();
         store.grant(user, "pro".to_string());
         assert!(store.has(user, "pro"));
+    }
+
+    #[test]
+    fn grant_ignores_duplicates() {
+        let store = EntitlementStore::default();
+        let user = UserId::new_v4();
+        store.grant(user, "pro".to_string());
+        store.grant(user, "pro".to_string());
+        assert_eq!(store.list(&user.to_string()).len(), 1);
+    }
+
+    #[test]
+    fn load_ignores_duplicates() {
+        let store = EntitlementStore::default();
+        let user = UserId::new_v4();
+        let ent = Entitlement {
+            user_id: user,
+            sku_id: "pro".to_string(),
+            granted_at: Utc::now(),
+        };
+        let data = vec![ent.clone(), ent];
+        let path = std::env::temp_dir().join("entitlements_test.json");
+        std::fs::write(&path, serde_json::to_string(&data).unwrap()).unwrap();
+        store.load(&path).unwrap();
+        assert_eq!(store.list(&user.to_string()).len(), 1);
+        let _ = std::fs::remove_file(path);
     }
 }
