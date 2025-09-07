@@ -90,13 +90,19 @@ fn main() -> Result<()> {
                         format!("{stem}-{hash_hex}.{ext}")
                     };
                     fs::write(module_dest.join(&hashed_name), data)?;
-                    module_manifest.insert(file_name, hashed_name);
+                    module_manifest.insert(file_name, hashed_name.clone());
+                    precache.push(format!(
+                        "/assets/modules/{module_name}/{hashed_name}"
+                    ));
                 }
             }
             fs::write(
                 module_dest.join("manifest.json"),
                 serde_json::to_string_pretty(&module_manifest)?,
             )?;
+            precache.push(format!(
+                "/assets/modules/{module_name}/manifest.json"
+            ));
         }
     }
 

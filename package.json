@@ -6,10 +6,12 @@
     "format": "prettier --write .",
     "lint": "prettier --check .",
     "prettier": "prettier --check .",
-    "prepare": "husky install"
+    "prepare": "husky install",
+    "test": "node --test tests"
   },
   "devDependencies": {
     "prettier": "^3.2.5",
-    "husky": "^8.0.3"
+    "husky": "^8.0.3",
+    "service-worker-mock": "^2.0.5"
   }
 }
