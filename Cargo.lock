@@ -1873,6 +1873,7 @@ dependencies = [
  "duck_hunt",
  "editor",
  "engine",
+ "net",
  "null_module",
  "payments",
  "physics",
@@ -4566,6 +4567,14 @@ dependencies = [
  "wasm-bindgen-futures",
  "web-sys",
  "webrtc",
+]
+
+[[package]]
+name = "netcode-tests"
+version = "0.1.0"
+dependencies = [
+ "net",
+ "rand",
 ]
 
 [[package]]

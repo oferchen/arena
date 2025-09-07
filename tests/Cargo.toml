@@ -1,0 +1,12 @@
+[package]
+name = "netcode-tests"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+netcode = { path = "../crates/net", package = "net" }
+rand = { version = "0.8", features = ["small_rng"] }
+
+[[test]]
+name = "netcode"
+path = "netcode.rs"
