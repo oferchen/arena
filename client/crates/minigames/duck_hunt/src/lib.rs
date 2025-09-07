@@ -275,6 +275,13 @@ fn log_connection_events(mut events: EventReader<ConnectionEvent>) {
 mod tests {
     use super::*;
 
+    #[test]
+    fn sample_with_fewer_than_two_points_returns_zero() {
+        let spline = Spline {
+            points: vec![Vec3::new(1.0, 2.0, 3.0)],
+            duration: 1.0,
+        };
+        assert_eq!(spline.sample(0.5), Vec3::ZERO);
     fn sample_at(spline: &Spline, t: f32) -> Vec3 {
         let segments = spline.points.len() - 1;
         let seg_t = t * segments as f32;
