@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Error};
+use anyhow::{Error, anyhow};
 use bevy::prelude::Event;
 use serde::{Deserialize, Serialize};
 
@@ -39,10 +39,7 @@ pub enum ServerMessage {
 }
 
 /// Create a [`SnapshotDelta`] by XOR'ing the bytes of `base` and `current`.
-pub fn delta_compress(
-    base: &Snapshot,
-    current: &Snapshot,
-) -> Result<SnapshotDelta, Error> {
+pub fn delta_compress(base: &Snapshot, current: &Snapshot) -> Result<SnapshotDelta, Error> {
     if base.data.len() != current.data.len() {
         return Err(anyhow!(
             "snapshot length mismatch: {} != {}",

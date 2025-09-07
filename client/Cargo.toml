@@ -34,6 +34,8 @@ null_module = { path = "../crates/minigames/null_module" }
 physics = { path = "crates/physics" }
 editor = { path = "../crates/editor" }
 render = { path = "../crates/render" }
+payments = { path = "../crates/payments" }
+reqwest = { version = "0.11", default-features = false, features = ["json", "blocking", "rustls-tls"] }
 
 [features]
 default = ["audio"]
@@ -43,3 +45,6 @@ webgl2 = ["render/webgl2"]
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 wee_alloc = { version = "0.4" }
 wasm-bindgen = "0.2"
+
+[dev-dependencies]
+wasm-bindgen-test = "0.3"
