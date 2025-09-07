@@ -71,7 +71,7 @@ impl Room {
         }
     }
 
-    fn add_connector(&mut self, connector: ServerConnector) {
+    fn add_connector(&mut self, connector: ServerConnector) -> usize {
         let ServerConnector { input_rx, snapshot_tx, .. } = connector;
         self.duck_server.snapshot_txs.push(snapshot_tx.clone());
         self.connectors.push(ConnectorHandle {
@@ -83,6 +83,13 @@ impl Room {
         let ducks = self.duck_server.ducks.clone();
         for duck in &ducks {
             replicate(&self.duck_server, duck);
+        }
+        self.connectors.len() - 1
+    }
+
+    fn set_interest(&mut self, index: usize, mask: u64) {
+        if let Some(conn) = self.connectors.get_mut(index) {
+            conn.interest_mask = mask;
         }
     }
 
@@ -159,7 +166,14 @@ impl Room {
             ServerMessage::Baseline(snapshot.clone())
         };
 
-        for conn in &self.connectors {
+        let mut closed = Vec::new();
+        let diff_masks = vec![diff_mask; self.connectors.len()];
+        for (i, (conn, &diff_mask)) in self
+            .connectors
+            .iter()
+            .zip(diff_masks.iter())
+            .enumerate()
+        {
             if conn.interest_mask & diff_mask == 0 {
                 continue;
             }
@@ -172,8 +186,16 @@ impl Room {
                     }
                     TrySendError::Closed(_) => {
                         log::warn!("snapshot channel closed");
+                        closed.push(i);
                     }
                 }
+            }
+        }
+
+        for i in closed.into_iter().rev() {
+            self.connectors.remove(i);
+            if i < self.scores.len() {
+                self.scores.remove(i);
             }
         }
 
@@ -211,8 +233,12 @@ impl RoomManager {
         Self { room }
     }
 
-    pub async fn add_peer(&self, connector: ServerConnector) {
-        self.room.lock().await.add_connector(connector);
+    pub async fn add_peer(&self, connector: ServerConnector) -> usize {
+        self.room.lock().await.add_connector(connector)
+    }
+
+    pub async fn set_interest(&self, index: usize, mask: u64) {
+        self.room.lock().await.set_interest(index, mask);
     }
 }
 
@@ -509,5 +535,45 @@ mod tests {
             }
         };
         assert!((update_state.position.x - (1.0 / 60.0)).abs() < 1e-6);
+    }
+
+    #[tokio::test]
+    async fn removes_closed_connectors() {
+        let mut room = Room::new();
+        let (_input_tx, input_rx) = mpsc::channel(1);
+        let (snapshot_tx, snapshot_rx) = mpsc::channel(1);
+        drop(snapshot_rx);
+        room.connectors.push(ConnectorHandle {
+            input_rx,
+            snapshot_tx,
+            interest_mask: u64::MAX,
+        });
+        room.scores.push(0);
+
+        room.tick().await;
+
+        assert!(room.connectors.is_empty());
+        assert!(room.scores.is_empty());
+    }
+
+    #[tokio::test]
+    async fn set_interest_updates_mask() {
+        let mut room = Room::new();
+        let (_input_tx, input_rx) = mpsc::channel(1);
+        let (snapshot_tx, mut snapshot_rx) = mpsc::channel(8);
+        room.connectors.push(ConnectorHandle {
+            input_rx,
+            snapshot_tx,
+            interest_mask: 0,
+        });
+        room.scores.push(0);
+
+        room.tick().await; // baseline exists but not sent due to zero interest
+        assert!(snapshot_rx.try_recv().is_err());
+
+        room.set_interest(0, 1);
+        room.scores[0] = 1;
+        room.tick().await;
+        assert!(matches!(snapshot_rx.try_recv().unwrap(), ServerMessage::Delta(_)));
     }
 }
