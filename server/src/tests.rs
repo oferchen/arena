@@ -150,7 +150,7 @@ async fn websocket_signaling_invalid_sdp_logs_and_closes() {
         rooms,
         smtp: cfg,
         analytics: Analytics::new(None, false),
-        leaderboard: ::leaderboard::LeaderboardService::default(),
+        leaderboard: leaderboard.clone(),
         catalog: Catalog::new(vec![Sku {
             id: "basic".into(),
             price_cents: 1000,
@@ -210,7 +210,7 @@ async fn websocket_signaling_unexpected_binary_logs_and_closes() {
         rooms,
         smtp: cfg,
         analytics: Analytics::new(None, false),
-        leaderboard: ::leaderboard::LeaderboardService::default(),
+        leaderboard: leaderboard.clone(),
         catalog: Catalog::new(vec![Sku {
             id: "basic".into(),
             price_cents: 1000,
@@ -504,4 +504,137 @@ async fn admin_mail_config_route() {
         .unwrap();
 
     assert_eq!(response.status(), StatusCode::OK);
+}
+
+#[tokio::test]
+async fn stripe_webhook_accepts_valid_signature() {
+    let secret = "whsec_test";
+    unsafe {
+        env::set_var("STRIPE_WEBHOOK_SECRET", secret);
+    }
+
+    let cfg = SmtpConfig::default();
+    let email = Arc::new(EmailService::new(cfg.clone()).unwrap());
+    let rooms = room::RoomManager::new();
+    let leaderboard = ::leaderboard::LeaderboardService::new(
+        "sqlite::memory:",
+        std::path::PathBuf::from("replays"),
+    )
+    .await
+    .unwrap();
+    let state = Arc::new(AppState {
+        email,
+        rooms,
+        smtp: cfg.clone(),
+        analytics: Analytics::new(None, false),
+        leaderboard,
+        catalog: Catalog::new(vec![Sku {
+            id: "basic".into(),
+            price_cents: 1000,
+        }]),
+        stripe: StripeClient::new(),
+        entitlements: EntitlementStore::default(),
+        entitlements_path: PathBuf::new(),
+    });
+
+    let app = Router::new()
+        .route("/stripe/webhook", post(stripe_webhook_handler))
+        .with_state(state.clone());
+
+    let user = ::payments::UserId::new_v4();
+    let payload = serde_json::json!({
+        "type": "checkout.session.completed",
+        "data": {"object": {"client_reference_id": user.to_string(), "metadata": {"sku": "basic"}}}
+    })
+    .to_string();
+
+    let timestamp = 12345;
+    use hmac::{Hmac, Mac};
+    use sha2::Sha256;
+    type HmacSha256 = Hmac<Sha256>;
+    let mut mac = HmacSha256::new_from_slice(secret.as_bytes()).unwrap();
+    mac.update(format!("{}.{}", timestamp, payload).as_bytes());
+    let sig = hex::encode(mac.finalize().into_bytes());
+    let header = format!("t={timestamp},v1={sig}");
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/stripe/webhook")
+                .header("Stripe-Signature", header)
+                .header("content-type", "application/json")
+                .body(Body::from(payload))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    assert!(state.entitlements.has(user, "basic"));
+    unsafe {
+        env::remove_var("STRIPE_WEBHOOK_SECRET");
+    }
+}
+
+#[tokio::test]
+async fn stripe_webhook_rejects_invalid_signature() {
+    let secret = "whsec_test";
+    unsafe {
+        env::set_var("STRIPE_WEBHOOK_SECRET", secret);
+    }
+
+    let cfg = SmtpConfig::default();
+    let email = Arc::new(EmailService::new(cfg.clone()).unwrap());
+    let rooms = room::RoomManager::new();
+    let leaderboard = ::leaderboard::LeaderboardService::new(
+        "sqlite::memory:",
+        std::path::PathBuf::from("replays"),
+    )
+    .await
+    .unwrap();
+    let state = Arc::new(AppState {
+        email,
+        rooms,
+        smtp: cfg.clone(),
+        analytics: Analytics::new(None, false),
+        leaderboard,
+        catalog: Catalog::new(vec![Sku {
+            id: "basic".into(),
+            price_cents: 1000,
+        }]),
+        stripe: StripeClient::new(),
+        entitlements: EntitlementStore::default(),
+        entitlements_path: PathBuf::new(),
+    });
+
+    let app = Router::new()
+        .route("/stripe/webhook", post(stripe_webhook_handler))
+        .with_state(state.clone());
+
+    let user = ::payments::UserId::new_v4();
+    let payload = serde_json::json!({
+        "type": "checkout.session.completed",
+        "data": {"object": {"client_reference_id": user.to_string(), "metadata": {"sku": "basic"}}}
+    })
+    .to_string();
+
+    let header = "t=12345,v1=badsignature";
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/stripe/webhook")
+                .header("Stripe-Signature", header)
+                .header("content-type", "application/json")
+                .body(Body::from(payload))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    assert!(!state.entitlements.has(user, "basic"));
+    unsafe {
+        env::remove_var("STRIPE_WEBHOOK_SECRET");
+    }
 }
