@@ -10,6 +10,7 @@ use webrtc::api::APIBuilder;
 use webrtc::api::media_engine::MediaEngine;
 use webrtc::data_channel::RTCDataChannel;
 use webrtc::data_channel::data_channel_message::DataChannelMessage;
+use webrtc::data_channel::data_channel_init::RTCDataChannelInit;
 use webrtc::peer_connection::RTCPeerConnection;
 use webrtc::peer_connection::configuration::RTCConfiguration;
 
@@ -53,7 +54,14 @@ impl ClientConnector {
         m.register_default_codecs()?;
         let api = APIBuilder::new().with_media_engine(m).build();
         let pc = api.new_peer_connection(RTCConfiguration::default()).await?;
-        let dc = pc.create_data_channel("gamedata", None).await?;
+        let mut cfg = RTCDataChannelInit {
+            ordered: Some(false),
+            max_retransmits: Some(0),
+            ..Default::default()
+        };
+        let dc = pc
+            .create_data_channel("gamedata", Some(cfg))
+            .await?;
         setup_channel(&dc);
         let dc_trait: Arc<dyn DataSender> = dc.clone();
         *DATA_CHANNEL.lock().unwrap_or_else(|e| e.into_inner()) = Some(dc_trait);
