@@ -13,9 +13,9 @@ impl Default for VehicleController {
     }
 }
 
-pub fn vehicle_motion(mut query: Query<(&VehicleController, &mut Transform)>) {
+pub fn vehicle_motion(time: Res<Time>, mut query: Query<(&VehicleController, &mut Transform)>) {
     for (controller, mut transform) in &mut query {
-        transform.translation.x += controller.speed;
+        transform.translation.x += controller.speed * time.delta_seconds();
     }
 }
 
