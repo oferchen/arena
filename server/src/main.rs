@@ -19,6 +19,7 @@ use net::server::ServerConnector;
 use serde::{Deserialize, Serialize};
 use webrtc::peer_connection::sdp::sdp_type::RTCSdpType;
 use webrtc::peer_connection::sdp::session_description::RTCSessionDescription;
+use analytics::{Analytics, Event};
 
 mod email;
 mod room;
@@ -33,6 +34,10 @@ use tower_http::{services::ServeDir, set_header::SetResponseHeaderLayer};
 struct Cli {
     #[command(flatten)]
     smtp: SmtpConfig,
+    #[arg(long, env = "POSTHOG_KEY")]
+    posthog_key: Option<String>,
+    #[arg(long, env = "ENABLE_OTEL", default_value_t = false)]
+    enable_otel: bool,
 }
 
 #[derive(Clone)]
@@ -40,6 +45,7 @@ struct AppState {
     email: Arc<EmailService>,
     rooms: room::RoomManager,
     smtp: SmtpConfig,
+    analytics: Analytics,
 }
 
 fn auth_routes() -> Router<Arc<AppState>> {
@@ -47,9 +53,10 @@ fn auth_routes() -> Router<Arc<AppState>> {
 }
 
 async fn ws_handler(
-    State(_state): State<Arc<AppState>>,
+    State(state): State<Arc<AppState>>,
     ws: WebSocketUpgrade,
 ) -> impl IntoResponse {
+    state.analytics.dispatch(Event::WsConnected);
     ws.on_upgrade(|socket| async move {
         handle_socket(socket).await;
     })
@@ -59,6 +66,7 @@ async fn signal_ws_handler(
     State(state): State<Arc<AppState>>,
     ws: WebSocketUpgrade,
 ) -> impl IntoResponse {
+    state.analytics.dispatch(Event::WsConnected);
     ws.on_upgrade(move |socket| async move {
         handle_signal_socket(state, socket).await;
     })
@@ -163,6 +171,10 @@ async fn mail_test_handler(
 
     let queued = EmailAddress::is_valid(&to) && state.email.send_test(&to).is_ok();
 
+    if queued {
+        state.analytics.dispatch(Event::MailTestQueued);
+    }
+
     Json(MailTestResponse { queued })
 }
 
@@ -198,18 +210,20 @@ async fn shutdown_signal() {
     }
 }
 
-async fn setup(smtp: SmtpConfig) -> Result<AppState> {
+async fn setup(smtp: SmtpConfig, analytics: Analytics) -> Result<AppState> {
     let email = Arc::new(EmailService::new(smtp.clone()).map_err(|e| {
         log::error!("failed to initialize email service: {e}");
         anyhow!(e)
     })?);
 
     let rooms = room::RoomManager::new();
-    Ok(AppState { email, rooms, smtp })
+    Ok(AppState { email, rooms, smtp, analytics })
 }
 
-async fn run(smtp: SmtpConfig) -> Result<()> {
-    let state = Arc::new(setup(smtp).await?);
+async fn run(cli: Cli) -> Result<()> {
+    let analytics = Analytics::new(cli.posthog_key.clone(), cli.enable_otel);
+    let smtp = cli.smtp;
+    let state = Arc::new(setup(smtp, analytics).await?);
 
     let assets_service =
         get_service(ServeDir::new("assets")).layer(SetResponseHeaderLayer::if_not_present(
@@ -266,8 +280,7 @@ async fn run(smtp: SmtpConfig) -> Result<()> {
 async fn main() {
     env_logger::init();
     let cli = Cli::parse();
-    let smtp = cli.smtp;
-    if let Err(e) = run(smtp).await {
+    if let Err(e) = run(cli).await {
         log::error!("{e}");
         std::process::exit(1);
     }

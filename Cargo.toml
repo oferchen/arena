@@ -8,4 +8,5 @@ members = [
     "xtask",
     "crates/minigames/duck_hunt",
     "crates/minigames/null_module",
+    "crates/analytics",
 ]
