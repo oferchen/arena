@@ -34,7 +34,7 @@ cargo run -p xtask
 cargo run -p server
 ```
 
-For details on the networking model see the [Netcode guide](docs/netcode.md). To extend gameplay, follow the [Module guide](docs/modules.md) or the example [Duck Hunt module](docs/DuckHunt.md). Email configuration is covered in the [Email guide](docs/Email.md). Guidance for the in-game editor, leaderboard service, analytics collection, and purchase verification can be found in the [Editor](docs/Editor.md), [Leaderboards](docs/Leaderboards.md), [Analytics](docs/Analytics.md), and [Purchases](docs/Purchases.md) guides respectively.
+For details on the networking model see the [Netcode guide](docs/netcode.md). To extend gameplay, follow the [Module guide](docs/modules.md) or the example [Duck Hunt module](docs/DuckHunt.md). Email configuration is covered in the [Email guide](docs/Email.md). Guidance for the in-game editor, leaderboard service, analytics collection, and purchasing can be found in the [Editor](docs/Editor.md), [Leaderboards](docs/Leaderboards.md), [Analytics](docs/Analytics.md), and [Purchases](docs/Purchases.md) guides respectively.
 
 ## Running
 

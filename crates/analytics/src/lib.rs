@@ -26,6 +26,11 @@ pub enum Event {
     FrameDropped,
     HighLatency,
     TickOverrun,
+
+    StoreViewed,
+    PurchaseInitiated,
+    PurchaseSucceeded,
+    EntitlementGranted,
 }
 
 impl Event {
@@ -42,6 +47,10 @@ impl Event {
             Event::FrameDropped => "frame_dropped",
             Event::HighLatency => "high_latency",
             Event::TickOverrun => "tick_overrun",
+            Event::StoreViewed => "store_viewed",
+            Event::PurchaseInitiated => "purchase_initiated",
+            Event::PurchaseSucceeded => "purchase_succeeded",
+            Event::EntitlementGranted => "entitlement_granted",
         }
     }
 }

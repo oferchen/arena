@@ -1863,8 +1863,10 @@ dependencies = [
  "editor",
  "engine",
  "null_module",
+ "payments",
  "physics",
  "render",
+ "reqwest",
  "wasm-bindgen",
  "wee_alloc",
 ]
@@ -2384,7 +2386,9 @@ name = "editor"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "bevy_app",
  "bevy_ecs",
+ "null_module",
  "platform-api",
  "serde",
  "serde_json",
@@ -5024,6 +5028,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "57c0d7b74b563b49d38dae00a0c37d4d6de9b432382b2892f0574ddcae73fd0a"
 
 [[package]]
+name = "payments"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "pem"
 version = "3.0.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6031,6 +6043,7 @@ dependencies = [
  "log",
  "net",
  "once_cell",
+ "payments",
  "postcard",
  "prometheus",
  "serde",
