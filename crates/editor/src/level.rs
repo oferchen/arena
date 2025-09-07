@@ -2,8 +2,8 @@ use anyhow::Result;
 use bevy_ecs::prelude::Resource;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use std::fs;
 use std::path::Path;
+use std::{cmp::Ordering, fs};
 
 #[derive(Resource, Serialize, Deserialize, Default, Debug, Clone)]
 pub struct Level {
@@ -48,7 +48,9 @@ impl Level {
     }
 
     /// Add a constructive solid geometry brush to the level.
-    pub fn add_brush(&mut self, brush: Brush) { self.brushes.push(brush); }
+    pub fn add_brush(&mut self, brush: Brush) {
+        self.brushes.push(brush);
+    }
 
     /// Apply a basic UV unwrap to all brushes.
     pub fn unwrap_uvs(&mut self) {
@@ -58,10 +60,14 @@ impl Level {
     }
 
     /// Tag a surface as a visibility portal.
-    pub fn tag_portal(&mut self, portal: Portal) { self.portals.push(portal); }
+    pub fn tag_portal(&mut self, portal: Portal) {
+        self.portals.push(portal);
+    }
 
     /// Tag a surface as an occluder.
-    pub fn tag_occluder(&mut self, occ: Occluder) { self.occluders.push(occ); }
+    pub fn tag_occluder(&mut self, occ: Occluder) {
+        self.occluders.push(occ);
+    }
 
     /// Register an asset by its original name and hashed identifier.
     pub fn add_asset(&mut self, name: impl Into<String>, hash: impl Into<String>) {
@@ -121,10 +127,22 @@ pub struct HashedAsset {
 
 /// Persist the level to the assets directory.
 pub fn export_level(level: &Level) -> Result<()> {
-    let dir = Path::new("assets").join("levels").join(&level.id);
+    let mut lvl = level.clone();
+    lvl.references.sort();
+    lvl.assets.sort_by(|a, b| a.name.cmp(&b.name));
+    lvl.brushes
+        .sort_by(|a, b| format!("{:?}{:?}", a.op, a.uv).cmp(&format!("{:?}{:?}", b.op, b.uv)));
+    lvl.spawn_zones.sort_by(|a, b| {
+        a.x.partial_cmp(&b.x)
+            .unwrap_or(Ordering::Equal)
+            .then_with(|| a.y.partial_cmp(&b.y).unwrap_or(Ordering::Equal))
+    });
+    lvl.portals.sort_by(|a, b| a.id.cmp(&b.id));
+    lvl.occluders.sort_by(|a, b| a.id.cmp(&b.id));
+    let dir = Path::new("assets").join("levels").join(&lvl.id);
     fs::create_dir_all(&dir)?;
     let path = dir.join("level.toml");
-    let toml = toml::to_string_pretty(level)?;
+    let toml = toml::to_string_pretty(&lvl)?;
     fs::write(path, toml)?;
     Ok(())
 }
