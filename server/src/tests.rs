@@ -71,13 +71,13 @@ fn invalid_starttls_env_value_errors() {
 async fn websocket_signaling_completes_handshake() {
     let cfg = SmtpConfig::default();
     let email = Arc::new(EmailService::new(cfg.clone()).unwrap());
-    let rooms = room::RoomManager::new();
     let leaderboard = ::leaderboard::LeaderboardService::new(
         "sqlite::memory:",
         std::path::PathBuf::from("replays"),
     )
     .await
     .unwrap();
+    let rooms = room::RoomManager::new(leaderboard.clone());
     let state = Arc::new(AppState {
         email,
         rooms,
@@ -138,13 +138,13 @@ async fn websocket_signaling_invalid_sdp_logs_and_closes() {
 
     let cfg = SmtpConfig::default();
     let email = Arc::new(EmailService::new(cfg.clone()).unwrap());
-    let rooms = room::RoomManager::new();
     let leaderboard = ::leaderboard::LeaderboardService::new(
         "sqlite::memory:",
         std::path::PathBuf::from("replays"),
     )
     .await
     .unwrap();
+    let rooms = room::RoomManager::new(leaderboard.clone());
     let state = Arc::new(AppState {
         email,
         rooms,
@@ -198,13 +198,13 @@ async fn websocket_signaling_unexpected_binary_logs_and_closes() {
 
     let cfg = SmtpConfig::default();
     let email = Arc::new(EmailService::new(cfg.clone()).unwrap());
-    let rooms = room::RoomManager::new();
     let leaderboard = ::leaderboard::LeaderboardService::new(
         "sqlite::memory:",
         std::path::PathBuf::from("replays"),
     )
     .await
     .unwrap();
+    let rooms = room::RoomManager::new(leaderboard.clone());
     let state = Arc::new(AppState {
         email,
         rooms,
@@ -258,13 +258,13 @@ async fn websocket_logs_unexpected_messages_and_closes() {
 
     let cfg = SmtpConfig::default();
     let email = Arc::new(EmailService::new(cfg.clone()).unwrap());
-    let rooms = room::RoomManager::new();
     let leaderboard = ::leaderboard::LeaderboardService::new(
         "sqlite::memory:",
         std::path::PathBuf::from("replays"),
     )
     .await
     .unwrap();
+    let rooms = room::RoomManager::new(leaderboard.clone());
     let state = Arc::new(AppState {
         email,
         rooms,
@@ -308,13 +308,13 @@ async fn mail_test_defaults_to_from_address() {
     let mut cfg = SmtpConfig::default();
     cfg.from = "default@example.com".into();
     let email = Arc::new(EmailService::new(cfg.clone()).unwrap());
-    let rooms = room::RoomManager::new();
     let leaderboard = ::leaderboard::LeaderboardService::new(
         "sqlite::memory:",
         std::path::PathBuf::from("replays"),
     )
     .await
     .unwrap();
+    let rooms = room::RoomManager::new(leaderboard.clone());
     let state = Arc::new(AppState {
         email,
         rooms,
@@ -346,13 +346,13 @@ async fn mail_test_accepts_user_address_query() {
     let mut cfg = SmtpConfig::default();
     cfg.from = "query@example.com".into();
     let email = Arc::new(EmailService::new(cfg.clone()).unwrap());
-    let rooms = room::RoomManager::new();
     let leaderboard = ::leaderboard::LeaderboardService::new(
         "sqlite::memory:",
         std::path::PathBuf::from("replays"),
     )
     .await
     .unwrap();
+    let rooms = room::RoomManager::new(leaderboard.clone());
     let state = Arc::new(AppState {
         email,
         rooms,
@@ -391,13 +391,13 @@ async fn mail_test_accepts_user_address_body() {
     let mut cfg = SmtpConfig::default();
     cfg.from = "body@example.com".into();
     let email = Arc::new(EmailService::new(cfg.clone()).unwrap());
-    let rooms = room::RoomManager::new();
     let leaderboard = ::leaderboard::LeaderboardService::new(
         "sqlite::memory:",
         std::path::PathBuf::from("replays"),
     )
     .await
     .unwrap();
+    let rooms = room::RoomManager::new(leaderboard.clone());
     let state = Arc::new(AppState {
         email,
         rooms,
@@ -435,13 +435,13 @@ async fn mail_config_redacts_password() {
     let mut cfg = SmtpConfig::default();
     cfg.pass = Some("secret".into());
     let email = Arc::new(EmailService::new(cfg.clone()).unwrap());
-    let rooms = room::RoomManager::new();
     let leaderboard = ::leaderboard::LeaderboardService::new(
         "sqlite::memory:",
         std::path::PathBuf::from("replays"),
     )
     .await
     .unwrap();
+    let rooms = room::RoomManager::new(leaderboard.clone());
     let state = Arc::new(AppState {
         email,
         rooms,
@@ -466,13 +466,13 @@ async fn mail_config_redacts_password() {
 async fn admin_mail_config_route() {
     let cfg = SmtpConfig::default();
     let email = Arc::new(EmailService::new(cfg.clone()).unwrap());
-    let rooms = room::RoomManager::new();
     let leaderboard = ::leaderboard::LeaderboardService::new(
         "sqlite::memory:",
         std::path::PathBuf::from("replays"),
     )
     .await
     .unwrap();
+    let rooms = room::RoomManager::new(leaderboard.clone());
     let state = Arc::new(AppState {
         email,
         rooms,
@@ -515,13 +515,13 @@ async fn stripe_webhook_accepts_valid_signature() {
 
     let cfg = SmtpConfig::default();
     let email = Arc::new(EmailService::new(cfg.clone()).unwrap());
-    let rooms = room::RoomManager::new();
     let leaderboard = ::leaderboard::LeaderboardService::new(
         "sqlite::memory:",
         std::path::PathBuf::from("replays"),
     )
     .await
     .unwrap();
+    let rooms = room::RoomManager::new(leaderboard.clone());
     let state = Arc::new(AppState {
         email,
         rooms,
@@ -585,13 +585,13 @@ async fn stripe_webhook_rejects_invalid_signature() {
 
     let cfg = SmtpConfig::default();
     let email = Arc::new(EmailService::new(cfg.clone()).unwrap());
-    let rooms = room::RoomManager::new();
     let leaderboard = ::leaderboard::LeaderboardService::new(
         "sqlite::memory:",
         std::path::PathBuf::from("replays"),
     )
     .await
     .unwrap();
+    let rooms = room::RoomManager::new(leaderboard.clone());
     let state = Arc::new(AppState {
         email,
         rooms,
@@ -637,4 +637,56 @@ async fn stripe_webhook_rejects_invalid_signature() {
     unsafe {
         env::remove_var("STRIPE_WEBHOOK_SECRET");
     }
+}
+
+#[tokio::test]
+async fn round_scores_appear_in_leaderboard() {
+    use ::leaderboard::models::Score;
+    use std::time::Duration;
+
+    let cfg = SmtpConfig::default();
+    let email = Arc::new(EmailService::new(cfg.clone()).unwrap());
+    let leaderboard = ::leaderboard::LeaderboardService::new(
+        "sqlite::memory:",
+        std::path::PathBuf::from("replays"),
+    )
+    .await
+    .unwrap();
+    let rooms = room::RoomManager::new(leaderboard.clone());
+    rooms.push_score(7).await;
+    let state = Arc::new(AppState {
+        email,
+        rooms: rooms.clone(),
+        smtp: cfg,
+        analytics: Analytics::new(None, false),
+        leaderboard: leaderboard.clone(),
+        catalog: Catalog::new(vec![Sku {
+            id: "basic".into(),
+            price_cents: 1000,
+        }]),
+        stripe: StripeClient::new(),
+        entitlements: EntitlementStore::default(),
+        entitlements_path: std::path::PathBuf::new(),
+    });
+
+    let app = Router::new()
+        .nest("/leaderboard", crate::leaderboard::routes())
+        .with_state(state);
+
+    tokio::time::sleep(Duration::from_secs(2)).await;
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri(format!("/leaderboard/{}", room::LEADERBOARD_ID))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let scores: Vec<Score> = serde_json::from_slice(&body).unwrap();
+    assert!(scores.iter().any(|s| s.points == 7));
 }

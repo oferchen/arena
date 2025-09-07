@@ -12,6 +12,12 @@ use glam::Vec3;
 use net::message::{InputFrame, ServerMessage, Snapshot, delta_compress};
 use net::server::ServerConnector;
 use serde::{Deserialize, Serialize};
+use uuid::Uuid;
+use chrono::Utc;
+use ::leaderboard::{
+    LeaderboardService,
+    models::{LeaderboardWindow, Run, Score},
+};
 #[cfg(test)]
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -40,16 +46,21 @@ struct Shot {
     time: f32,
 }
 
+pub const LEADERBOARD_ID: Uuid = Uuid::from_u128(0);
+
 struct Room {
     connectors: Vec<ConnectorHandle>,
     last_snapshot: Option<Snapshot>,
     frame: u32,
     duck_server: DuckServer,
     scores: Vec<u32>,
+    player_ids: Vec<Uuid>,
+    leaderboard: LeaderboardService,
+    leaderboard_id: Uuid,
 }
 
 impl Room {
-    fn new() -> Self {
+    fn new(leaderboard: LeaderboardService) -> Self {
         Self {
             connectors: Vec::new(),
             last_snapshot: None,
@@ -68,6 +79,9 @@ impl Room {
                 server
             },
             scores: Vec::new(),
+            player_ids: Vec::new(),
+            leaderboard,
+            leaderboard_id: LEADERBOARD_ID,
         }
     }
 
@@ -80,6 +94,7 @@ impl Room {
             interest_mask: u64::MAX,
         });
         self.scores.push(0);
+        self.player_ids.push(Uuid::new_v4());
         let ducks = self.duck_server.ducks.clone();
         for duck in &ducks {
             replicate(&self.duck_server, duck);
@@ -212,6 +227,40 @@ impl Room {
             replicate(&self.duck_server, &state);
         }
     }
+
+    async fn submit_scores(&mut self) {
+        let leaderboard = self.leaderboard.clone();
+        let leaderboard_id = self.leaderboard_id;
+        let player_ids = self.player_ids.clone();
+        let scores = self.scores.clone();
+        for (player_id, points) in player_ids.iter().zip(scores.iter()) {
+            let run_id = Uuid::new_v4();
+            let score_id = Uuid::new_v4();
+            let run = Run {
+                id: run_id,
+                leaderboard_id,
+                player_id: *player_id,
+                replay_path: String::new(),
+                created_at: Utc::now(),
+                flagged: false,
+            };
+            let score = Score {
+                id: score_id,
+                run_id,
+                player_id: *player_id,
+                points: *points as i32,
+                window: LeaderboardWindow::AllTime,
+                verified: false,
+                created_at: Utc::now(),
+            };
+            let _ = leaderboard
+                .submit_score(leaderboard_id, score, run, Vec::new())
+                .await;
+        }
+        if !self.scores.is_empty() {
+            self.scores.fill(0);
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -220,14 +269,22 @@ pub struct RoomManager {
 }
 
 impl RoomManager {
-    pub fn new() -> Self {
-        let room = Arc::new(Mutex::new(Room::new()));
+    pub fn new(leaderboard: LeaderboardService) -> Self {
+        let room = Arc::new(Mutex::new(Room::new(leaderboard)));
         let tick_room = Arc::clone(&room);
         tokio::spawn(async move {
             let mut interval = time::interval(Duration::from_secs_f64(1.0 / 60.0));
             loop {
                 interval.tick().await;
                 tick_room.lock().await.tick().await;
+            }
+        });
+        let round_room = Arc::clone(&room);
+        tokio::spawn(async move {
+            let mut interval = time::interval(Duration::from_secs(1));
+            loop {
+                interval.tick().await;
+                round_room.lock().await.submit_scores().await;
             }
         });
         Self { room }
@@ -243,6 +300,15 @@ impl RoomManager {
 }
 
 #[cfg(test)]
+impl RoomManager {
+    pub async fn push_score(&self, score: u32) {
+        let mut room = self.room.lock().await;
+        room.player_ids.push(Uuid::new_v4());
+        room.scores.push(score);
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use crate::test_logger::{INIT, LOGGER};
@@ -251,11 +317,22 @@ mod tests {
     use std::sync::atomic::Ordering;
     use tokio::sync::mpsc;
     use serial_test::serial;
+    use std::path::PathBuf;
+
+    async fn test_room() -> Room {
+        let leaderboard = ::leaderboard::LeaderboardService::new(
+            "sqlite::memory:",
+            PathBuf::from("replays"),
+        )
+        .await
+        .unwrap();
+        Room::new(leaderboard)
+    }
 
     #[tokio::test]
     #[serial]
     async fn updates_snapshot_after_delta() {
-        let mut room = Room::new();
+        let mut room = test_room().await;
 
         // Attach a dummy connector so messages are sent.
         let (_input_tx, input_rx) = mpsc::channel(1);
@@ -297,7 +374,7 @@ mod tests {
     #[tokio::test]
     #[serial]
     async fn multiplayer_scoring() {
-        let mut room = Room::new();
+        let mut room = test_room().await;
         let (tx1, rx1) = mpsc::channel(1);
         let (snap_tx1, mut snap_rx1) = mpsc::channel(8);
         room.connectors.push(ConnectorHandle {
@@ -383,7 +460,7 @@ mod tests {
     #[tokio::test]
     #[serial]
     async fn selective_updates_to_multiple_clients() {
-        let mut room = Room::new();
+        let mut room = test_room().await;
 
         let (_tx1, rx1) = mpsc::channel(1);
         let (snap_tx1, mut snap_rx1) = mpsc::channel(8);
@@ -428,7 +505,7 @@ mod tests {
         LOGGER.messages.lock().unwrap().clear();
         FORCE_SERIALIZATION_ERROR.store(true, Ordering::Relaxed);
 
-        let mut room = Room::new();
+        let mut room = test_room().await;
         let (_input_tx, input_rx) = mpsc::channel(1);
         let (snapshot_tx, mut snapshot_rx) = mpsc::channel(1);
         room.connectors.push(ConnectorHandle {
@@ -460,7 +537,7 @@ mod tests {
 
         LOGGER.messages.lock().unwrap().clear();
 
-        let mut room = Room::new();
+        let mut room = test_room().await;
         let (_input_tx, input_rx) = mpsc::channel(1);
         let (snapshot_tx, snapshot_rx) = mpsc::channel(1);
         room.connectors.push(ConnectorHandle {
@@ -496,7 +573,7 @@ mod tests {
 
     #[tokio::test]
     async fn duck_spawn_and_position_updates() {
-        let mut room = Room::new();
+        let mut room = test_room().await;
         let (_input_tx, input_rx) = mpsc::channel(1);
         let (snapshot_tx, mut snapshot_rx) = mpsc::channel(8);
         room.connectors.push(ConnectorHandle {
@@ -539,7 +616,7 @@ mod tests {
 
     #[tokio::test]
     async fn removes_closed_connectors() {
-        let mut room = Room::new();
+        let mut room = test_room().await;
         let (_input_tx, input_rx) = mpsc::channel(1);
         let (snapshot_tx, snapshot_rx) = mpsc::channel(1);
         drop(snapshot_rx);
@@ -558,7 +635,7 @@ mod tests {
 
     #[tokio::test]
     async fn set_interest_updates_mask() {
-        let mut room = Room::new();
+        let mut room = test_room().await;
         let (_input_tx, input_rx) = mpsc::channel(1);
         let (snapshot_tx, mut snapshot_rx) = mpsc::channel(8);
         room.connectors.push(ConnectorHandle {
