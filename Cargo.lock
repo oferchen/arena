@@ -2199,6 +2199,7 @@ name = "editor"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "bevy_ecs",
  "platform-api",
  "serde",
  "serde_json",
