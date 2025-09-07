@@ -36,6 +36,8 @@ editor = { path = "../crates/editor" }
 render = { path = "../crates/render" }
 analytics = { path = "../crates/analytics" }
 payments = { path = "../crates/payments" }
+platform-api = { path = "../crates/platform-api" }
+bevy_rapier3d = { version = "0.24", default-features = false, features = ["dim3"] }
 reqwest = { version = "0.12", features = ["json", "blocking"], optional = true }
 
 
