@@ -4,6 +4,7 @@
 //! map. The task runs on the Tokio runtime and its [`JoinHandle`] is stored so
 //! it can be aborted during shutdown if necessary.
 
+use clap::{Args, ValueEnum};
 use lettre::address::AddressError;
 use lettre::transport::smtp::{
     authentication::Credentials,
@@ -25,7 +26,8 @@ use tokio::task::JoinHandle;
 
 // -- Configuration ---------------------------------------------------------
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, ValueEnum)]
+#[clap(rename_all = "lowercase")]
 pub enum StartTls {
     Auto,
     Always,
@@ -66,15 +68,35 @@ impl std::str::FromStr for StartTls {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Args)]
 pub struct SmtpConfig {
+    #[arg(
+        long = "smtp-host",
+        env = "ARENA_SMTP_HOST",
+        default_value = "localhost"
+    )]
     pub host: String,
+    #[arg(long = "smtp-port", env = "ARENA_SMTP_PORT", default_value_t = 25)]
     pub port: u16,
+    #[arg(
+        long = "smtp-from",
+        env = "ARENA_SMTP_FROM",
+        default_value = "arena@localhost"
+    )]
     pub from: String,
+    #[arg(long = "smtp-starttls", env = "ARENA_SMTP_STARTTLS", value_enum, default_value_t = StartTls::Auto)]
     pub starttls: StartTls,
+    #[arg(long = "smtp-smtps", env = "ARENA_SMTP_SMTPS", default_value_t = false)]
     pub smtps: bool,
+    #[arg(
+        long = "smtp-timeout-ms",
+        env = "ARENA_SMTP_TIMEOUT_MS",
+        default_value_t = 10000
+    )]
     pub timeout: u64,
+    #[arg(long = "smtp-user", env = "ARENA_SMTP_USER")]
     pub user: Option<String>,
+    #[arg(long = "smtp-pass", env = "ARENA_SMTP_PASS")]
     pub pass: Option<String>,
 }
 

@@ -31,38 +31,8 @@ use tower_http::{services::ServeDir, set_header::SetResponseHeaderLayer};
 
 #[derive(Parser, Debug)]
 struct Cli {
-    #[arg(long, env = "ARENA_SMTP_HOST", default_value = "localhost")]
-    smtp_host: String,
-    #[arg(long, env = "ARENA_SMTP_PORT", default_value_t = 25)]
-    smtp_port: u16,
-    #[arg(long, env = "ARENA_SMTP_FROM", default_value = "arena@localhost")]
-    smtp_from: String,
-    #[arg(long, env = "ARENA_SMTP_STARTTLS", default_value = "auto")]
-    smtp_starttls: String,
-    #[arg(long, env = "ARENA_SMTP_SMTPS", default_value_t = false)]
-    smtp_smtps: bool,
-    #[arg(long, env = "ARENA_SMTP_USER")]
-    smtp_user: Option<String>,
-    #[arg(long, env = "ARENA_SMTP_PASS")]
-    smtp_pass: Option<String>,
-    #[arg(long, env = "ARENA_SMTP_TIMEOUT_MS", default_value_t = 10000)]
-    smtp_timeout_ms: u64,
-}
-
-impl Cli {
-    fn smtp_config(&self) -> Result<SmtpConfig> {
-        let starttls: StartTls = self.smtp_starttls.parse()?;
-        Ok(SmtpConfig {
-            host: self.smtp_host.clone(),
-            port: self.smtp_port,
-            from: self.smtp_from.clone(),
-            starttls,
-            smtps: self.smtp_smtps,
-            timeout: self.smtp_timeout_ms,
-            user: self.smtp_user.clone(),
-            pass: self.smtp_pass.clone(),
-        })
-    }
+    #[command(flatten)]
+    smtp: SmtpConfig,
 }
 
 #[derive(Clone)]
@@ -296,13 +266,7 @@ async fn run(smtp: SmtpConfig) -> Result<()> {
 async fn main() {
     env_logger::init();
     let cli = Cli::parse();
-    let smtp = match cli.smtp_config() {
-        Ok(cfg) => cfg,
-        Err(e) => {
-            log::error!("{e}");
-            std::process::exit(1);
-        }
-    };
+    let smtp = cli.smtp;
     if let Err(e) = run(smtp).await {
         log::error!("{e}");
         std::process::exit(1);

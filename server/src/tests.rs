@@ -29,7 +29,7 @@ fn cli_overrides_env() {
         env::set_var("ARENA_SMTP_HOST", "envhost");
     }
     let cli = Cli::try_parse_from(["prog", "--smtp-host", "clihost"]).unwrap();
-    assert_eq!(cli.smtp_host, "clihost");
+    assert_eq!(cli.smtp.host, "clihost");
     unsafe {
         env::remove_var("ARENA_SMTP_HOST");
     }
@@ -41,7 +41,7 @@ fn env_used_when_no_cli() {
         env::set_var("ARENA_SMTP_PORT", "2525");
     }
     let cli = Cli::try_parse_from(["prog"]).unwrap();
-    assert_eq!(cli.smtp_port, 2525);
+    assert_eq!(cli.smtp.port, 2525);
     unsafe {
         env::remove_var("ARENA_SMTP_PORT");
     }
@@ -49,8 +49,7 @@ fn env_used_when_no_cli() {
 
 #[test]
 fn invalid_starttls_cli_value_errors() {
-    let cli = Cli::try_parse_from(["prog", "--smtp-starttls", "bogus"]).unwrap();
-    assert!(cli.smtp_config().is_err());
+    assert!(Cli::try_parse_from(["prog", "--smtp-starttls", "bogus"]).is_err());
 }
 
 #[test]
@@ -58,8 +57,7 @@ fn invalid_starttls_env_value_errors() {
     unsafe {
         env::set_var("ARENA_SMTP_STARTTLS", "bogus");
     }
-    let cli = Cli::try_parse_from(["prog"]).unwrap();
-    assert!(cli.smtp_config().is_err());
+    assert!(Cli::try_parse_from(["prog"]).is_err());
     unsafe {
         env::remove_var("ARENA_SMTP_STARTTLS");
     }
