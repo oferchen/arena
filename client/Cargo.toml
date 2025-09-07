@@ -33,6 +33,7 @@ engine = { path = "crates/engine" }
 duck_hunt = { path = "crates/minigames/duck_hunt" }
 null_module = { path = "../crates/minigames/null_module" }
 physics = { path = "crates/physics" }
+editor = { path = "../crates/editor" }
 
 [features]
 default = ["audio"]
