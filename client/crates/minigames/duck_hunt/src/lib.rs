@@ -36,8 +36,8 @@ impl Spline {
         if self.points.len() < 2 {
             return Vec3::ZERO;
         }
-        let start = self.points.first().copied().unwrap();
-        let end = self.points.last().copied().unwrap();
+        let start = self.points.first().copied().unwrap_or(Vec3::ZERO);
+        let end = self.points.last().copied().unwrap_or(Vec3::ZERO);
         start.lerp(end, t)
     }
 }
@@ -257,5 +257,19 @@ fn update_round_timer(
         for e in &mut q {
             commands.entity(e).despawn_recursive();
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sample_with_fewer_than_two_points_returns_zero() {
+        let spline = Spline {
+            points: vec![Vec3::new(1.0, 2.0, 3.0)],
+            duration: 1.0,
+        };
+        assert_eq!(spline.sample(0.5), Vec3::ZERO);
     }
 }
