@@ -23,6 +23,7 @@ use webrtc::peer_connection::sdp::session_description::RTCSessionDescription;
 mod email;
 mod room;
 use tower_http::{services::ServeDir, set_header::SetResponseHeaderLayer};
+use prometheus::{Encoder, TextEncoder};
 
 #[derive(Parser, Debug)]
 struct Cli {
@@ -170,6 +171,14 @@ async fn mail_test_handler(
     Json(MailTestResponse { queued })
 }
 
+async fn metrics_handler() -> impl IntoResponse {
+    let encoder = TextEncoder::new();
+    let metric_families = prometheus::gather();
+    let mut buffer = Vec::new();
+    encoder.encode(&metric_families, &mut buffer).unwrap();
+    String::from_utf8(buffer).unwrap()
+}
+
 async fn shutdown_signal() {
     let ctrl_c = async {
         tokio::signal::ctrl_c()
@@ -214,6 +223,7 @@ async fn run(smtp: SmtpConfig) -> Result<()> {
         ));
 
     let app = Router::new()
+        .route("/metrics", get(metrics_handler))
         .nest("/auth", auth_routes())
         .route("/ws", get(ws_handler))
         .route("/signal", get(signal_ws_handler))
@@ -398,12 +408,12 @@ mod tests {
         });
 
         assert_eq!(
-            mail_test_handler(State(state.clone()), None, None).await,
-            Json(MailTestResponse { queued: true })
+            mail_test_handler(State(state.clone()), None, None).await.0,
+            MailTestResponse { queued: true }
         );
         assert_eq!(
-            mail_test_handler(State(state.clone()), None, None).await,
-            Json(MailTestResponse { queued: false })
+            mail_test_handler(State(state.clone()), None, None).await.0,
+            MailTestResponse { queued: false }
         );
     }
 
@@ -421,8 +431,8 @@ mod tests {
         });
 
         assert_eq!(
-            mail_test_handler(State(state.clone()), None, None).await,
-            Json(MailTestResponse { queued: true })
+            mail_test_handler(State(state.clone()), None, None).await.0,
+            MailTestResponse { queued: true }
         );
 
         let query = Query(MailTestParams {
@@ -430,8 +440,8 @@ mod tests {
         });
 
         assert_eq!(
-            mail_test_handler(State(state.clone()), Some(query), None).await,
-            Json(MailTestResponse { queued: true })
+            mail_test_handler(State(state.clone()), Some(query), None).await.0,
+            MailTestResponse { queued: true }
         );
     }
 
@@ -449,8 +459,8 @@ mod tests {
         });
 
         assert_eq!(
-            mail_test_handler(State(state.clone()), None, None).await,
-            Json(MailTestResponse { queued: true })
+            mail_test_handler(State(state.clone()), None, None).await.0,
+            MailTestResponse { queued: true }
         );
 
         let body = Json(MailTestParams {
@@ -458,8 +468,8 @@ mod tests {
         });
 
         assert_eq!(
-            mail_test_handler(State(state.clone()), None, Some(body)).await,
-            Json(MailTestResponse { queued: true })
+            mail_test_handler(State(state.clone()), None, Some(body)).await.0,
+            MailTestResponse { queued: true }
         );
     }
 
