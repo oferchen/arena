@@ -179,11 +179,12 @@ mod tests {
         email::{EmailService, SmtpConfig},
         room,
     };
-    use ::leaderboard::LeaderboardWindow;
     use ::payments::{Catalog, EntitlementStore, Sku, StripeClient};
     use analytics::Analytics;
     use axum::Json;
     use axum::extract::{Path, State};
+    use leaderboard::models::LeaderboardWindow;
+    use std::path::PathBuf;
 
     #[tokio::test]
     async fn post_run_rejects_malformed_base64() {
@@ -206,6 +207,7 @@ mod tests {
             }]),
             stripe: StripeClient::new(),
             entitlements: EntitlementStore::default(),
+            entitlements_path: PathBuf::new(),
         });
 
         let leaderboard_id = Uuid::new_v4();
@@ -237,6 +239,10 @@ mod tests {
             smtp: cfg,
             analytics: Analytics::new(None, false),
             leaderboard: ::leaderboard::LeaderboardService::default(),
+            catalog: Catalog::new(vec![]),
+            stripe: StripeClient::new(),
+            entitlements: EntitlementStore::default(),
+            entitlements_path: PathBuf::new(),
         });
 
         let leaderboard_id = Uuid::new_v4();
@@ -271,11 +277,15 @@ mod tests {
             smtp: cfg,
             analytics: Analytics::new(None, false),
             leaderboard: ::leaderboard::LeaderboardService::default(),
+            catalog: Catalog::new(vec![]),
+            stripe: StripeClient::new(),
+            entitlements: EntitlementStore::default(),
+            entitlements_path: PathBuf::new(),
         });
 
         let leaderboard_id = Uuid::new_v4();
         let player = Uuid::new_v4();
-        let replay = base64::encode("data");
+        let replay = base64::encode(10i32.to_le_bytes());
         let payload = SubmitRun {
             player_id: player,
             points: 10,

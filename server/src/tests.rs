@@ -13,8 +13,9 @@ use webrtc::api::media_engine::MediaEngine;
 use webrtc::peer_connection::configuration::RTCConfiguration;
 
 use crate::test_logger::{INIT, LOGGER};
+use ::payments::{Catalog, EntitlementStore, Sku, StripeClient};
 use log::LevelFilter;
-use ::payments::{Catalog, EntitlementStore, StripeClient, Sku};
+use std::path::PathBuf;
 
 #[tokio::test]
 async fn setup_succeeds_without_env_vars() {
@@ -83,9 +84,13 @@ async fn websocket_signaling_completes_handshake() {
         smtp: cfg,
         analytics: Analytics::new(None, false),
         leaderboard: ::leaderboard::LeaderboardService::default(),
-        catalog: Catalog::new(vec![Sku { id: "basic".into(), price_cents: 1000 }]),
+        catalog: Catalog::new(vec![Sku {
+            id: "basic".into(),
+            price_cents: 1000,
+        }]),
         stripe: StripeClient::new(),
         entitlements: EntitlementStore::default(),
+        entitlements_path: PathBuf::new(),
     });
 
     let app = Router::new()
@@ -146,9 +151,13 @@ async fn websocket_logs_unexpected_messages_and_closes() {
         smtp: cfg,
         analytics: Analytics::new(None, false),
         leaderboard: ::leaderboard::LeaderboardService::default(),
-        catalog: Catalog::new(vec![Sku { id: "basic".into(), price_cents: 1000 }]),
+        catalog: Catalog::new(vec![Sku {
+            id: "basic".into(),
+            price_cents: 1000,
+        }]),
         stripe: StripeClient::new(),
         entitlements: EntitlementStore::default(),
+        entitlements_path: PathBuf::new(),
     });
 
     let app = Router::new()
@@ -192,9 +201,13 @@ async fn mail_test_defaults_to_from_address() {
         smtp: cfg.clone(),
         analytics: Analytics::new(None, false),
         leaderboard: ::leaderboard::LeaderboardService::default(),
-        catalog: Catalog::new(vec![Sku { id: "basic".into(), price_cents: 1000 }]),
+        catalog: Catalog::new(vec![Sku {
+            id: "basic".into(),
+            price_cents: 1000,
+        }]),
         stripe: StripeClient::new(),
         entitlements: EntitlementStore::default(),
+        entitlements_path: PathBuf::new(),
     });
 
     assert_eq!(
@@ -226,9 +239,13 @@ async fn mail_test_accepts_user_address_query() {
         smtp: cfg.clone(),
         analytics: Analytics::new(None, false),
         leaderboard: ::leaderboard::LeaderboardService::default(),
-        catalog: Catalog::new(vec![Sku { id: "basic".into(), price_cents: 1000 }]),
+        catalog: Catalog::new(vec![Sku {
+            id: "basic".into(),
+            price_cents: 1000,
+        }]),
         stripe: StripeClient::new(),
         entitlements: EntitlementStore::default(),
+        entitlements_path: PathBuf::new(),
     });
 
     assert_eq!(
@@ -267,9 +284,13 @@ async fn mail_test_accepts_user_address_body() {
         smtp: cfg.clone(),
         analytics: Analytics::new(None, false),
         leaderboard: ::leaderboard::LeaderboardService::default(),
-        catalog: Catalog::new(vec![Sku { id: "basic".into(), price_cents: 1000 }]),
+        catalog: Catalog::new(vec![Sku {
+            id: "basic".into(),
+            price_cents: 1000,
+        }]),
         stripe: StripeClient::new(),
         entitlements: EntitlementStore::default(),
+        entitlements_path: PathBuf::new(),
     });
 
     assert_eq!(
@@ -307,9 +328,13 @@ async fn mail_config_redacts_password() {
         smtp: cfg.clone(),
         analytics: Analytics::new(None, false),
         leaderboard: ::leaderboard::LeaderboardService::default(),
-        catalog: Catalog::new(vec![Sku { id: "basic".into(), price_cents: 1000 }]),
+        catalog: Catalog::new(vec![Sku {
+            id: "basic".into(),
+            price_cents: 1000,
+        }]),
         stripe: StripeClient::new(),
         entitlements: EntitlementStore::default(),
+        entitlements_path: PathBuf::new(),
     });
 
     let Json(redacted) = mail_config_handler(State(state)).await;
@@ -334,9 +359,13 @@ async fn admin_mail_config_route() {
         smtp: cfg,
         analytics: Analytics::new(None, false),
         leaderboard: ::leaderboard::LeaderboardService::default(),
-        catalog: Catalog::new(vec![Sku { id: "basic".into(), price_cents: 1000 }]),
+        catalog: Catalog::new(vec![Sku {
+            id: "basic".into(),
+            price_cents: 1000,
+        }]),
         stripe: StripeClient::new(),
         entitlements: EntitlementStore::default(),
+        entitlements_path: PathBuf::new(),
     });
 
     let app = Router::new()

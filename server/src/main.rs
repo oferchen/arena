@@ -3,7 +3,7 @@ use std::{net::SocketAddr, path::PathBuf, sync::Arc};
 use anyhow::{Result, anyhow};
 
 use crate::email::{EmailService, SmtpConfig, StartTls};
-use ::payments::{Catalog, EntitlementList, EntitlementStore, Sku, StripeClient};
+use ::payments::{Catalog, Entitlement, EntitlementList, EntitlementStore, Sku, StripeClient};
 use analytics::{Analytics, Event};
 use axum::{
     Router,
@@ -313,7 +313,19 @@ async fn setup(smtp: SmtpConfig, analytics: Analytics) -> Result<AppState> {
         price_cents: 1000,
     }]);
     let stripe = StripeClient::new();
-    let entitlements = EntitlementStore::default();
+    let entitlements_path = PathBuf::from("entitlements.json");
+    let entitlements = match std::fs::read(&entitlements_path) {
+        Ok(data) => {
+            let store = EntitlementStore::default();
+            if let Ok(existing) = serde_json::from_slice::<Vec<Entitlement>>(&data) {
+                for ent in existing {
+                    store.grant(ent.user_id, ent.sku_id);
+                }
+            }
+            store
+        }
+        Err(_) => EntitlementStore::default(),
+    };
     Ok(AppState {
         email,
         rooms,
@@ -323,7 +335,7 @@ async fn setup(smtp: SmtpConfig, analytics: Analytics) -> Result<AppState> {
         catalog,
         stripe,
         entitlements,
-        entitlements_path: PathBuf::new(),
+        entitlements_path,
     })
 }
 
