@@ -3,10 +3,11 @@ use std::{net::SocketAddr, sync::Arc};
 use anyhow::{Result, anyhow};
 
 use crate::email::{EmailService, SmtpConfig, StartTls};
+use analytics::{Analytics, Event};
 use axum::{
     Router,
     extract::{
-        Json, Query, State,
+        Json, Query, State, Path,
         ws::{Message, WebSocket, WebSocketUpgrade},
     },
     http::{HeaderName, HeaderValue, StatusCode, header::CACHE_CONTROL},
@@ -23,9 +24,9 @@ use analytics::{Analytics, Event};
 use ::payments::{Catalog, EntitlementStore, Sku, StripeClient};
 
 mod email;
-mod room;
 mod leaderboard;
 mod payments;
+mod room;
 #[cfg(test)]
 mod test_logger;
 #[cfg(test)]
@@ -53,16 +54,14 @@ pub(crate) struct AppState {
     catalog: Catalog,
     stripe: StripeClient,
     entitlements: EntitlementStore,
+    entitlements_path: std::path::PathBuf,
 }
 
 fn auth_routes() -> Router<Arc<AppState>> {
     Router::new().route("/*path", get(|| async { StatusCode::OK }))
 }
 
-async fn ws_handler(
-    State(state): State<Arc<AppState>>,
-    ws: WebSocketUpgrade,
-) -> impl IntoResponse {
+async fn ws_handler(State(state): State<Arc<AppState>>, ws: WebSocketUpgrade) -> impl IntoResponse {
     state.analytics.dispatch(Event::WsConnected);
     ws.on_upgrade(|socket| async move {
         handle_socket(socket).await;
@@ -185,6 +184,93 @@ async fn mail_test_handler(
     Json(MailTestResponse { queued })
 }
 
+#[derive(Serialize)]
+struct StoreResponse {
+    items: Vec<Sku>,
+}
+
+async fn store_handler(State(state): State<Arc<AppState>>) -> Json<StoreResponse> {
+    state.analytics.dispatch(Event::StoreViewed);
+    Json(StoreResponse {
+        items: payments::catalog().to_vec(),
+    })
+}
+
+#[derive(Deserialize)]
+struct PurchaseRequest {
+    user: String,
+    sku: String,
+}
+
+#[derive(Serialize)]
+struct PurchaseResponse {
+    session_id: String,
+}
+
+async fn purchase_start_handler(
+    State(state): State<Arc<AppState>>,
+    Json(req): Json<PurchaseRequest>,
+) -> Json<PurchaseResponse> {
+    state.analytics.dispatch(Event::PurchaseInitiated);
+    let session_id = payments::initiate_purchase(&req.user, &req.sku);
+    Json(PurchaseResponse { session_id })
+}
+
+#[derive(Deserialize)]
+struct StripeWebhook {
+    r#type: String,
+    data: StripeWebhookData,
+}
+
+#[derive(Deserialize)]
+struct StripeWebhookData {
+    object: StripeSession,
+}
+
+#[derive(Deserialize)]
+struct StripeSession {
+    client_reference_id: String,
+    metadata: Option<StripeMetadata>,
+}
+
+#[derive(Deserialize)]
+struct StripeMetadata {
+    sku: String,
+}
+
+async fn stripe_webhook_handler(
+    State(state): State<Arc<AppState>>,
+    Json(event): Json<StripeWebhook>,
+) -> StatusCode {
+    if event.r#type == "checkout.session.completed" {
+        if let Some(meta) = event.data.object.metadata {
+            payments::complete_purchase(
+                &state.entitlements,
+                &event.data.object.client_reference_id,
+                &meta.sku,
+            );
+            let _ = state
+                .entitlements
+                .save(&state.entitlements_path);
+            state.analytics.dispatch(Event::PurchaseSucceeded);
+            state.analytics.dispatch(Event::EntitlementGranted);
+            StatusCode::OK
+        } else {
+            StatusCode::BAD_REQUEST
+        }
+    } else {
+        StatusCode::BAD_REQUEST
+    }
+}
+
+async fn entitlements_handler(
+    State(state): State<Arc<AppState>>,
+    Path(user): Path<String>,
+) -> Json<EntitlementList> {
+    let entitlements = state.entitlements.list(&user);
+    Json(EntitlementList { entitlements })
+}
+
 async fn metrics_handler() -> impl IntoResponse {
     let encoder = TextEncoder::new();
     let metric_families = prometheus::gather();
@@ -247,6 +333,10 @@ async fn run(cli: Cli) -> Result<()> {
         .nest("/auth", auth_routes())
         .route("/ws", get(ws_handler))
         .route("/signal", get(signal_ws_handler))
+        .route("/store", get(store_handler))
+        .route("/purchase/start", post(purchase_start_handler))
+        .route("/stripe/webhook", post(stripe_webhook_handler))
+        .route("/entitlements/:user", get(entitlements_handler))
         .route("/admin/mail/test", post(mail_test_handler))
         .route("/admin/mail/config", get(mail_config_handler))
         .nest("/leaderboard", leaderboard::routes())

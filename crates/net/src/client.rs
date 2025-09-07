@@ -6,14 +6,14 @@ use async_trait::async_trait;
 use bevy::prelude::*;
 use bytes::Bytes;
 use wasm_bindgen_futures::spawn_local;
-use webrtc::api::media_engine::MediaEngine;
 use webrtc::api::APIBuilder;
-use webrtc::data_channel::data_channel_message::DataChannelMessage;
+use webrtc::api::media_engine::MediaEngine;
 use webrtc::data_channel::RTCDataChannel;
-use webrtc::peer_connection::configuration::RTCConfiguration;
+use webrtc::data_channel::data_channel_message::DataChannelMessage;
 use webrtc::peer_connection::RTCPeerConnection;
+use webrtc::peer_connection::configuration::RTCConfiguration;
 
-use crate::message::{apply_delta, InputFrame, ServerMessage, Snapshot};
+use crate::message::{InputFrame, ServerMessage, Snapshot, apply_delta};
 
 #[async_trait]
 pub trait DataSender: Send + Sync {
@@ -30,8 +30,7 @@ impl DataSender for RTCDataChannel {
 static DATA_CHANNEL: Mutex<Option<Arc<dyn DataSender>>> = Mutex::new(None);
 static SNAPSHOT_QUEUE: Mutex<VecDeque<Snapshot>> = Mutex::new(VecDeque::new());
 static LAST_SNAPSHOT: Mutex<Option<Snapshot>> = Mutex::new(None);
-static CONNECTION_EVENTS: Mutex<VecDeque<ConnectionEvent>> =
-    Mutex::new(VecDeque::new());
+static CONNECTION_EVENTS: Mutex<VecDeque<ConnectionEvent>> = Mutex::new(VecDeque::new());
 
 /// Events describing the state of the underlying connection.
 #[derive(Debug, Clone, Event)]
@@ -65,7 +64,7 @@ impl ClientConnector {
     #[cfg(target_arch = "wasm32")]
     pub async fn signal(&self, url: &str) -> Result<()> {
         use futures_channel::oneshot;
-        use wasm_bindgen::{prelude::*, JsCast};
+        use wasm_bindgen::{JsCast, prelude::*};
         use web_sys::{BinaryType, MessageEvent, WebSocket};
         use webrtc::peer_connection::sdp::sdp_type::RTCSdpType;
         use webrtc::peer_connection::sdp::session_description::RTCSessionDescription;
@@ -145,9 +144,7 @@ fn setup_channel(dc: &Arc<RTCDataChannel>) {
                             .push_back(snapshot);
                     }
                     ServerMessage::Delta(delta) => {
-                        let mut last = LAST_SNAPSHOT
-                            .lock()
-                            .unwrap_or_else(|e| e.into_inner());
+                        let mut last = LAST_SNAPSHOT.lock().unwrap_or_else(|e| e.into_inner());
                         if let Some(ref base) = *last {
                             if let Ok(snap) = apply_delta(base, &delta) {
                                 *last = Some(snap.clone());
@@ -173,7 +170,11 @@ async fn send_bytes(dc: Arc<dyn DataSender>, bytes: Vec<u8>) {
 
 /// Forward queued [`InputFrame`] events to the network channel each tick.
 pub fn send_input_frames(mut reader: EventReader<InputFrame>) {
-    if let Some(dc) = DATA_CHANNEL.lock().unwrap_or_else(|e| e.into_inner()).clone() {
+    if let Some(dc) = DATA_CHANNEL
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .clone()
+    {
         for frame in reader.read() {
             let bytes = match postcard::to_allocvec(frame) {
                 Ok(b) => b,

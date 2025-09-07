@@ -1,12 +1,7 @@
 use bevy::ecs::system::RunSystemOnce;
 use bevy::prelude::*;
 use engine::{
-    discover_modules,
-    hotload_modules,
-    setup_lobby,
-    update_lobby_pads,
-    LobbyPad,
-    ModuleRegistry,
+    LobbyPad, ModuleRegistry, discover_modules, hotload_modules, setup_lobby, update_lobby_pads,
 };
 use platform_api::AppState;
 use std::fs;
@@ -25,8 +20,7 @@ fn test_app() -> App {
 
 #[test]
 fn hotloads_module_manifest_changes() {
-    let base = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../../assets/modules");
+    let base = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../assets/modules");
     let backup = base.join("backup");
     if backup.exists() {
         fs::remove_dir_all(&backup).unwrap();
@@ -34,7 +28,9 @@ fn hotloads_module_manifest_changes() {
     fs::create_dir_all(&backup).unwrap();
     for entry in fs::read_dir(&base).unwrap() {
         let entry = entry.unwrap();
-        if entry.file_name() == "backup" { continue; }
+        if entry.file_name() == "backup" {
+            continue;
+        }
         if entry.file_type().unwrap().is_dir() {
             let name = entry.file_name();
             fs::rename(entry.path(), backup.join(name)).unwrap();
@@ -93,4 +89,3 @@ capabilities = ["LOBBY_PAD"]
     }
     fs::remove_dir_all(backup).unwrap();
 }
-

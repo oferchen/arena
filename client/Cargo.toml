@@ -37,6 +37,7 @@ render = { path = "../crates/render" }
 analytics = { path = "../crates/analytics" }
 payments = { path = "../crates/payments" }
 
+
 [features]
 default = ["audio"]
 audio = ["bevy/bevy_audio"]
