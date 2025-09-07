@@ -1,27 +1,40 @@
 # Purchases
 
-Arena supports optional in-app purchases for cosmetics and modules.
+Arena includes a lightweight payment system backed by Stripe Checkout. The
+server exposes a catalog of stock keeping units (SKUs), endpoints to initiate a
+purchase, and a webhook to grant entitlements when Stripe reports a completed
+checkout session.
 
-## Configuration
+## Catalog
 
-| Env var                     | CLI flag                | Description                        | Default |
-| --------------------------- | ----------------------- | ---------------------------------- | ------- |
-| `ARENA_PURCHASE_VERIFY_URL` | `--purchase-verify-url` | Endpoint for receipt verification  | -       |
-| `ARENA_PURCHASE_PUBLIC_KEY` | `--purchase-public-key` | Public key for validating receipts | -       |
-| `ARENA_PURCHASE_TIMEOUT_MS` | `--purchase-timeout-ms` | Verification request timeout       | `5000`  |
-
-## Usage
-
-When a client completes a transaction, it sends the receipt to the server.
-The server verifies the receipt and unlocks the item:
+Available items are returned from the `/store` endpoint.
 
 ```bash
-curl -X POST https://server/purchases/verify -d @receipt.json
+curl http://localhost:3000/store
 ```
 
-## Integration
+## Purchase Flow
 
-Purchase handling is implemented in the `platform-api` crate. Register
-`PurchasesPlugin` on the server to accept verification requests and
-update player inventory. The client invokes the platform SDK and forwards
-receipts via the `platform-api` utilities.
+1. The client posts the desired SKU to `/purchase/start`:
+   ```bash
+   curl -X POST http://localhost:3000/purchase/start \
+        -d '{"user":"alice","sku":"duck_hunt"}' \
+        -H 'Content-Type: application/json'
+   ```
+   The server responds with a Stripe Checkout session identifier.
+2. The client completes payment using Stripe's SDK.
+3. Stripe notifies the server via the `checkout.session.completed` webhook at
+   `/stripe/webhook`.
+4. The server grants the entitlement, persists it to `entitlements.json`, and
+   emits analytics events for the successful purchase and entitlement grant.
+
+## Entitlements
+
+Clients can query granted entitlements using `/entitlements/<user>` and gate
+features locally based on the response.
+
+```bash
+curl http://localhost:3000/entitlements/alice
+```
+
+Analytics events are also emitted for store views and purchase initiation.
