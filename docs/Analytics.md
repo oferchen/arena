@@ -47,6 +47,9 @@ Attach `AnalyticsPlugin` to the server to automatically forward events.
 - `item_purchased` - player purchases an item
 - `currency_earned` - player gains currency
 - `currency_spent` - player spends currency
+- `purchase_completed` - checkout finished successfully
+  - `sku` - identifier of the purchased item
+  - `user_id` - UUID of the purchasing user
 
 ### Performance
 
