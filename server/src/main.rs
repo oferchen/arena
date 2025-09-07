@@ -2,22 +2,21 @@ use std::{net::SocketAddr, sync::Arc};
 
 use anyhow::{Result, anyhow};
 
-use crate::email::{EmailService, SmtpConfig};
+use crate::email::{EmailService, SmtpConfig, StartTls};
 use axum::{
     Router,
     extract::{
-        State,
+        Json, Query, State,
         ws::{Message, WebSocket, WebSocketUpgrade},
-        Query, Json,
     },
     http::{HeaderName, HeaderValue, StatusCode, header::CACHE_CONTROL},
     response::IntoResponse,
     routing::{get, get_service, post},
 };
 use clap::Parser;
-use net::server::ServerConnector;
-use serde::Deserialize;
 use email_address::EmailAddress;
+use net::server::ServerConnector;
+use serde::{Deserialize, Serialize};
 use webrtc::peer_connection::sdp::sdp_type::RTCSdpType;
 use webrtc::peer_connection::sdp::session_description::RTCSessionDescription;
 
@@ -68,6 +67,7 @@ impl Cli {
 struct AppState {
     email: Arc<EmailService>,
     rooms: room::RoomManager,
+    smtp: SmtpConfig,
 }
 
 fn auth_routes() -> Router<Arc<AppState>> {
@@ -119,6 +119,37 @@ struct MailTestParams {
     to: String,
 }
 
+#[derive(Serialize)]
+struct RedactedSmtpConfig {
+    host: String,
+    port: u16,
+    from: String,
+    starttls: StartTls,
+    smtps: bool,
+    timeout: u64,
+    user: Option<String>,
+    pass: Option<String>,
+}
+
+impl From<&SmtpConfig> for RedactedSmtpConfig {
+    fn from(cfg: &SmtpConfig) -> Self {
+        Self {
+            host: cfg.host.clone(),
+            port: cfg.port,
+            from: cfg.from.clone(),
+            starttls: cfg.starttls.clone(),
+            smtps: cfg.smtps,
+            timeout: cfg.timeout,
+            user: cfg.user.clone(),
+            pass: cfg.pass.as_ref().map(|_| "***".into()),
+        }
+    }
+}
+
+async fn mail_config_handler(State(state): State<Arc<AppState>>) -> Json<RedactedSmtpConfig> {
+    Json(RedactedSmtpConfig::from(&state.smtp))
+}
+
 async fn mail_test_handler(
     State(state): State<Arc<AppState>>,
     query: Option<Query<MailTestParams>>,
@@ -164,13 +195,13 @@ async fn shutdown_signal() {
 }
 
 async fn setup(smtp: SmtpConfig) -> Result<AppState> {
-    let email = Arc::new(EmailService::new(smtp).map_err(|e| {
+    let email = Arc::new(EmailService::new(smtp.clone()).map_err(|e| {
         log::error!("failed to initialize email service: {e}");
         anyhow!(e)
     })?);
 
     let rooms = room::RoomManager::new();
-    Ok(AppState { email, rooms })
+    Ok(AppState { email, rooms, smtp })
 }
 
 async fn run(smtp: SmtpConfig) -> Result<()> {
@@ -187,6 +218,7 @@ async fn run(smtp: SmtpConfig) -> Result<()> {
         .route("/ws", get(ws_handler))
         .route("/signal", get(signal_ws_handler))
         .route("/admin/mail/test", post(mail_test_handler))
+        .route("/admin/mail/config", get(mail_config_handler))
         .nest_service("/assets", assets_service)
         .fallback_service(ServeDir::new("static"))
         .layer(SetResponseHeaderLayer::if_not_present(
@@ -244,14 +276,17 @@ async fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use axum::body::Body;
     use axum::extract::{Json, Query, State};
+    use axum::http::Request;
     use futures_util::{SinkExt, StreamExt};
+    use serial_test::serial;
     use std::env;
     use tokio_tungstenite::tungstenite::Message;
+    use tower::ServiceExt;
     use webrtc::api::APIBuilder;
     use webrtc::api::media_engine::MediaEngine;
     use webrtc::peer_connection::configuration::RTCConfiguration;
-    use serial_test::serial;
 
     #[tokio::test]
     async fn setup_succeeds_without_env_vars() {
@@ -306,9 +341,14 @@ mod tests {
 
     #[tokio::test]
     async fn websocket_signaling_completes_handshake() {
-        let email = Arc::new(EmailService::new(SmtpConfig::default()).unwrap());
+        let cfg = SmtpConfig::default();
+        let email = Arc::new(EmailService::new(cfg.clone()).unwrap());
         let rooms = room::RoomManager::new();
-        let state = Arc::new(AppState { email, rooms });
+        let state = Arc::new(AppState {
+            email,
+            rooms,
+            smtp: cfg,
+        });
 
         let app = Router::new()
             .route("/signal", get(signal_ws_handler))
@@ -349,9 +389,13 @@ mod tests {
     async fn mail_test_defaults_to_from_address() {
         let mut cfg = SmtpConfig::default();
         cfg.from = "default@example.com".into();
-        let email = Arc::new(EmailService::new(cfg).unwrap());
+        let email = Arc::new(EmailService::new(cfg.clone()).unwrap());
         let rooms = room::RoomManager::new();
-        let state = Arc::new(AppState { email, rooms });
+        let state = Arc::new(AppState {
+            email,
+            rooms,
+            smtp: cfg.clone(),
+        });
 
         assert_eq!(
             mail_test_handler(State(state.clone()), None, None).await,
@@ -368,9 +412,13 @@ mod tests {
     async fn mail_test_accepts_user_address_query() {
         let mut cfg = SmtpConfig::default();
         cfg.from = "query@example.com".into();
-        let email = Arc::new(EmailService::new(cfg).unwrap());
+        let email = Arc::new(EmailService::new(cfg.clone()).unwrap());
         let rooms = room::RoomManager::new();
-        let state = Arc::new(AppState { email, rooms });
+        let state = Arc::new(AppState {
+            email,
+            rooms,
+            smtp: cfg.clone(),
+        });
 
         assert_eq!(
             mail_test_handler(State(state.clone()), None, None).await,
@@ -392,9 +440,13 @@ mod tests {
     async fn mail_test_accepts_user_address_body() {
         let mut cfg = SmtpConfig::default();
         cfg.from = "body@example.com".into();
-        let email = Arc::new(EmailService::new(cfg).unwrap());
+        let email = Arc::new(EmailService::new(cfg.clone()).unwrap());
         let rooms = room::RoomManager::new();
-        let state = Arc::new(AppState { email, rooms });
+        let state = Arc::new(AppState {
+            email,
+            rooms,
+            smtp: cfg.clone(),
+        });
 
         assert_eq!(
             mail_test_handler(State(state.clone()), None, None).await,
@@ -409,5 +461,51 @@ mod tests {
             mail_test_handler(State(state.clone()), None, Some(body)).await,
             StatusCode::OK
         );
+    }
+
+    #[tokio::test]
+    async fn mail_config_redacts_password() {
+        let mut cfg = SmtpConfig::default();
+        cfg.pass = Some("secret".into());
+        let email = Arc::new(EmailService::new(cfg.clone()).unwrap());
+        let rooms = room::RoomManager::new();
+        let state = Arc::new(AppState {
+            email,
+            rooms,
+            smtp: cfg.clone(),
+        });
+
+        let Json(redacted) = mail_config_handler(State(state)).await;
+        assert_eq!(redacted.pass, Some("***".into()));
+        assert_eq!(redacted.user, None);
+    }
+
+    #[tokio::test]
+    async fn admin_mail_config_route() {
+        let cfg = SmtpConfig::default();
+        let email = Arc::new(EmailService::new(cfg.clone()).unwrap());
+        let rooms = room::RoomManager::new();
+        let state = Arc::new(AppState {
+            email,
+            rooms,
+            smtp: cfg,
+        });
+
+        let app = Router::new()
+            .route("/admin/mail/config", get(mail_config_handler))
+            .route("/admin/mail/test", post(mail_test_handler))
+            .with_state(state);
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/admin/mail/config")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
     }
 }
