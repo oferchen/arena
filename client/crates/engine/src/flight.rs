@@ -13,9 +13,9 @@ impl Default for FlightController {
     }
 }
 
-pub fn flight_motion(mut query: Query<(&FlightController, &mut Transform)>) {
+pub fn flight_motion(time: Res<Time>, mut query: Query<(&FlightController, &mut Transform)>) {
     for (controller, mut transform) in &mut query {
-        transform.translation.y += controller.lift;
+        transform.translation.y += controller.lift * time.delta_seconds();
     }
 }
 
