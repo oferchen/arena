@@ -5,7 +5,7 @@ use bevy::prelude::*;
 use duck_hunt::DuckHuntPlugin;
 use engine::{AppExt, EnginePlugin};
 use null_module::NullModule;
-use payments::{EntitlementList, EntitlementStore, UserId};
+use payments::{EntitlementList, EntitlementStore, UserId}; // fetch_entitlements and entitlements
 use physics::PhysicsPlugin;
 use render::RenderPlugin;
 
@@ -34,6 +34,7 @@ fn main() {
     let _ = entitlements.has(user, "basic");
     analytics.dispatch(Event::EntitlementChecked);
 
+    // Initialize the Bevy application
     let mut app = App::new();
     app.add_plugins(RenderPlugin)
         .add_plugins(PhysicsPlugin)
