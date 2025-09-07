@@ -22,6 +22,8 @@ use webrtc::peer_connection::sdp::session_description::RTCSessionDescription;
 
 mod email;
 mod room;
+#[cfg(test)]
+mod test_logger;
 use prometheus::{Encoder, TextEncoder};
 use tower_http::{services::ServeDir, set_header::SetResponseHeaderLayer};
 
@@ -109,7 +111,31 @@ async fn handle_signal_socket(state: Arc<AppState>, mut socket: WebSocket) {
 }
 
 async fn handle_socket(mut socket: WebSocket) {
-    while let Some(Ok(_)) = socket.recv().await {}
+    use axum::extract::ws::Message;
+
+    while let Some(msg) = socket.recv().await {
+        match msg {
+            Ok(Message::Ping(payload)) => {
+                let _ = socket.send(Message::Pong(payload)).await;
+            }
+            Ok(Message::Pong(_)) => {}
+            Ok(Message::Close(_)) => break,
+            Ok(Message::Text(text)) => {
+                log::warn!("unexpected text message: {text}");
+                let _ = socket.close().await;
+                break;
+            }
+            Ok(Message::Binary(_)) => {
+                log::warn!("unexpected binary message");
+                let _ = socket.close().await;
+                break;
+            }
+            Err(e) => {
+                log::warn!("websocket error: {e}");
+                break;
+            }
+        }
+    }
 }
 
 #[derive(Deserialize)]
@@ -295,6 +321,9 @@ mod tests {
     use webrtc::api::media_engine::MediaEngine;
     use webrtc::peer_connection::configuration::RTCConfiguration;
 
+    use crate::test_logger::{INIT, LOGGER};
+    use log::LevelFilter;
+
     #[tokio::test]
     async fn setup_succeeds_without_env_vars() {
         unsafe {
@@ -389,6 +418,46 @@ mod tests {
         answer.sdp = answer_sdp;
         pc.set_remote_description(answer).await.unwrap();
         assert!(pc.remote_description().await.is_some());
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn websocket_logs_unexpected_messages_and_closes() {
+        INIT.call_once(|| {
+            log::set_logger(&LOGGER).unwrap();
+        });
+        log::set_max_level(LevelFilter::Warn);
+        LOGGER.messages.lock().unwrap().clear();
+
+        let cfg = SmtpConfig::default();
+        let email = Arc::new(EmailService::new(cfg.clone()).unwrap());
+        let rooms = room::RoomManager::new();
+        let state = Arc::new(AppState {
+            email,
+            rooms,
+            smtp: cfg,
+        });
+
+        let app = Router::new().route("/ws", get(ws_handler)).with_state(state);
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+
+        let (mut ws, _) = tokio_tungstenite::connect_async(format!("ws://{addr}/ws"))
+            .await
+            .unwrap();
+        ws.send(Message::Text("unexpected".into())).await.unwrap();
+
+        let msg = ws.next().await.unwrap().unwrap();
+        assert!(matches!(msg, Message::Close(_)));
+        assert!(ws.next().await.is_none());
+
+        let logs = LOGGER.messages.lock().unwrap();
+        assert!(logs.iter().any(|m| m.contains("unexpected text message")));
     }
 
     #[tokio::test]
