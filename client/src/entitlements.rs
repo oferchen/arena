@@ -27,6 +27,24 @@ pub fn ensure_session() -> UserId {
     user_id()
 }
 
+#[cfg(not(target_arch = "wasm32"))]
+#[derive(Serialize)]
+struct Claim<'a> {
+    sku: &'a str,
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub fn claim_entitlement(sku: &str) -> Result<(), reqwest::Error> {
+    let user = user_id();
+    let client = reqwest::blocking::Client::new();
+    client
+        .post("http://localhost:3000/store/claim")
+        .header("X-Session", user.to_string())
+        .json(&Claim { sku })
+        .send()
+        .map(|_| ())
+}
+
 #[cfg(target_arch = "wasm32")]
 pub fn user_id() -> Result<UserId, wasm_bindgen::JsValue> {
     use wasm_bindgen::JsValue;
@@ -95,6 +113,37 @@ pub async fn ensure_session() -> Result<UserId, wasm_bindgen::JsValue> {
     storage.set_item("user_id", &guest.user_id)?;
     storage.set_item("session_token", &guest.token)?;
     UserId::parse_str(&guest.user_id).map_err(|_| JsValue::from_str("invalid user"))
+}
+
+#[cfg(target_arch = "wasm32")]
+#[derive(Serialize)]
+struct Claim<'a> {
+    sku: &'a str,
+}
+
+#[cfg(target_arch = "wasm32")]
+pub async fn claim_entitlement(sku: &str) -> Result<(), wasm_bindgen::JsValue> {
+    use wasm_bindgen::JsCast;
+    use wasm_bindgen_futures::JsFuture;
+    use web_sys::{Request, RequestInit, RequestMode, Response};
+    use serde_wasm_bindgen::to_value;
+    let window = web_sys::window().ok_or_else(|| wasm_bindgen::JsValue::from_str("no window"))?;
+    let storage = window
+        .local_storage()?
+        .ok_or_else(|| wasm_bindgen::JsValue::from_str("no local storage"))?;
+    let token = storage
+        .get_item("session_token")?
+        .ok_or_else(|| wasm_bindgen::JsValue::from_str("no session"))?;
+    let mut opts = RequestInit::new();
+    opts.method("POST");
+    opts.mode(RequestMode::Cors);
+    opts.body(Some(&to_value(&Claim { sku })?));
+    let request = Request::new_with_str_and_init("/store/claim", &opts)?;
+    request.headers().set("content-type", "application/json")?;
+    request.headers().set("X-Session", &token)?;
+    let resp_value = JsFuture::from(window.fetch_with_request(&request)).await?;
+    let _resp: Response = resp_value.dyn_into()?;
+    Ok(())
 }
 
 #[cfg(target_arch = "wasm32")]

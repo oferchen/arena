@@ -4,11 +4,6 @@ use std::path::Path;
 use std::sync::RwLock;
 pub use uuid::Uuid as UserId;
 
-use async_trait::async_trait;
-use hex;
-use hmac::{Hmac, Mac};
-use sha2::Sha256;
-
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Sku {
     pub id: String,
@@ -31,92 +26,6 @@ impl Catalog {
 
     pub fn all(&self) -> &[Sku] {
         &self.skus
-    }
-}
-
-pub struct CheckoutSession {
-    pub url: String,
-}
-
-/// Provider for creating checkout sessions and validating webhooks.
-#[async_trait]
-pub trait StoreProvider: Send + Sync {
-    async fn create_checkout_session(&self, sku: &Sku) -> CheckoutSession;
-
-    /// Verify a webhook payload using the provider's signing secret.
-    fn verify_webhook(&self, signature: &str, payload: &[u8]) -> bool;
-}
-
-#[derive(Clone)]
-pub struct StripeClient {
-    secret: String,
-}
-
-impl StripeClient {
-    pub fn new(secret: impl Into<String>) -> Self {
-        Self {
-            secret: secret.into(),
-        }
-    }
-}
-
-#[async_trait]
-impl StoreProvider for StripeClient {
-    async fn create_checkout_session(&self, sku: &Sku) -> CheckoutSession {
-        CheckoutSession {
-            url: format!("https://payments.example/checkout/{}", sku.id),
-        }
-    }
-
-    fn verify_webhook(&self, signature: &str, payload: &[u8]) -> bool {
-        let mut timestamp = "";
-        let mut sig = "";
-        for part in signature.split(',') {
-            let mut kv = part.splitn(2, '=');
-            match (kv.next(), kv.next()) {
-                (Some("t"), Some(t)) => timestamp = t,
-                (Some("v1"), Some(s)) => sig = s,
-                _ => {}
-            }
-        }
-
-        if timestamp.is_empty() || sig.is_empty() {
-            return false;
-        }
-
-        let signed_payload = match std::str::from_utf8(payload) {
-            Ok(body) => format!("{}.{}", timestamp, body),
-            Err(_) => return false,
-        };
-
-        let mut mac = match Hmac::<Sha256>::new_from_slice(self.secret.as_bytes()) {
-            Ok(m) => m,
-            Err(_) => return false,
-        };
-        mac.update(signed_payload.as_bytes());
-
-        let expected = match hex::decode(sig) {
-            Ok(v) => v,
-            Err(_) => return false,
-        };
-
-        mac.verify_slice(&expected).is_ok()
-    }
-}
-
-#[derive(Clone, Default)]
-pub struct MockStoreProvider;
-
-#[async_trait]
-impl StoreProvider for MockStoreProvider {
-    async fn create_checkout_session(&self, sku: &Sku) -> CheckoutSession {
-        CheckoutSession {
-            url: format!("https://mock.store/checkout/{}", sku.id),
-        }
-    }
-
-    fn verify_webhook(&self, _signature: &str, _payload: &[u8]) -> bool {
-        true
     }
 }
 
@@ -287,19 +196,5 @@ mod tests {
         store.load(&path).unwrap();
         assert_eq!(store.list(&user.to_string()).len(), 1);
         let _ = std::fs::remove_file(path);
-    }
-
-    #[test]
-    fn verify_webhook_invalid_secret_length() {
-        let client = StripeClient::new("");
-        let signature = "t=1,v1=00";
-        assert!(!client.verify_webhook(signature, b"{}"));
-    }
-
-    #[test]
-    fn verify_webhook_malformed_signature() {
-        let client = StripeClient::new("secret");
-        let signature = "t=1,v1=zzzz";
-        assert!(!client.verify_webhook(signature, b"{}"));
     }
 }
