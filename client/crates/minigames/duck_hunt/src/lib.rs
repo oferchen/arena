@@ -1,3 +1,4 @@
+use analytics::{Analytics, Event};
 use anyhow::Result;
 use bevy::prelude::*;
 use bevy::render::mesh::shape::UVSphere;
@@ -267,6 +268,7 @@ fn fire_weapon(
     mut commands: Commands,
     mut writer: EventWriter<InputFrame>,
     frame: Res<CurrentFrame>,
+    analytics: Option<Res<Analytics>>,
 ) {
     if keys.just_pressed(KeyCode::R) {
         weapon.ammo = weapon.max_ammo;
@@ -274,6 +276,9 @@ fn fire_weapon(
 
     if buttons.just_pressed(MouseButton::Left) && weapon.ammo > 0 {
         weapon.ammo -= 1;
+        if let Some(a) = analytics.as_ref() {
+            a.dispatch(Event::ShotFired);
+        }
         if let Ok(cam) = camera.get_single() {
             let origin = cam.translation;
             let direction = cam.forward();
@@ -293,6 +298,9 @@ fn fire_weapon(
                 ray_sphere_intersect(origin, direction, transform.translation, DUCK_RADIUS)
             }) {
                 commands.entity(entity).despawn_recursive();
+                if let Some(a) = analytics.as_ref() {
+                    a.dispatch(Event::TargetHit);
+                }
             }
         }
     }

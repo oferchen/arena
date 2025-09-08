@@ -4,9 +4,9 @@ use analytics::{Analytics, Event};
 use bevy::prelude::*;
 use duck_hunt::DuckHuntPlugin;
 use engine::{AppExt, EnginePlugin};
+mod entitlements;
 mod lobby;
 mod net;
-mod entitlements;
 use entitlements::fetch_entitlements;
 use null_module::NullModule;
 use payments::{EntitlementStore, UserId};
@@ -34,6 +34,7 @@ fn main() {
     // Initialize the Bevy application
     let mut app = App::new();
     app.insert_resource(Time::<Fixed>::from_seconds(1.0 / 60.0));
+    app.insert_resource(analytics.clone());
     app.add_plugins(RenderPlugin)
         .add_plugins(PhysicsPlugin)
         .add_plugins(EnginePlugin)
@@ -66,6 +67,7 @@ pub async fn main() -> Result<(), JsValue> {
     // Initialize the Bevy application
     let mut app = App::new();
     app.insert_resource(Time::<Fixed>::from_seconds(1.0 / 60.0));
+    app.insert_resource(analytics.clone());
     app.add_plugins(RenderPlugin)
         .add_plugins(PhysicsPlugin)
         .add_plugins(EnginePlugin)

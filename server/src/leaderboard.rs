@@ -105,6 +105,7 @@ async fn post_run(
     {
         return StatusCode::INTERNAL_SERVER_ERROR;
     }
+    state.analytics.dispatch(Event::LeaderboardSubmit);
     StatusCode::CREATED
 }
 
@@ -267,6 +268,7 @@ mod tests {
             .await;
         assert_eq!(scores.len(), 1);
         assert_eq!(scores[0].points, 42);
+        assert_eq!(state.analytics.events(), vec![Event::LeaderboardSubmit]);
     }
 
     #[tokio::test]
