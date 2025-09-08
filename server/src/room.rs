@@ -12,7 +12,7 @@ use ::leaderboard::{
     models::{LeaderboardWindow, Run, Score},
 };
 use chrono::Utc;
-use duck_hunt_server::{DuckState, Server as DuckServer, replicate, spawn_duck, validate_hit};
+use duck_hunt_server::server::{DuckState, Server as DuckServer, replicate, spawn_duck, validate_hit};
 use glam::Vec3;
 use net::message::{InputFrame, ServerMessage, Snapshot, delta_compress};
 use net::server::ServerConnector;
@@ -272,11 +272,28 @@ impl Room {
 #[derive(Clone)]
 pub struct RoomManager {
     room: Arc<Mutex<Room>>,
+    registry: Arc<dyn crate::shard::ShardRegistry>,
+    shard_id: String,
 }
 
 impl RoomManager {
     pub fn new(leaderboard: LeaderboardService) -> Self {
+        let registry = Arc::new(crate::shard::MemoryShardRegistry::new());
+        Self::with_registry(leaderboard, registry, "local".into(), "localhost".into())
+    }
+
+    pub fn with_registry(
+        leaderboard: LeaderboardService,
+        registry: Arc<dyn crate::shard::ShardRegistry>,
+        shard_id: String,
+        addr: String,
+    ) -> Self {
         let room = Arc::new(Mutex::new(Room::new(leaderboard)));
+        registry.register(crate::shard::ShardInfo::new(
+            shard_id.clone(),
+            addr,
+            0,
+        ));
         let tick_room = Arc::clone(&room);
         tokio::spawn(async move {
             let mut interval = time::interval(Duration::from_secs_f64(1.0 / 60.0));
@@ -293,7 +310,22 @@ impl RoomManager {
                 round_room.lock().await.submit_scores().await;
             }
         });
-        Self { room }
+        let heartbeat_room = Arc::clone(&room);
+        let heartbeat_registry = Arc::clone(&registry);
+        let heartbeat_id = shard_id.clone();
+        tokio::spawn(async move {
+            let mut interval = time::interval(Duration::from_secs(5));
+            loop {
+                interval.tick().await;
+                let load = heartbeat_room.lock().await.connectors.len();
+                heartbeat_registry.heartbeat(&heartbeat_id, load);
+            }
+        });
+        Self {
+            room,
+            registry,
+            shard_id,
+        }
     }
 
     pub async fn add_peer(&self, connector: ServerConnector) -> usize {
@@ -302,6 +334,10 @@ impl RoomManager {
 
     pub async fn set_interest(&self, index: usize, mask: u64) {
         self.room.lock().await.set_interest(index, mask);
+    }
+
+    pub fn select_shard(&self) -> Option<crate::shard::ShardInfo> {
+        self.registry.least_loaded()
     }
 }
 
@@ -668,6 +704,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn set_interest_updates_mask() {
         let mut room = test_room().await;
         let (_input_tx, input_rx) = mpsc::channel(1);
