@@ -1,4 +1,4 @@
-use std::{net::SocketAddr, path::PathBuf, sync::Arc};
+use std::{collections::HashMap, net::SocketAddr, path::PathBuf, sync::Arc};
 
 use anyhow::{Result, anyhow};
 
@@ -6,7 +6,7 @@ use crate::email::{EmailService, SmtpConfig, StartTls};
 use ::payments::{Catalog, EntitlementList, Sku, UserId};
 use analytics::{Analytics, Event};
 use axum::{
-    Router,
+    Extension, Router,
     extract::{
         Json, Path, Query, State,
         ws::{Message, WebSocket, WebSocketUpgrade},
@@ -17,7 +17,6 @@ use axum::{
     },
     response::IntoResponse,
     routing::{get, get_service, post},
-    Extension,
 };
 use clap::Parser;
 use email_address::EmailAddress;
@@ -29,9 +28,9 @@ use webrtc::peer_connection::sdp::sdp_type::RTCSdpType;
 use webrtc::peer_connection::sdp::session_description::RTCSessionDescription;
 
 mod auth;
+mod config;
 mod email;
 mod leaderboard;
-mod config;
 mod payments;
 mod room;
 mod shard;
@@ -48,7 +47,11 @@ struct Cli {
     config: Config,
     #[arg(long, env = "ARENA_POSTHOG_KEY")]
     posthog_key: Option<String>,
-    #[arg(long = "metrics", env = "ARENA_METRICS_ENABLED", default_value_t = false)]
+    #[arg(
+        long = "metrics",
+        env = "ARENA_METRICS_ENABLED",
+        default_value_t = false
+    )]
     metrics: bool,
     #[arg(long, env = "ARENA_ANALYTICS_OPT_OUT", default_value_t = false)]
     analytics_opt_out: bool,
@@ -66,6 +69,8 @@ struct Config {
     db_url: Option<String>,
     #[arg(long, env = "ARENA_CSP")]
     csp: Option<String>,
+    #[arg(long, env = "ARENA_RTC_ICE_SERVERS_JSON")]
+    rtc_ice_servers_json: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -75,10 +80,28 @@ pub struct ResolvedConfig {
     pub signaling_ws_url: String,
     pub db_url: String,
     pub csp: Option<String>,
+    pub ice_servers: Vec<String>,
+    pub feature_flags: HashMap<String, bool>,
 }
 
 impl Config {
     fn resolve(self) -> Result<ResolvedConfig> {
+        let ice_servers = if let Some(json) = self.rtc_ice_servers_json {
+            serde_json::from_str(&json)
+                .map_err(|e| anyhow!("invalid ARENA_RTC_ICE_SERVERS_JSON: {e}"))?
+        } else {
+            Vec::new()
+        };
+        let feature_flags = std::env::vars()
+            .filter_map(|(k, v)| {
+                k.strip_prefix("ARENA_FEATURE_").map(|name| {
+                    let enabled =
+                        matches!(v.to_ascii_lowercase().as_str(), "1" | "true" | "yes" | "on");
+                    (name.to_ascii_lowercase(), enabled)
+                })
+            })
+            .collect();
+
         Ok(ResolvedConfig {
             bind_addr: self
                 .bind_addr
@@ -89,10 +112,10 @@ impl Config {
             signaling_ws_url: self
                 .signaling_ws_url
                 .ok_or_else(|| anyhow!("ARENA_SIGNALING_WS_URL not set"))?,
-            db_url: self
-                .db_url
-                .ok_or_else(|| anyhow!("ARENA_DB_URL not set"))?,
+            db_url: self.db_url.ok_or_else(|| anyhow!("ARENA_DB_URL not set"))?,
             csp: self.csp,
+            ice_servers,
+            feature_flags,
         })
     }
 }
@@ -423,10 +446,9 @@ async fn setup(cfg: &ResolvedConfig, smtp: SmtpConfig, analytics: Analytics) -> 
         anyhow!(e)
     })?);
 
-    let leaderboard =
-        ::leaderboard::LeaderboardService::new(&cfg.db_url, PathBuf::from("replays"))
-            .await
-            .map_err(|e| anyhow!(e))?;
+    let leaderboard = ::leaderboard::LeaderboardService::new(&cfg.db_url, PathBuf::from("replays"))
+        .await
+        .map_err(|e| anyhow!(e))?;
     let registry = Arc::new(shard::MemoryShardRegistry::new());
     let rooms = room::RoomManager::with_registry(
         leaderboard.clone(),
@@ -438,11 +460,7 @@ async fn setup(cfg: &ResolvedConfig, smtp: SmtpConfig, analytics: Analytics) -> 
         id: "basic".to_string(),
         price_cents: 1000,
     }]);
-    let db = match SessionBuilder::new()
-        .known_node(&cfg.db_url)
-        .build()
-        .await
-    {
+    let db = match SessionBuilder::new().known_node(&cfg.db_url).build().await {
         Ok(s) => Some(Arc::new(s)),
         Err(e) => {
             log::warn!("failed to connect to scylla: {e}");
@@ -466,11 +484,7 @@ async fn setup(cfg: &ResolvedConfig, smtp: SmtpConfig, analytics: Analytics) -> 
 async fn run(cli: Cli) -> Result<()> {
     let config = cli.config.resolve()?;
     log::info!("Using config: {:?}", config);
-    let analytics = Analytics::new(
-        !cli.analytics_opt_out,
-        cli.posthog_key.clone(),
-        cli.metrics,
-    );
+    let analytics = Analytics::new(!cli.analytics_opt_out, cli.posthog_key.clone(), cli.metrics);
     let smtp = cli.smtp.validate()?;
     let state = Arc::new(setup(&config, smtp, analytics).await?);
 

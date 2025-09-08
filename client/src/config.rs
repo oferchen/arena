@@ -1,10 +1,15 @@
 use bevy::prelude::*;
 use serde::Deserialize;
+use std::collections::HashMap;
 
 #[derive(Resource, Clone, Deserialize)]
 pub struct RuntimeConfig {
     pub signal_url: String,
     pub api_base_url: String,
+    #[serde(default)]
+    pub feature_flags: HashMap<String, bool>,
+    #[serde(default)]
+    pub ice_servers: Vec<String>,
 }
 
 impl Default for RuntimeConfig {
@@ -12,6 +17,8 @@ impl Default for RuntimeConfig {
         Self {
             signal_url: String::new(),
             api_base_url: String::new(),
+            feature_flags: HashMap::new(),
+            ice_servers: Vec::new(),
         }
     }
 }
