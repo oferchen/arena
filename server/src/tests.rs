@@ -46,6 +46,7 @@ fn smtp_cfg() -> SmtpConfig {
             public_url: "http://localhost".into(),
             shard_host: "127.0.0.1".into(),
             database_url: "127.0.0.1:9042".into(),
+            csp: None,
         };
         assert!(setup(&cfg, smtp_cfg(), analytics).await.is_ok());
     }

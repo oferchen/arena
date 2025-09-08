@@ -17,6 +17,7 @@ use axum::{
     },
     response::IntoResponse,
     routing::{get, get_service, post},
+    Extension,
 };
 use clap::Parser;
 use email_address::EmailAddress;
@@ -68,12 +69,12 @@ struct Config {
 }
 
 #[derive(Debug, Clone)]
-struct ResolvedConfig {
-    bind_addr: SocketAddr,
-    public_url: String,
-    shard_host: String,
-    database_url: String,
-    csp: Option<String>,
+pub struct ResolvedConfig {
+    pub bind_addr: SocketAddr,
+    pub public_url: String,
+    pub shard_host: String,
+    pub database_url: String,
+    pub csp: Option<String>,
 }
 
 impl Config {
@@ -516,6 +517,7 @@ async fn run(cli: Cli) -> Result<()> {
             )
             .expect("invalid content-security-policy"),
         ))
+        .layer(Extension(config.clone()))
         .with_state(state.clone());
 
     let listener = tokio::net::TcpListener::bind(config.bind_addr)
