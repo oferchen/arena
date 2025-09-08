@@ -125,7 +125,11 @@ async fn websocket_signaling_completes_handshake() {
     let cfg = smtp_cfg();
     let email = Arc::new(EmailService::new(cfg.clone()).unwrap());
     let leaderboard = leaderboard_service().await;
-    let rooms = room::RoomManager::new(leaderboard.clone());
+    let rooms = room::RoomManager::new(
+        leaderboard.clone(),
+        "local".into(),
+        "localhost".into(),
+    );
     let state = Arc::new(AppState {
         email,
         rooms,
@@ -186,7 +190,11 @@ async fn websocket_signaling_invalid_sdp_logs_and_closes() {
     let cfg = smtp_cfg();
     let email = Arc::new(EmailService::new(cfg.clone()).unwrap());
     let leaderboard = leaderboard_service().await;
-    let rooms = room::RoomManager::new(leaderboard.clone());
+    let rooms = room::RoomManager::new(
+        leaderboard.clone(),
+        "local".into(),
+        "localhost".into(),
+    );
     let state = Arc::new(AppState {
         email,
         rooms,
@@ -240,7 +248,11 @@ async fn websocket_signaling_unexpected_binary_logs_and_closes() {
     let cfg = smtp_cfg();
     let email = Arc::new(EmailService::new(cfg.clone()).unwrap());
     let leaderboard = leaderboard_service().await;
-    let rooms = room::RoomManager::new(leaderboard.clone());
+    let rooms = room::RoomManager::new(
+        leaderboard.clone(),
+        "local".into(),
+        "localhost".into(),
+    );
     let state = Arc::new(AppState {
         email,
         rooms,
@@ -294,7 +306,11 @@ async fn websocket_logs_unexpected_messages_and_closes() {
     let cfg = smtp_cfg();
     let email = Arc::new(EmailService::new(cfg.clone()).unwrap());
     let leaderboard = leaderboard_service().await;
-    let rooms = room::RoomManager::new(leaderboard.clone());
+    let rooms = room::RoomManager::new(
+        leaderboard.clone(),
+        "local".into(),
+        "localhost".into(),
+    );
     let state = Arc::new(AppState {
         email,
         rooms,
@@ -338,7 +354,11 @@ async fn mail_test_defaults_to_from_address() {
     cfg.from = "default@example.com".into();
     let email = Arc::new(EmailService::new(cfg.clone()).unwrap());
     let leaderboard = leaderboard_service().await;
-    let rooms = room::RoomManager::new(leaderboard.clone());
+    let rooms = room::RoomManager::new(
+        leaderboard.clone(),
+        "local".into(),
+        "localhost".into(),
+    );
     let state = Arc::new(AppState {
         email,
         rooms,
@@ -370,7 +390,11 @@ async fn mail_test_accepts_user_address_query() {
     cfg.from = "query@example.com".into();
     let email = Arc::new(EmailService::new(cfg.clone()).unwrap());
     let leaderboard = leaderboard_service().await;
-    let rooms = room::RoomManager::new(leaderboard.clone());
+    let rooms = room::RoomManager::new(
+        leaderboard.clone(),
+        "local".into(),
+        "localhost".into(),
+    );
     let state = Arc::new(AppState {
         email,
         rooms,
@@ -409,7 +433,11 @@ async fn mail_test_accepts_user_address_body() {
     cfg.from = "body@example.com".into();
     let email = Arc::new(EmailService::new(cfg.clone()).unwrap());
     let leaderboard = leaderboard_service().await;
-    let rooms = room::RoomManager::new(leaderboard.clone());
+    let rooms = room::RoomManager::new(
+        leaderboard.clone(),
+        "local".into(),
+        "localhost".into(),
+    );
     let state = Arc::new(AppState {
         email,
         rooms,
@@ -447,7 +475,11 @@ async fn mail_config_redacts_password() {
     cfg.pass = Some("secret".into());
     let email = Arc::new(EmailService::new(cfg.clone()).unwrap());
     let leaderboard = leaderboard_service().await;
-    let rooms = room::RoomManager::new(leaderboard.clone());
+    let rooms = room::RoomManager::new(
+        leaderboard.clone(),
+        "local".into(),
+        "localhost".into(),
+    );
     let state = Arc::new(AppState {
         email,
         rooms,
@@ -472,7 +504,11 @@ async fn admin_mail_config_route() {
     let cfg = smtp_cfg();
     let email = Arc::new(EmailService::new(cfg.clone()).unwrap());
     let leaderboard = leaderboard_service().await;
-    let rooms = room::RoomManager::new(leaderboard.clone());
+    let rooms = room::RoomManager::new(
+        leaderboard.clone(),
+        "local".into(),
+        "localhost".into(),
+    );
     let state = Arc::new(AppState {
         email,
         rooms,
@@ -514,7 +550,11 @@ async fn round_scores_appear_in_leaderboard() {
     let cfg = smtp_cfg();
     let email = Arc::new(EmailService::new(cfg.clone()).unwrap());
     let leaderboard = leaderboard_service().await;
-    let rooms = room::RoomManager::new(leaderboard.clone());
+    let rooms = room::RoomManager::new(
+        leaderboard.clone(),
+        "local".into(),
+        "localhost".into(),
+    );
     rooms.push_score(7).await;
     let state = Arc::new(AppState {
         email,
