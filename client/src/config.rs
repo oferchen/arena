@@ -10,8 +10,8 @@ pub struct RuntimeConfig {
 impl Default for RuntimeConfig {
     fn default() -> Self {
         Self {
-            signal_url: "ws://localhost:3000/signal".to_string(),
-            api_base_url: "http://localhost:3000".to_string(),
+            signal_url: String::new(),
+            api_base_url: String::new(),
         }
     }
 }
@@ -60,7 +60,7 @@ impl RuntimeConfig {
 
     #[cfg(not(target_arch = "wasm32"))]
     pub async fn load() -> Self {
-        match reqwest::get("http://localhost:3000/config.json").await {
+        match reqwest::get("/config.json").await {
             Ok(resp) => match resp.json::<RuntimeConfig>().await {
                 Ok(cfg) => cfg,
                 Err(err) => {
@@ -89,4 +89,3 @@ impl RuntimeConfig {
         }
     }
 }
-

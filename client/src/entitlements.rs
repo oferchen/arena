@@ -16,6 +16,9 @@ pub fn user_id() -> UserId {
 
 #[cfg(not(target_arch = "wasm32"))]
 pub fn fetch_entitlements(base_url: &str) -> Result<Vec<String>, reqwest::Error> {
+    if base_url.is_empty() {
+        return Ok(Vec::new());
+    }
     let user = user_id();
     reqwest::blocking::get(format!("{base_url}/entitlements/{user}"))
         .and_then(|r| r.json::<EntitlementList>())
@@ -35,6 +38,9 @@ struct Claim<'a> {
 
 #[cfg(not(target_arch = "wasm32"))]
 pub fn claim_entitlement(base_url: &str, sku: &str) -> Result<(), reqwest::Error> {
+    if base_url.is_empty() {
+        return Ok(());
+    }
     let user = user_id();
     let client = reqwest::blocking::Client::new();
     client
@@ -65,10 +71,10 @@ pub fn user_id() -> Result<UserId, wasm_bindgen::JsValue> {
 
 #[cfg(target_arch = "wasm32")]
 pub async fn fetch_entitlements(base_url: &str) -> Result<Vec<String>, wasm_bindgen::JsValue> {
+    use serde_wasm_bindgen::from_value;
     use wasm_bindgen::JsCast;
     use wasm_bindgen_futures::JsFuture;
     use web_sys::Response;
-    use serde_wasm_bindgen::from_value;
 
     let user = user_id()?;
     let window = web_sys::window().ok_or_else(|| wasm_bindgen::JsValue::from_str("no window"))?;
@@ -89,11 +95,11 @@ struct GuestSession {
 
 #[cfg(target_arch = "wasm32")]
 pub async fn ensure_session(base_url: &str) -> Result<UserId, wasm_bindgen::JsValue> {
+    use serde_wasm_bindgen::from_value;
     use wasm_bindgen::JsCast;
+    use wasm_bindgen::JsValue;
     use wasm_bindgen_futures::JsFuture;
     use web_sys::Response;
-    use serde_wasm_bindgen::from_value;
-    use wasm_bindgen::JsValue;
 
     let window = web_sys::window().ok_or_else(|| JsValue::from_str("no window"))?;
     let storage = window
@@ -124,10 +130,10 @@ struct Claim<'a> {
 
 #[cfg(target_arch = "wasm32")]
 pub async fn claim_entitlement(base_url: &str, sku: &str) -> Result<(), wasm_bindgen::JsValue> {
+    use serde_wasm_bindgen::to_value;
     use wasm_bindgen::JsCast;
     use wasm_bindgen_futures::JsFuture;
     use web_sys::{Request, RequestInit, RequestMode, Response};
-    use serde_wasm_bindgen::to_value;
     let window = web_sys::window().ok_or_else(|| wasm_bindgen::JsValue::from_str("no window"))?;
     let storage = window
         .local_storage()?
