@@ -1,4 +1,4 @@
-use std::{net::SocketAddr, path::PathBuf, sync::Arc};
+use std::{collections::HashMap, net::SocketAddr, path::PathBuf, sync::Arc};
 
 use anyhow::{anyhow, Result};
 
@@ -6,6 +6,7 @@ use crate::email::{EmailService, SmtpConfig, StartTls};
 use ::payments::{Catalog, EntitlementList, Sku, UserId};
 use analytics::{Analytics, Event};
 use axum::{
+    Extension, Router,
     extract::{
         ws::{Message, WebSocket, WebSocketUpgrade},
         Json, Path, Query, State,
@@ -65,6 +66,8 @@ struct Config {
     db_url: Option<String>,
     #[arg(long, env = "ARENA_CSP")]
     csp: Option<String>,
+    #[arg(long, env = "ARENA_RTC_ICE_SERVERS_JSON")]
+    rtc_ice_servers_json: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -74,10 +77,28 @@ pub struct ResolvedConfig {
     pub signaling_ws_url: String,
     pub db_url: String,
     pub csp: Option<String>,
+    pub ice_servers: Vec<String>,
+    pub feature_flags: HashMap<String, bool>,
 }
 
 impl Config {
     fn resolve(self) -> Result<ResolvedConfig> {
+        let ice_servers = if let Some(json) = self.rtc_ice_servers_json {
+            serde_json::from_str(&json)
+                .map_err(|e| anyhow!("invalid ARENA_RTC_ICE_SERVERS_JSON: {e}"))?
+        } else {
+            Vec::new()
+        };
+        let feature_flags = std::env::vars()
+            .filter_map(|(k, v)| {
+                k.strip_prefix("ARENA_FEATURE_").map(|name| {
+                    let enabled =
+                        matches!(v.to_ascii_lowercase().as_str(), "1" | "true" | "yes" | "on");
+                    (name.to_ascii_lowercase(), enabled)
+                })
+            })
+            .collect();
+
         Ok(ResolvedConfig {
             bind_addr: self
                 .bind_addr
@@ -90,6 +111,8 @@ impl Config {
                 .ok_or_else(|| anyhow!("ARENA_SIGNALING_WS_URL not set"))?,
             db_url: self.db_url.ok_or_else(|| anyhow!("ARENA_DB_URL not set"))?,
             csp: self.csp,
+            ice_servers,
+            feature_flags,
         })
     }
 }
