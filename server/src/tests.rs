@@ -83,6 +83,15 @@ fn env_used_when_no_cli() {
 }
 
 #[test]
+fn missing_bind_addr_errors() {
+    unsafe {
+        env::remove_var("ARENA_BIND_ADDR");
+    }
+    let cli = Cli::try_parse_from(["prog"]).unwrap();
+    assert!(cli.config.clone().resolve().is_err());
+}
+
+#[test]
 fn invalid_starttls_cli_value_errors() {
     unsafe {
         env::set_var("ARENA_SMTP_HOST", "envhost");

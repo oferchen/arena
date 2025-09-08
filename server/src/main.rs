@@ -55,8 +55,8 @@ struct Cli {
 
 #[derive(Parser, Debug, Clone)]
 struct Config {
-    #[arg(long, env = "ARENA_BIND_ADDR", default_value = "0.0.0.0:3000")]
-    bind_addr: SocketAddr,
+    #[arg(long, env = "ARENA_BIND_ADDR")]
+    bind_addr: Option<SocketAddr>,
     #[arg(long, env = "ARENA_PUBLIC_URL")]
     public_url: Option<String>,
     #[arg(long, env = "ARENA_SHARD_HOST")]
@@ -79,7 +79,9 @@ struct ResolvedConfig {
 impl Config {
     fn resolve(self) -> Result<ResolvedConfig> {
         Ok(ResolvedConfig {
-            bind_addr: self.bind_addr,
+            bind_addr: self
+                .bind_addr
+                .ok_or_else(|| anyhow!("ARENA_BIND_ADDR not set"))?,
             public_url: self
                 .public_url
                 .ok_or_else(|| anyhow!("ARENA_PUBLIC_URL not set"))?,
