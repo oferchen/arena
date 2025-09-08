@@ -1,9 +1,9 @@
 use std::fs;
 
 #[test]
-fn default_signal_url() {
+fn no_signal_url_default() {
     let src = fs::read_to_string("src/net.rs").expect("read net.rs");
-    assert!(src.contains("ws://localhost:3000/signal"));
+    assert!(!src.contains("ws://localhost:3000/signal"));
 }
 
 #[test]

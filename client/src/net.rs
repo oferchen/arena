@@ -3,6 +3,8 @@ use bevy::prelude::*;
 use bevy::tasks::{AsyncComputeTaskPool, Task};
 use netcode::client::{ClientConnector, ConnectionEvent};
 use platform_api::AppState;
+#[cfg(target_arch = "wasm32")]
+use crate::config::RuntimeConfig;
 
 #[cfg(target_arch = "wasm32")]
 use futures_lite::future;
@@ -18,19 +20,8 @@ struct ConnectorResource(Option<ClientConnector>);
 struct ConnectorTask(Task<Result<ClientConnector, String>>);
 
 #[cfg(target_arch = "wasm32")]
-#[derive(Resource, Clone)]
-pub struct SignalUrl(pub String);
-
-#[cfg(target_arch = "wasm32")]
-fn resolve_signal_url(url: Option<Res<SignalUrl>>) -> String {
-    url.map(|u| u.0.clone())
-        .or_else(|| std::env::var("ARENA_SIGNAL_URL").ok())
-        .unwrap_or_else(|| "ws://localhost:3000/signal".to_string())
-}
-
-#[cfg(target_arch = "wasm32")]
-fn start_connection(mut commands: Commands, url: Option<Res<SignalUrl>>) {
-    let signal_url = resolve_signal_url(url);
+fn start_connection(mut commands: Commands, config: Res<RuntimeConfig>) {
+    let signal_url = config.signal_url.clone();
     let task = AsyncComputeTaskPool::get().spawn_local(async move {
         match ClientConnector::new().await {
             Ok(conn) => match conn.signal(&signal_url).await {
