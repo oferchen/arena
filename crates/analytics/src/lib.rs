@@ -10,6 +10,9 @@ use serde::Serialize;
 #[cfg(feature = "otlp")]
 use std::sync::atomic::{AtomicU64, Ordering};
 
+const DEFAULT_MAX_EVENTS: usize = 10_000;
+const MAX_EVENTS_ENV_VAR: &str = "ANALYTICS_MAX_EVENTS";
+
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 pub enum Event {
     WsConnected,
@@ -85,7 +88,7 @@ impl ColumnarStore {
 
 impl Default for ColumnarStore {
     fn default() -> Self {
-        Self::new(usize::MAX)
+        Self::new(DEFAULT_MAX_EVENTS)
     }
 }
 impl Event {
@@ -183,7 +186,11 @@ impl Analytics {
     }
 
     pub fn new(enabled: bool, posthog_key: Option<String>, enable_otel: bool) -> Self {
-        Self::with_max_events(enabled, posthog_key, enable_otel, usize::MAX)
+        let max_events = std::env::var(MAX_EVENTS_ENV_VAR)
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(DEFAULT_MAX_EVENTS);
+        Self::with_max_events(enabled, posthog_key, enable_otel, max_events)
     }
 
     pub fn dispatch(&self, event: Event) {
@@ -266,7 +273,8 @@ mod tests {
 
     #[test]
     fn ring_buffer_limit() {
-        let analytics = Analytics::with_max_events(true, None, false, 2);
+        unsafe { std::env::set_var(MAX_EVENTS_ENV_VAR, "2") };
+        let analytics = Analytics::new(true, None, false);
         analytics.dispatch(Event::PlayerJoined);
         analytics.dispatch(Event::PlayerJumped);
         analytics.dispatch(Event::PlayerDied);
@@ -274,6 +282,7 @@ mod tests {
             analytics.events(),
             vec![Event::PlayerJumped, Event::PlayerDied]
         );
+        unsafe { std::env::remove_var(MAX_EVENTS_ENV_VAR) };
     }
 
     #[test]
