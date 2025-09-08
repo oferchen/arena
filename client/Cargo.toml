@@ -40,6 +40,7 @@ platform-api = { path = "../crates/platform-api" }
 netcode = { path = "../crates/net", package = "net" }
 bevy_rapier3d = { version = "0.24", default-features = false, features = ["dim3"] }
 reqwest = { version = "0.12", features = ["json", "blocking"], optional = true }
+futures-lite = "2.3"
 
 
 [features]
