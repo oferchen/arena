@@ -64,11 +64,11 @@ pub async fn main() -> Result<(), JsValue> {
     analytics.dispatch(Event::SessionStart);
     analytics.dispatch(Event::LevelStart { level: 1 });
     let entitlements = EntitlementStore::default();
-    let user = ensure_session().await?;
-    for sku in fetch_entitlements().await.unwrap_or_default() {
+    let user = ensure_session(&config.api_base_url).await?;
+    for sku in fetch_entitlements(&config.api_base_url).await.unwrap_or_default() {
         entitlements.grant(user, sku);
     }
-    let _ = claim_entitlement("basic").await;
+    let _ = claim_entitlement(&config.api_base_url, "basic").await;
     let _ = entitlements.has(user, "basic");
     analytics.dispatch(Event::EntitlementChecked);
 

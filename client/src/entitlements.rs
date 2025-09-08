@@ -64,7 +64,7 @@ pub fn user_id() -> Result<UserId, wasm_bindgen::JsValue> {
 }
 
 #[cfg(target_arch = "wasm32")]
-pub async fn fetch_entitlements() -> Result<Vec<String>, wasm_bindgen::JsValue> {
+pub async fn fetch_entitlements(base_url: &str) -> Result<Vec<String>, wasm_bindgen::JsValue> {
     use wasm_bindgen::JsCast;
     use wasm_bindgen_futures::JsFuture;
     use web_sys::Response;
@@ -72,8 +72,8 @@ pub async fn fetch_entitlements() -> Result<Vec<String>, wasm_bindgen::JsValue> 
 
     let user = user_id()?;
     let window = web_sys::window().ok_or_else(|| wasm_bindgen::JsValue::from_str("no window"))?;
-    let resp_value = JsFuture::from(window.fetch_with_str(&format!("/entitlements/{user}")))
-        .await?;
+    let url = format!("{base_url}/entitlements/{user}");
+    let resp_value = JsFuture::from(window.fetch_with_str(&url)).await?;
     let resp: Response = resp_value.dyn_into()?;
     let json = JsFuture::from(resp.json()?).await?;
     let list: EntitlementList = from_value(json)?;
@@ -88,7 +88,7 @@ struct GuestSession {
 }
 
 #[cfg(target_arch = "wasm32")]
-pub async fn ensure_session() -> Result<UserId, wasm_bindgen::JsValue> {
+pub async fn ensure_session(base_url: &str) -> Result<UserId, wasm_bindgen::JsValue> {
     use wasm_bindgen::JsCast;
     use wasm_bindgen_futures::JsFuture;
     use web_sys::Response;
@@ -106,7 +106,8 @@ pub async fn ensure_session() -> Result<UserId, wasm_bindgen::JsValue> {
             }
         }
     }
-    let resp_value = JsFuture::from(window.fetch_with_str("/auth/guest")).await?;
+    let url = format!("{base_url}/auth/guest");
+    let resp_value = JsFuture::from(window.fetch_with_str(&url)).await?;
     let resp: Response = resp_value.dyn_into()?;
     let json = JsFuture::from(resp.json()?).await?;
     let guest: GuestSession = from_value(json)?;
@@ -122,7 +123,7 @@ struct Claim<'a> {
 }
 
 #[cfg(target_arch = "wasm32")]
-pub async fn claim_entitlement(sku: &str) -> Result<(), wasm_bindgen::JsValue> {
+pub async fn claim_entitlement(base_url: &str, sku: &str) -> Result<(), wasm_bindgen::JsValue> {
     use wasm_bindgen::JsCast;
     use wasm_bindgen_futures::JsFuture;
     use web_sys::{Request, RequestInit, RequestMode, Response};
@@ -138,7 +139,7 @@ pub async fn claim_entitlement(sku: &str) -> Result<(), wasm_bindgen::JsValue> {
     opts.method("POST");
     opts.mode(RequestMode::Cors);
     opts.body(Some(&to_value(&Claim { sku })?));
-    let request = Request::new_with_str_and_init("/store/claim", &opts)?;
+    let request = Request::new_with_str_and_init(&format!("{base_url}/store/claim"), &opts)?;
     request.headers().set("content-type", "application/json")?;
     request.headers().set("X-Session", &token)?;
     let resp_value = JsFuture::from(window.fetch_with_request(&request)).await?;

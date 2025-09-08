@@ -13,7 +13,8 @@ extern "C" {
 #[wasm_bindgen_test]
 async fn loads_mocked_entitlements() {
     let user = user_id().unwrap();
-    mock_entitlements(&format!("/entitlements/{user}"));
-    let ents = fetch_entitlements().await.unwrap();
+    let base_url = "";
+    mock_entitlements(&format!("{base_url}/entitlements/{user}"));
+    let ents = fetch_entitlements(base_url).await.unwrap();
     assert_eq!(ents, vec!["duck_hunt".to_string()]);
 }
