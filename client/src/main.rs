@@ -14,6 +14,7 @@ use null_module::NullModule;
 use payments::{EntitlementStore, UserId};
 use physics::PhysicsPlugin;
 use render::RenderPlugin;
+use futures_lite::future;
 
 #[cfg(all(target_arch = "wasm32", not(target_os = "emscripten")))]
 #[global_allocator]
@@ -21,7 +22,7 @@ static ALLOC: wee_alloc::WeeAlloc = wee_alloc::WeeAlloc::INIT;
 
 #[cfg(not(target_arch = "wasm32"))]
 fn main() {
-    let config = RuntimeConfig::load();
+    let config = future::block_on(RuntimeConfig::load());
     let enabled = std::env::var("ARENA_ANALYTICS_OPT_OUT").is_err();
     let analytics = Analytics::new(enabled, None, false);
     analytics.dispatch(Event::SessionStart);
@@ -57,7 +58,7 @@ use wasm_bindgen::prelude::*;
 #[cfg(target_arch = "wasm32")]
 #[wasm_bindgen(start)]
 pub async fn main() -> Result<(), JsValue> {
-    let config = RuntimeConfig::load();
+    let config = RuntimeConfig::load().await;
     let enabled = std::env::var("ARENA_ANALYTICS_OPT_OUT").is_err();
     let analytics = Analytics::new(enabled, None, false);
     analytics.dispatch(Event::SessionStart);
