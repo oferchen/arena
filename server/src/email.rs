@@ -5,6 +5,7 @@
 //! it can be aborted during shutdown if necessary. The cleanup task is
 //! terminated when [`EmailService`] is dropped.
 
+use anyhow::{Result, anyhow};
 use clap::{Args, ValueEnum};
 use lettre::address::AddressError;
 use lettre::transport::smtp::{
@@ -71,19 +72,11 @@ impl std::str::FromStr for StartTls {
 
 #[derive(Clone, Debug, Args)]
 pub struct SmtpConfig {
-    #[arg(
-        long = "smtp-host",
-        env = "ARENA_SMTP_HOST",
-        default_value = "localhost"
-    )]
+    #[arg(long = "smtp-host", env = "ARENA_SMTP_HOST")]
     pub host: String,
     #[arg(long = "smtp-port", env = "ARENA_SMTP_PORT", default_value_t = 25)]
     pub port: u16,
-    #[arg(
-        long = "smtp-from",
-        env = "ARENA_SMTP_FROM",
-        default_value = "arena@localhost"
-    )]
+    #[arg(long = "smtp-from", env = "ARENA_SMTP_FROM")]
     pub from: String,
     #[arg(long = "smtp-starttls", env = "ARENA_SMTP_STARTTLS", value_enum, default_value_t = StartTls::Auto)]
     pub starttls: StartTls,
@@ -104,14 +97,26 @@ pub struct SmtpConfig {
 impl Default for SmtpConfig {
     fn default() -> Self {
         Self {
-            host: "localhost".into(),
+            host: String::new(),
             port: 25,
-            from: "arena@localhost".into(),
+            from: String::new(),
             starttls: StartTls::Auto,
             smtps: false,
             timeout: 10000,
             user: None,
             pass: None,
+        }
+    }
+}
+
+impl SmtpConfig {
+    pub fn validate(self) -> Result<Self> {
+        if self.host.is_empty() {
+            Err(anyhow!("ARENA_SMTP_HOST not set"))
+        } else if self.from.is_empty() {
+            Err(anyhow!("ARENA_SMTP_FROM not set"))
+        } else {
+            Ok(self)
         }
     }
 }
@@ -186,6 +191,10 @@ pub struct EmailService {
 
 impl EmailService {
     pub fn new(config: SmtpConfig) -> Result<Self, EmailError> {
+        let config = config
+            .validate()
+            .map_err(|e| EmailError::Smtp(e.to_string()))?;
+
         let mut builder = AsyncSmtpTransport::<Tokio1Executor>::builder_dangerous(&config.host)
             .port(config.port)
             .timeout(Some(Duration::from_millis(config.timeout)));
@@ -391,6 +400,14 @@ mod tests {
         map.clear();
     }
 
+    fn smtp_cfg() -> SmtpConfig {
+        SmtpConfig {
+            host: "localhost".into(),
+            from: "arena@localhost".into(),
+            ..Default::default()
+        }
+    }
+
     #[test]
     #[serial]
     fn rate_limiting() {
@@ -403,7 +420,7 @@ mod tests {
     #[serial]
     async fn invalid_address() {
         clear_limits();
-        let mut cfg = SmtpConfig::default();
+        let mut cfg = smtp_cfg();
         cfg.from = "noreply@example.com".into();
         let svc = EmailService::new(cfg).unwrap();
         match svc.send_test("not-an-email") {
