@@ -8,16 +8,16 @@ use serial_test::serial;
 use std::env;
 use tokio_tungstenite::tungstenite::Message;
 use tower::ServiceExt;
-use webrtc::api::APIBuilder;
 use webrtc::api::media_engine::MediaEngine;
+use webrtc::api::APIBuilder;
 use webrtc::peer_connection::configuration::RTCConfiguration;
 
+use crate::payments::EntitlementStore;
 use crate::test_logger::{INIT, LOGGER};
 use ::payments::{Catalog, Sku};
-use crate::payments::EntitlementStore;
-use std::sync::Arc;
 use log::LevelFilter;
 use std::path::PathBuf;
+use std::sync::Arc;
 
 async fn leaderboard_service() -> ::leaderboard::LeaderboardService {
     std::env::set_var("ARENA_REDIS_URL", "redis://127.0.0.1/");
@@ -30,26 +30,27 @@ fn smtp_cfg() -> SmtpConfig {
     SmtpConfig {
         host: "localhost".into(),
         from: "arena@localhost".into(),
+        port: Some(25),
         ..Default::default()
     }
 }
 
 #[tokio::test]
-    async fn setup_succeeds_without_env_vars() {
-        unsafe {
-            env::remove_var("DATABASE_URL");
-        }
-
-        let analytics = Analytics::new(true, None, false);
-        let cfg = ResolvedConfig {
-            bind_addr: "127.0.0.1:3000".parse().unwrap(),
-            public_base_url: "http://localhost".into(),
-            signaling_ws_url: "ws://127.0.0.1".into(),
-            db_url: "127.0.0.1:9042".into(),
-            csp: None,
-        };
-        assert!(setup(&cfg, smtp_cfg(), analytics).await.is_ok());
+async fn setup_succeeds_without_env_vars() {
+    unsafe {
+        env::remove_var("DATABASE_URL");
     }
+
+    let analytics = Analytics::new(true, None, false);
+    let cfg = ResolvedConfig {
+        bind_addr: "127.0.0.1:3000".parse().unwrap(),
+        public_base_url: "http://localhost".into(),
+        signaling_ws_url: "ws://127.0.0.1".into(),
+        db_url: "127.0.0.1:9042".into(),
+        csp: None,
+    };
+    assert!(setup(&cfg, smtp_cfg(), analytics).await.is_ok());
+}
 
 #[test]
 fn cli_overrides_env() {
@@ -57,7 +58,7 @@ fn cli_overrides_env() {
         env::set_var("ARENA_SMTP_HOST", "envhost");
         env::set_var("ARENA_SMTP_FROM", "envfrom@example.com");
     }
-    let cli = Cli::try_parse_from(["prog", "--smtp-host", "clihost"]).unwrap();
+    let cli = Cli::try_parse_from(["prog", "--smtp-host", "clihost", "--smtp-port", "25"]).unwrap();
     assert_eq!(cli.smtp.host, "clihost");
     cli.smtp.validate().unwrap();
     unsafe {
@@ -74,7 +75,7 @@ fn env_used_when_no_cli() {
         env::set_var("ARENA_SMTP_PORT", "2525");
     }
     let cli = Cli::try_parse_from(["prog"]).unwrap();
-    assert_eq!(cli.smtp.port, 2525);
+    assert_eq!(cli.smtp.port, Some(2525));
     cli.smtp.validate().unwrap();
     unsafe {
         env::remove_var("ARENA_SMTP_HOST");
@@ -125,11 +126,7 @@ async fn websocket_signaling_completes_handshake() {
     let cfg = smtp_cfg();
     let email = Arc::new(EmailService::new(cfg.clone()).unwrap());
     let leaderboard = leaderboard_service().await;
-    let rooms = room::RoomManager::new(
-        leaderboard.clone(),
-        "local".into(),
-        "localhost".into(),
-    );
+    let rooms = room::RoomManager::new(leaderboard.clone(), "local".into(), "localhost".into());
     let state = Arc::new(AppState {
         email,
         rooms,
@@ -190,11 +187,7 @@ async fn websocket_signaling_invalid_sdp_logs_and_closes() {
     let cfg = smtp_cfg();
     let email = Arc::new(EmailService::new(cfg.clone()).unwrap());
     let leaderboard = leaderboard_service().await;
-    let rooms = room::RoomManager::new(
-        leaderboard.clone(),
-        "local".into(),
-        "localhost".into(),
-    );
+    let rooms = room::RoomManager::new(leaderboard.clone(), "local".into(), "localhost".into());
     let state = Arc::new(AppState {
         email,
         rooms,
@@ -218,10 +211,9 @@ async fn websocket_signaling_invalid_sdp_logs_and_closes() {
         axum::serve(listener, app).await.unwrap();
     });
 
-    let (mut ws, _) =
-        tokio_tungstenite::connect_async(format!("ws://{}/signal", addr))
-            .await
-            .unwrap();
+    let (mut ws, _) = tokio_tungstenite::connect_async(format!("ws://{}/signal", addr))
+        .await
+        .unwrap();
     ws.send(Message::Text("bogus".into())).await.unwrap();
 
     let msg = ws.next().await.unwrap().unwrap();
@@ -248,11 +240,7 @@ async fn websocket_signaling_unexpected_binary_logs_and_closes() {
     let cfg = smtp_cfg();
     let email = Arc::new(EmailService::new(cfg.clone()).unwrap());
     let leaderboard = leaderboard_service().await;
-    let rooms = room::RoomManager::new(
-        leaderboard.clone(),
-        "local".into(),
-        "localhost".into(),
-    );
+    let rooms = room::RoomManager::new(leaderboard.clone(), "local".into(), "localhost".into());
     let state = Arc::new(AppState {
         email,
         rooms,
@@ -276,10 +264,9 @@ async fn websocket_signaling_unexpected_binary_logs_and_closes() {
         axum::serve(listener, app).await.unwrap();
     });
 
-    let (mut ws, _) =
-        tokio_tungstenite::connect_async(format!("ws://{}/signal", addr))
-            .await
-            .unwrap();
+    let (mut ws, _) = tokio_tungstenite::connect_async(format!("ws://{}/signal", addr))
+        .await
+        .unwrap();
     ws.send(Message::Binary(vec![1, 2, 3])).await.unwrap();
 
     let msg = ws.next().await.unwrap().unwrap();
@@ -306,11 +293,7 @@ async fn websocket_logs_unexpected_messages_and_closes() {
     let cfg = smtp_cfg();
     let email = Arc::new(EmailService::new(cfg.clone()).unwrap());
     let leaderboard = leaderboard_service().await;
-    let rooms = room::RoomManager::new(
-        leaderboard.clone(),
-        "local".into(),
-        "localhost".into(),
-    );
+    let rooms = room::RoomManager::new(leaderboard.clone(), "local".into(), "localhost".into());
     let state = Arc::new(AppState {
         email,
         rooms,
@@ -354,11 +337,7 @@ async fn mail_test_defaults_to_from_address() {
     cfg.from = "default@example.com".into();
     let email = Arc::new(EmailService::new(cfg.clone()).unwrap());
     let leaderboard = leaderboard_service().await;
-    let rooms = room::RoomManager::new(
-        leaderboard.clone(),
-        "local".into(),
-        "localhost".into(),
-    );
+    let rooms = room::RoomManager::new(leaderboard.clone(), "local".into(), "localhost".into());
     let state = Arc::new(AppState {
         email,
         rooms,
@@ -390,11 +369,7 @@ async fn mail_test_accepts_user_address_query() {
     cfg.from = "query@example.com".into();
     let email = Arc::new(EmailService::new(cfg.clone()).unwrap());
     let leaderboard = leaderboard_service().await;
-    let rooms = room::RoomManager::new(
-        leaderboard.clone(),
-        "local".into(),
-        "localhost".into(),
-    );
+    let rooms = room::RoomManager::new(leaderboard.clone(), "local".into(), "localhost".into());
     let state = Arc::new(AppState {
         email,
         rooms,
@@ -433,11 +408,7 @@ async fn mail_test_accepts_user_address_body() {
     cfg.from = "body@example.com".into();
     let email = Arc::new(EmailService::new(cfg.clone()).unwrap());
     let leaderboard = leaderboard_service().await;
-    let rooms = room::RoomManager::new(
-        leaderboard.clone(),
-        "local".into(),
-        "localhost".into(),
-    );
+    let rooms = room::RoomManager::new(leaderboard.clone(), "local".into(), "localhost".into());
     let state = Arc::new(AppState {
         email,
         rooms,
@@ -475,11 +446,7 @@ async fn mail_config_redacts_password() {
     cfg.pass = Some("secret".into());
     let email = Arc::new(EmailService::new(cfg.clone()).unwrap());
     let leaderboard = leaderboard_service().await;
-    let rooms = room::RoomManager::new(
-        leaderboard.clone(),
-        "local".into(),
-        "localhost".into(),
-    );
+    let rooms = room::RoomManager::new(leaderboard.clone(), "local".into(), "localhost".into());
     let state = Arc::new(AppState {
         email,
         rooms,
@@ -504,11 +471,7 @@ async fn admin_mail_config_route() {
     let cfg = smtp_cfg();
     let email = Arc::new(EmailService::new(cfg.clone()).unwrap());
     let leaderboard = leaderboard_service().await;
-    let rooms = room::RoomManager::new(
-        leaderboard.clone(),
-        "local".into(),
-        "localhost".into(),
-    );
+    let rooms = room::RoomManager::new(leaderboard.clone(), "local".into(), "localhost".into());
     let state = Arc::new(AppState {
         email,
         rooms,
@@ -541,7 +504,6 @@ async fn admin_mail_config_route() {
     assert_eq!(response.status(), StatusCode::OK);
 }
 
-
 #[tokio::test]
 async fn round_scores_appear_in_leaderboard() {
     use ::leaderboard::models::Score;
@@ -550,11 +512,7 @@ async fn round_scores_appear_in_leaderboard() {
     let cfg = smtp_cfg();
     let email = Arc::new(EmailService::new(cfg.clone()).unwrap());
     let leaderboard = leaderboard_service().await;
-    let rooms = room::RoomManager::new(
-        leaderboard.clone(),
-        "local".into(),
-        "localhost".into(),
-    );
+    let rooms = room::RoomManager::new(leaderboard.clone(), "local".into(), "localhost".into());
     rooms.push_score(7).await;
     let state = Arc::new(AppState {
         email,

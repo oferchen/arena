@@ -1,6 +1,6 @@
 use std::{collections::HashMap, net::SocketAddr, path::PathBuf, sync::Arc};
 
-use anyhow::{Result, anyhow};
+use anyhow::{anyhow, Result};
 
 use crate::email::{EmailService, SmtpConfig, StartTls};
 use ::payments::{Catalog, EntitlementList, Sku, UserId};
@@ -8,15 +8,16 @@ use analytics::{Analytics, Event};
 use axum::{
     Extension, Router,
     extract::{
-        Json, Path, Query, State,
         ws::{Message, WebSocket, WebSocketUpgrade},
+        Json, Path, Query, State,
     },
     http::{
-        HeaderMap, HeaderName, HeaderValue, StatusCode,
         header::{CACHE_CONTROL, SET_COOKIE},
+        HeaderMap, HeaderName, HeaderValue, StatusCode,
     },
     response::IntoResponse,
     routing::{get, get_service, post},
+    Extension, Router,
 };
 use clap::Parser;
 use email_address::EmailAddress;
@@ -300,7 +301,7 @@ impl From<&SmtpConfig> for RedactedSmtpConfig {
     fn from(cfg: &SmtpConfig) -> Self {
         Self {
             host: cfg.host.clone(),
-            port: cfg.port,
+            port: cfg.port.expect("validated"),
             from: cfg.from.clone(),
             starttls: cfg.starttls.clone(),
             smtps: cfg.smtps,
