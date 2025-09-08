@@ -92,6 +92,7 @@ async fn websocket_signaling_completes_handshake() {
         store: Arc::new(StripeClient::new(String::new())),
         entitlements: EntitlementStore::default(),
         entitlements_path: PathBuf::new(),
+        db: None,
     });
 
     let app = Router::new()
@@ -159,6 +160,7 @@ async fn websocket_signaling_invalid_sdp_logs_and_closes() {
         store: Arc::new(StripeClient::new(String::new())),
         entitlements: EntitlementStore::default(),
         entitlements_path: PathBuf::new(),
+        db: None,
     });
 
     let app = Router::new()
@@ -219,6 +221,7 @@ async fn websocket_signaling_unexpected_binary_logs_and_closes() {
         store: Arc::new(StripeClient::new(String::new())),
         entitlements: EntitlementStore::default(),
         entitlements_path: PathBuf::new(),
+        db: None,
     });
 
     let app = Router::new()
@@ -279,6 +282,7 @@ async fn websocket_logs_unexpected_messages_and_closes() {
         store: Arc::new(StripeClient::new(String::new())),
         entitlements: EntitlementStore::default(),
         entitlements_path: PathBuf::new(),
+        db: None,
     });
 
     let app = Router::new()
@@ -329,6 +333,7 @@ async fn mail_test_defaults_to_from_address() {
         store: Arc::new(StripeClient::new(String::new())),
         entitlements: EntitlementStore::default(),
         entitlements_path: PathBuf::new(),
+        db: None,
     });
 
     assert_eq!(
@@ -367,6 +372,7 @@ async fn mail_test_accepts_user_address_query() {
         store: Arc::new(StripeClient::new(String::new())),
         entitlements: EntitlementStore::default(),
         entitlements_path: PathBuf::new(),
+        db: None,
     });
 
     assert_eq!(
@@ -412,6 +418,7 @@ async fn mail_test_accepts_user_address_body() {
         store: Arc::new(StripeClient::new(String::new())),
         entitlements: EntitlementStore::default(),
         entitlements_path: PathBuf::new(),
+        db: None,
     });
 
     assert_eq!(
@@ -456,6 +463,7 @@ async fn mail_config_redacts_password() {
         store: Arc::new(StripeClient::new(String::new())),
         entitlements: EntitlementStore::default(),
         entitlements_path: PathBuf::new(),
+        db: None,
     });
 
     let Json(redacted) = mail_config_handler(State(state)).await;
@@ -487,6 +495,7 @@ async fn admin_mail_config_route() {
         store: Arc::new(StripeClient::new(String::new())),
         entitlements: EntitlementStore::default(),
         entitlements_path: PathBuf::new(),
+        db: None,
     });
 
     let app = Router::new()
@@ -533,6 +542,7 @@ async fn stripe_webhook_accepts_valid_signature() {
         store: Arc::new(StripeClient::new(secret)),
         entitlements: EntitlementStore::default(),
         entitlements_path: PathBuf::new(),
+        db: None,
     });
 
     let app = Router::new()
@@ -598,6 +608,7 @@ async fn stripe_webhook_rejects_invalid_signature() {
         store: Arc::new(StripeClient::new(secret)),
         entitlements: EntitlementStore::default(),
         entitlements_path: PathBuf::new(),
+        db: None,
     });
 
     let app = Router::new()
@@ -657,6 +668,7 @@ async fn webhook_persists_entitlements() {
         store: Arc::new(MockStoreProvider::default()),
         entitlements: EntitlementStore::default(),
         entitlements_path: path.clone(),
+        db: None,
     });
 
     let app = crate::payments::routes().with_state(state.clone());
@@ -714,6 +726,7 @@ async fn round_scores_appear_in_leaderboard() {
         store: Arc::new(StripeClient::new(String::new())),
         entitlements: EntitlementStore::default(),
         entitlements_path: std::path::PathBuf::new(),
+        db: None,
     });
 
     let app = Router::new()

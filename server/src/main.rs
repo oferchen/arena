@@ -12,7 +12,10 @@ use axum::{
         Json, Path, Query, State,
         ws::{Message, WebSocket, WebSocketUpgrade},
     },
-    http::{HeaderMap, HeaderName, HeaderValue, StatusCode, header::CACHE_CONTROL},
+    http::{
+        header::{CACHE_CONTROL, SET_COOKIE},
+        HeaderMap, HeaderName, HeaderValue, StatusCode,
+    },
     response::IntoResponse,
     routing::{get, get_service, post},
 };
@@ -22,7 +25,9 @@ use net::server::ServerConnector;
 use serde::{Deserialize, Serialize};
 use webrtc::peer_connection::sdp::sdp_type::RTCSdpType;
 use webrtc::peer_connection::sdp::session_description::RTCSessionDescription;
+use scylla::{Session, SessionBuilder};
 
+mod auth;
 mod email;
 mod leaderboard;
 mod payments;
@@ -58,10 +63,7 @@ pub(crate) struct AppState {
     store: Arc<dyn StoreProvider>,
     entitlements: EntitlementStore,
     entitlements_path: std::path::PathBuf,
-}
-
-fn auth_routes() -> Router<Arc<AppState>> {
-    Router::new().route("/*path", get(|| async { StatusCode::OK }))
+    db: Option<Arc<Session>>,
 }
 
 async fn ws_handler(State(state): State<Arc<AppState>>, ws: WebSocketUpgrade) -> impl IntoResponse {
@@ -405,6 +407,25 @@ async fn metrics_handler() -> impl IntoResponse {
     String::from_utf8(buffer).unwrap()
 }
 
+#[derive(Serialize)]
+struct GuestResponse {
+    user_id: String,
+}
+
+async fn guest_handler(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    let id = uuid::Uuid::new_v4().to_string();
+    if let Some(db) = &state.db {
+        let query = "INSERT INTO players_by_id (id, guest) VALUES (?, true)";
+        let _ = db.query(query, (id.clone(),)).await;
+    }
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        SET_COOKIE,
+        HeaderValue::from_str(&format!("session={}; Path=/; HttpOnly", id)).unwrap(),
+    );
+    (headers, Json(GuestResponse { user_id: id }))
+}
+
 async fn shutdown_signal() {
     let ctrl_c = async {
         tokio::signal::ctrl_c()
@@ -460,6 +481,18 @@ async fn setup(smtp: SmtpConfig, analytics: Analytics) -> Result<AppState> {
             message: e.to_string(),
         });
     }
+    let db = match SessionBuilder::new()
+        .known_node("127.0.0.1:9042")
+        .build()
+        .await
+    {
+        Ok(s) => Some(Arc::new(s)),
+        Err(e) => {
+            log::warn!("failed to connect to scylla: {e}");
+            None
+        }
+    };
+
     Ok(AppState {
         email,
         rooms,
@@ -470,6 +503,7 @@ async fn setup(smtp: SmtpConfig, analytics: Analytics) -> Result<AppState> {
         store,
         entitlements,
         entitlements_path,
+        db,
     })
 }
 
@@ -490,7 +524,8 @@ async fn run(cli: Cli) -> Result<()> {
 
     let app = Router::new()
         .route("/metrics", get(metrics_handler))
-        .nest("/auth", auth_routes())
+        .nest("/auth", auth::routes())
+        .route("/auth/guest", post(guest_handler))
         .route("/ws", get(ws_handler))
         .route("/signal", get(signal_ws_handler))
         .route("/store", get(store_handler))

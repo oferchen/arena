@@ -211,6 +211,7 @@ mod tests {
             store: Arc::new(StripeClient::new(String::new())),
             entitlements: EntitlementStore::default(),
             entitlements_path: PathBuf::new(),
+        db: None,
         });
 
         let leaderboard_id = Uuid::new_v4();
@@ -250,6 +251,7 @@ mod tests {
             store: Arc::new(StripeClient::new(String::new())),
             entitlements: EntitlementStore::default(),
             entitlements_path: PathBuf::new(),
+        db: None,
         });
 
         let leaderboard_id = Uuid::new_v4();
@@ -290,6 +292,7 @@ mod tests {
             store: Arc::new(StripeClient::new(String::new())),
             entitlements: EntitlementStore::default(),
             entitlements_path: PathBuf::new(),
+        db: None,
         });
 
         let leaderboard_id = Uuid::new_v4();
@@ -331,6 +334,7 @@ mod tests {
             store: Arc::new(StripeClient::new(String::new())),
             entitlements: EntitlementStore::default(),
             entitlements_path: PathBuf::new(),
+        db: None,
         });
 
         let leaderboard_id = Uuid::new_v4();
@@ -373,6 +377,7 @@ mod tests {
             store: Arc::new(StripeClient::new(String::new())),
             entitlements: EntitlementStore::default(),
             entitlements_path: PathBuf::new(),
+        db: None,
         });
 
         let leaderboard_id = Uuid::new_v4();
