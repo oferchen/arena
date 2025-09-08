@@ -287,9 +287,13 @@ pub struct RoomManager {
 }
 
 impl RoomManager {
-    pub fn new(leaderboard: LeaderboardService) -> Self {
+    pub fn new(
+        leaderboard: LeaderboardService,
+        shard_id: String,
+        addr: String,
+    ) -> Self {
         let registry = Arc::new(crate::shard::MemoryShardRegistry::new());
-        Self::with_registry(leaderboard, registry, "local".into(), "localhost".into())
+        Self::with_registry(leaderboard, registry, shard_id, addr)
     }
 
     pub fn with_registry(

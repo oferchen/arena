@@ -208,7 +208,11 @@ mod tests {
             ::leaderboard::LeaderboardService::new("127.0.0.1:9042", PathBuf::from("replays"))
                 .await
                 .unwrap();
-        let rooms = room::RoomManager::new(leaderboard.clone());
+        let rooms = room::RoomManager::new(
+            leaderboard.clone(),
+            "local".into(),
+            "localhost".into(),
+        );
         let state = Arc::new(AppState {
             email,
             rooms,
@@ -251,7 +255,11 @@ mod tests {
             ::leaderboard::LeaderboardService::new("127.0.0.1:9042", PathBuf::from("replays"))
                 .await
                 .unwrap();
-        let rooms = room::RoomManager::new(leaderboard.clone());
+        let rooms = room::RoomManager::new(
+            leaderboard.clone(),
+            "local".into(),
+            "localhost".into(),
+        );
         let state = Arc::new(AppState {
             email,
             rooms,
@@ -292,7 +300,11 @@ mod tests {
             ::leaderboard::LeaderboardService::new("127.0.0.1:9042", PathBuf::from("replays"))
                 .await
                 .unwrap();
-        let rooms = room::RoomManager::new(leaderboard.clone());
+        let rooms = room::RoomManager::new(
+            leaderboard.clone(),
+            "local".into(),
+            "localhost".into(),
+        );
         let state = Arc::new(AppState {
             email,
             rooms,
@@ -334,7 +346,11 @@ mod tests {
             ::leaderboard::LeaderboardService::new("127.0.0.1:9042", PathBuf::from("replays"))
                 .await
                 .unwrap();
-        let rooms = room::RoomManager::new(leaderboard.clone());
+        let rooms = room::RoomManager::new(
+            leaderboard.clone(),
+            "local".into(),
+            "localhost".into(),
+        );
         let state = Arc::new(AppState {
             email,
             rooms,
@@ -377,7 +393,11 @@ mod tests {
             ::leaderboard::LeaderboardService::new("127.0.0.1:9042", PathBuf::from("replays"))
                 .await
                 .unwrap();
-        let rooms = room::RoomManager::new(leaderboard.clone());
+        let rooms = room::RoomManager::new(
+            leaderboard.clone(),
+            "local".into(),
+            "localhost".into(),
+        );
         let state = Arc::new(AppState {
             email,
             rooms,
