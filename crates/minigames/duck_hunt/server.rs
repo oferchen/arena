@@ -1,3 +1,4 @@
+use analytics::{Analytics, Event};
 use chrono::Utc;
 use glam::Vec3;
 use leaderboard::{models::{LeaderboardWindow, Run, Score}, LeaderboardService};
@@ -50,12 +51,39 @@ const DUCK_RADIUS: f32 = 0.5;
 pub struct DuckState {
     pub position: Vec3,
     pub velocity: Vec3,
+    pub path: Vec<Vec3>,
+    pub path_index: usize,
 }
 
 pub fn spawn_duck(server: &mut Server, position: Vec3, velocity: Vec3) {
-    let state = DuckState { position, velocity };
+    let path = vec![position, position + velocity];
+    let state = DuckState {
+        position,
+        velocity,
+        path,
+        path_index: 0,
+    };
     server.ducks.push(state.clone());
     // send initial state to clients
+    server.broadcast(&state);
+}
+
+pub fn spawn_duck_path(server: &mut Server, path: Vec<Vec3>, speed: f32) {
+    if path.is_empty() {
+        return;
+    }
+    let position = path[0];
+    let mut velocity = Vec3::ZERO;
+    if path.len() > 1 {
+        velocity = (path[1] - path[0]).normalize_or_zero() * speed;
+    }
+    let state = DuckState {
+        position,
+        velocity,
+        path,
+        path_index: 0,
+    };
+    server.ducks.push(state.clone());
     server.broadcast(&state);
 }
 
@@ -81,7 +109,23 @@ pub fn spawn_wave(server: &mut Server, seed: u64, count: usize) {
 pub fn advance_ducks(server: &mut Server, dt: f32) {
     let mut updated = Vec::new();
     for duck in &mut server.ducks {
-        duck.position += duck.velocity * dt;
+        if duck.path_index + 1 < duck.path.len() {
+            let target = duck.path[duck.path_index + 1];
+            let dir = target - duck.position;
+            let travel = duck.velocity.length() * dt;
+            if dir.length() <= travel {
+                duck.position = target;
+                duck.path_index += 1;
+                if duck.path_index + 1 < duck.path.len() {
+                    let next = duck.path[duck.path_index + 1];
+                    duck.velocity = (next - target).normalize_or_zero() * duck.velocity.length();
+                }
+            } else {
+                duck.position += dir.normalize_or_zero() * travel;
+            }
+        } else {
+            duck.position += duck.velocity * dt;
+        }
         updated.push(duck.clone());
     }
     for duck in &updated {
@@ -104,9 +148,25 @@ pub fn validate_hit(server: &Server, origin: Vec3, direction: Vec3, shot_time: D
     false
 }
 
+pub fn serialize_replay(origin: Vec3, direction: Vec3, time: f32) -> Vec<u8> {
+    #[derive(Serialize, Deserialize)]
+    struct Shot {
+        origin: [f32; 3],
+        direction: [f32; 3],
+        time: f32,
+    }
+    let shot = Shot {
+        origin: origin.to_array(),
+        direction: direction.to_array(),
+        time,
+    };
+    postcard::to_allocvec(&shot).unwrap_or_default()
+}
+
 pub async fn handle_shot(
     server: &Server,
     leaderboard: &LeaderboardService,
+    analytics: Option<&Analytics>,
     leaderboard_id: Uuid,
     player_id: Uuid,
     origin: Vec3,
@@ -115,6 +175,9 @@ pub async fn handle_shot(
     replay: Vec<u8>,
 ) -> bool {
     if validate_hit(server, origin, direction, shot_time) {
+        if let Some(a) = analytics {
+            a.dispatch(Event::CurrencyEarned);
+        }
         let run_id = Uuid::new_v4();
         let run = Run {
             id: run_id,
@@ -165,6 +228,8 @@ mod tests {
             ducks: vec![DuckState {
                 position: Vec3::new(0.0, 0.0, 5.0),
                 velocity: Vec3::ZERO,
+                path: Vec::new(),
+                path_index: 0,
             }],
             snapshot_txs: Vec::new(),
         };
@@ -180,6 +245,8 @@ mod tests {
             ducks: vec![DuckState {
                 position: Vec3::new(2.0, 0.0, 5.0),
                 velocity: Vec3::new(10.0, 0.0, 0.0),
+                path: Vec::new(),
+                path_index: 0,
             }],
             snapshot_txs: Vec::new(),
         };
@@ -195,6 +262,8 @@ mod tests {
             ducks: vec![DuckState {
                 position: Vec3::new(0.0, 0.0, 5.0),
                 velocity: Vec3::ZERO,
+                path: Vec::new(),
+                path_index: 0,
             }],
             snapshot_txs: Vec::new(),
         };
@@ -210,6 +279,8 @@ mod tests {
             ducks: vec![DuckState {
                 position: Vec3::ZERO,
                 velocity: Vec3::new(1.0, 0.0, 0.0),
+                path: Vec::new(),
+                path_index: 0,
             }],
             snapshot_txs: Vec::new(),
         };
@@ -227,6 +298,8 @@ mod tests {
             ducks: vec![DuckState {
                 position: Vec3::new(0.0, 0.0, 5.0),
                 velocity: Vec3::ZERO,
+                path: Vec::new(),
+                path_index: 0,
             }],
             snapshot_txs: Vec::new(),
         };
@@ -236,6 +309,7 @@ mod tests {
         let hit = handle_shot(
             &server,
             &service,
+            None,
             leaderboard_id,
             player_id,
             Vec3::ZERO,
@@ -252,5 +326,12 @@ mod tests {
         assert_eq!(scores[0].points, 1);
         let stored = service.get_replay(scores[0].run_id).await.unwrap();
         assert_eq!(stored, replay);
+    }
+
+    #[test]
+    fn deterministic_replay_serialization() {
+        let a = serialize_replay(Vec3::ZERO, Vec3::Z, 0.1);
+        let b = serialize_replay(Vec3::ZERO, Vec3::Z, 0.1);
+        assert_eq!(a, b);
     }
 }

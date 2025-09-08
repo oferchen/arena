@@ -13,6 +13,7 @@ use ::leaderboard::{
 };
 use chrono::Utc;
 use duck_hunt_server::server::{DuckState, Server as DuckServer, replicate, spawn_duck, validate_hit};
+use analytics::{Analytics, Event};
 use glam::Vec3;
 use net::message::{InputFrame, ServerMessage, Snapshot, delta_compress};
 use net::server::ServerConnector;
@@ -60,6 +61,7 @@ struct Room {
     leaderboard: LeaderboardService,
     leaderboard_id: Uuid,
     start_time: std::time::Instant,
+    analytics: Analytics,
 }
 
 impl Room {
@@ -86,6 +88,7 @@ impl Room {
             leaderboard,
             leaderboard_id: LEADERBOARD_ID,
             start_time: std::time::Instant::now(),
+            analytics: Analytics::new(false, None, false),
         }
     }
 
@@ -138,6 +141,7 @@ impl Room {
                         direction,
                         StdDuration::from_secs_f32(shot.time),
                     ) {
+                        self.analytics.dispatch(Event::CurrencyEarned);
                         if let Some(score) = self.scores.get_mut(i) {
                             *score += 1;
                         }

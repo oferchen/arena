@@ -2405,6 +2405,7 @@ dependencies = [
 name = "duck_hunt_server"
 version = "0.1.0"
 dependencies = [
+ "analytics",
  "anyhow",
  "bevy",
  "chrono",
