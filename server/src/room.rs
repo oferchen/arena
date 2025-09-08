@@ -68,7 +68,7 @@ struct Room {
 
 impl Room {
     fn new(leaderboard: LeaderboardService) -> Self {
-        let analytics = Analytics::new(false, None, false);
+        let analytics = Analytics::new(false, None, None);
         let mut server = DuckServer {
             latency: StdDuration::from_secs(0),
             ducks: Vec::new(),

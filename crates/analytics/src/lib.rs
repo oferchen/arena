@@ -1,4 +1,4 @@
-use std::sync::{Arc, Mutex};
+use std::{net::SocketAddr, sync::{Arc, Mutex}};
 
 #[cfg(feature = "otlp")]
 use opentelemetry::{KeyValue, global, metrics::Counter};
@@ -148,7 +148,7 @@ impl Analytics {
     pub fn with_max_events(
         enabled: bool,
         posthog_key: Option<String>,
-        enable_otel: bool,
+        metrics_addr: Option<SocketAddr>,
         max_events: usize,
     ) -> Self {
         let store = Arc::new(Mutex::new(ColumnarStore::new(max_events)));
@@ -174,7 +174,7 @@ impl Analytics {
         let _ = posthog_key;
 
         #[cfg(feature = "otlp")]
-        let otel = if enable_otel {
+        let otel = if metrics_addr.is_some() {
             let meter = global::meter("analytics");
             let counter = meter.u64_counter("analytics_events").init();
             let calls = Arc::new(AtomicU64::new(0));
@@ -183,7 +183,7 @@ impl Analytics {
             None
         };
         #[cfg(not(feature = "otlp"))]
-        let _ = enable_otel;
+        let _ = metrics_addr;
 
         Self {
             enabled,
@@ -197,12 +197,16 @@ impl Analytics {
         }
     }
 
-    pub fn new(enabled: bool, posthog_key: Option<String>, enable_otel: bool) -> Self {
+    pub fn new(
+        enabled: bool,
+        posthog_key: Option<String>,
+        metrics_addr: Option<SocketAddr>,
+    ) -> Self {
         let max_events = std::env::var(MAX_EVENTS_ENV_VAR)
             .ok()
             .and_then(|v| v.parse().ok())
             .unwrap_or(DEFAULT_MAX_EVENTS);
-        Self::with_max_events(enabled, posthog_key, enable_otel, max_events)
+        Self::with_max_events(enabled, posthog_key, metrics_addr, max_events)
     }
 
     pub fn dispatch(&self, event: Event) {
@@ -269,7 +273,7 @@ mod tests {
     #[cfg(feature = "prometheus")]
     #[test]
     fn store_and_prometheus() {
-        let analytics = Analytics::new(true, None, false);
+        let analytics = Analytics::new(true, None, None);
         analytics.dispatch(Event::ShotFired);
         assert_eq!(analytics.events(), vec![Event::ShotFired]);
         assert_eq!(analytics.counter_value("shot_fired"), 1);
@@ -278,7 +282,7 @@ mod tests {
     #[cfg(not(feature = "prometheus"))]
     #[test]
     fn store() {
-        let analytics = Analytics::new(true, None, false);
+        let analytics = Analytics::new(true, None, None);
         analytics.dispatch(Event::ShotFired);
         assert_eq!(analytics.events(), vec![Event::ShotFired]);
     }
@@ -286,7 +290,7 @@ mod tests {
     #[test]
     fn ring_buffer_limit() {
         unsafe { std::env::set_var(MAX_EVENTS_ENV_VAR, "2") };
-        let analytics = Analytics::new(true, None, false);
+        let analytics = Analytics::new(true, None, None);
         analytics.dispatch(Event::ShotFired);
         analytics.dispatch(Event::TargetHit);
         analytics.dispatch(Event::Death);
@@ -296,7 +300,7 @@ mod tests {
 
     #[test]
     fn flush_clears_events() {
-        let analytics = Analytics::with_max_events(true, None, false, 2);
+        let analytics = Analytics::with_max_events(true, None, None, 2);
         analytics.dispatch(Event::ShotFired);
         let flushed = analytics.flush();
         assert_eq!(flushed, vec![Event::ShotFired]);
@@ -319,7 +323,7 @@ mod tests {
             std::env::set_var("POSTHOG_ENDPOINT", server.url("/capture/"));
         }
 
-        let analytics = Analytics::new(true, Some("test_key".into()), false);
+        let analytics = Analytics::new(true, Some("test_key".into()), None);
         analytics.dispatch(Event::ShotFired);
 
         tokio::time::sleep(Duration::from_millis(50)).await;
@@ -329,7 +333,7 @@ mod tests {
     #[cfg(feature = "otlp")]
     #[test]
     fn otlp_counter() {
-        let analytics = Analytics::new(true, None, true);
+        let analytics = Analytics::new(true, None, Some("127.0.0.1:0".parse().unwrap()));
         analytics.dispatch(Event::ShotFired);
         assert_eq!(analytics.otlp_count(), 1);
     }
