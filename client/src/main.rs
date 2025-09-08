@@ -7,7 +7,7 @@ use engine::{AppExt, EnginePlugin};
 mod entitlements;
 mod lobby;
 mod net;
-use entitlements::{claim_entitlement, fetch_entitlements};
+use entitlements::{fetch_entitlements, ensure_session};
 use null_module::NullModule;
 use payments::{EntitlementStore, UserId};
 use physics::PhysicsPlugin;
@@ -24,7 +24,7 @@ fn main() {
     analytics.dispatch(Event::SessionStart);
     analytics.dispatch(Event::LevelStart { level: 1 });
     let entitlements = EntitlementStore::default();
-    let user = UserId::new_v4();
+    let user = ensure_session();
     for sku in fetch_entitlements().unwrap_or_default() {
         entitlements.grant(user, sku);
     }
@@ -58,7 +58,7 @@ pub async fn main() -> Result<(), JsValue> {
     analytics.dispatch(Event::SessionStart);
     analytics.dispatch(Event::LevelStart { level: 1 });
     let entitlements = EntitlementStore::default();
-    let user = UserId::new_v4();
+    let user = ensure_session().await?;
     for sku in fetch_entitlements().await.unwrap_or_default() {
         entitlements.grant(user, sku);
     }

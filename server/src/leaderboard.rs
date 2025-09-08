@@ -212,6 +212,7 @@ mod tests {
             }]),
             entitlements: EntitlementStore::default(),
             entitlements_path: PathBuf::new(),
+        db: None,
         });
 
         let leaderboard_id = Uuid::new_v4();
@@ -252,6 +253,7 @@ mod tests {
             catalog: Catalog::new(vec![]),
             entitlements: EntitlementStore::default(),
             entitlements_path: PathBuf::new(),
+        db: None,
         });
 
         let leaderboard_id = Uuid::new_v4();
@@ -293,6 +295,7 @@ mod tests {
             catalog: Catalog::new(vec![]),
             entitlements: EntitlementStore::default(),
             entitlements_path: PathBuf::new(),
+        db: None,
         });
 
         let leaderboard_id = Uuid::new_v4();
@@ -335,6 +338,7 @@ mod tests {
             catalog: Catalog::new(vec![]),
             entitlements: EntitlementStore::default(),
             entitlements_path: PathBuf::new(),
+        db: None,
         });
 
         let leaderboard_id = Uuid::new_v4();
@@ -378,6 +382,7 @@ mod tests {
             catalog: Catalog::new(vec![]),
             entitlements: EntitlementStore::default(),
             entitlements_path: PathBuf::new(),
+        db: None,
         });
 
         let leaderboard_id = Uuid::new_v4();

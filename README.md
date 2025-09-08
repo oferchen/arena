@@ -68,6 +68,7 @@ Additional resources:
 - [Leaderboards](docs/Leaderboards.md)
 - [Analytics](docs/Analytics.md)
 - [Purchases](docs/Purchases.md)
+- [Authentication](docs/Auth.md)
 
 ## Documentation
 
@@ -82,3 +83,4 @@ Documentation lives under `docs/`:
 - [Leaderboards](docs/Leaderboards.md)
 - [Analytics](docs/Analytics.md)
 - [Purchases](docs/Purchases.md)
+- [Authentication](docs/Auth.md)
