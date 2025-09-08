@@ -1,14 +1,14 @@
 use std::sync::{Arc, Mutex};
 
 #[cfg(feature = "otlp")]
-use opentelemetry::{global, metrics::Counter, KeyValue};
-#[cfg(feature = "otlp")]
-use std::sync::atomic::{AtomicU64, Ordering};
+use opentelemetry::{KeyValue, global, metrics::Counter};
 #[cfg(feature = "prometheus")]
-use prometheus::{opts, IntCounterVec};
+use prometheus::{IntCounterVec, opts};
 #[cfg(feature = "posthog")]
 use reqwest::Client;
 use serde::Serialize;
+#[cfg(feature = "otlp")]
+use std::sync::atomic::{AtomicU64, Ordering};
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 pub enum Event {
@@ -42,15 +42,29 @@ pub enum Event {
     EntitlementGranted,
 }
 
-#[derive(Default)]
 struct ColumnarStore {
     names: Vec<&'static str>,
     data: Vec<Option<String>>,
     events: Vec<Event>,
+    max_len: usize,
 }
 
 impl ColumnarStore {
+    fn new(max_len: usize) -> Self {
+        Self {
+            names: Vec::new(),
+            data: Vec::new(),
+            events: Vec::new(),
+            max_len,
+        }
+    }
+
     fn push(&mut self, name: &'static str, data: Option<String>, event: Event) {
+        if self.events.len() >= self.max_len {
+            self.names.remove(0);
+            self.data.remove(0);
+            self.events.remove(0);
+        }
         self.names.push(name);
         self.data.push(data);
         self.events.push(event);
@@ -58,6 +72,20 @@ impl ColumnarStore {
 
     fn events(&self) -> Vec<Event> {
         self.events.clone()
+    }
+
+    fn take_events(&mut self) -> Vec<Event> {
+        let events = self.events.clone();
+        self.names.clear();
+        self.data.clear();
+        self.events.clear();
+        events
+    }
+}
+
+impl Default for ColumnarStore {
+    fn default() -> Self {
+        Self::new(usize::MAX)
     }
 }
 impl Event {
@@ -102,8 +130,13 @@ pub struct Analytics {
 }
 
 impl Analytics {
-    pub fn new(enabled: bool, posthog_key: Option<String>, enable_otel: bool) -> Self {
-        let store = Arc::new(Mutex::new(ColumnarStore::default()));
+    pub fn with_max_events(
+        enabled: bool,
+        posthog_key: Option<String>,
+        enable_otel: bool,
+        max_events: usize,
+    ) -> Self {
+        let store = Arc::new(Mutex::new(ColumnarStore::new(max_events)));
 
         #[cfg(feature = "prometheus")]
         let counter = {
@@ -149,6 +182,10 @@ impl Analytics {
         }
     }
 
+    pub fn new(enabled: bool, posthog_key: Option<String>, enable_otel: bool) -> Self {
+        Self::with_max_events(enabled, posthog_key, enable_otel, usize::MAX)
+    }
+
     pub fn dispatch(&self, event: Event) {
         if !self.enabled {
             return;
@@ -158,10 +195,7 @@ impl Analytics {
             Event::Error { message } => Some(message.clone()),
             _ => None,
         };
-        self.store
-            .lock()
-            .unwrap()
-            .push(name, data, event.clone());
+        self.store.lock().unwrap().push(name, data, event.clone());
 
         #[cfg(feature = "prometheus")]
         self.counter.with_label_values(&[name]).inc();
@@ -191,6 +225,10 @@ impl Analytics {
         self.store.lock().unwrap().events()
     }
 
+    pub fn flush(&self) -> Vec<Event> {
+        self.store.lock().unwrap().take_events()
+    }
+
     #[cfg(feature = "prometheus")]
     pub fn counter_value(&self, name: &str) -> u64 {
         self.counter.with_label_values(&[name]).get()
@@ -198,8 +236,7 @@ impl Analytics {
 
     #[cfg(feature = "otlp")]
     pub fn otlp_count(&self) -> u64 {
-        self
-            .otel
+        self.otel
             .as_ref()
             .map(|(_, c)| c.load(Ordering::Relaxed))
             .unwrap_or(0)
@@ -225,6 +262,27 @@ mod tests {
         let analytics = Analytics::new(true, None, false);
         analytics.dispatch(Event::PlayerJoined);
         assert_eq!(analytics.events(), vec![Event::PlayerJoined]);
+    }
+
+    #[test]
+    fn ring_buffer_limit() {
+        let analytics = Analytics::with_max_events(true, None, false, 2);
+        analytics.dispatch(Event::PlayerJoined);
+        analytics.dispatch(Event::PlayerJumped);
+        analytics.dispatch(Event::PlayerDied);
+        assert_eq!(
+            analytics.events(),
+            vec![Event::PlayerJumped, Event::PlayerDied]
+        );
+    }
+
+    #[test]
+    fn flush_clears_events() {
+        let analytics = Analytics::with_max_events(true, None, false, 2);
+        analytics.dispatch(Event::PlayerJoined);
+        let flushed = analytics.flush();
+        assert_eq!(flushed, vec![Event::PlayerJoined]);
+        assert!(analytics.events().is_empty());
     }
 
     #[cfg(feature = "posthog")]
@@ -258,4 +316,3 @@ mod tests {
         assert_eq!(analytics.otlp_count(), 1);
     }
 }
-
