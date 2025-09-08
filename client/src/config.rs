@@ -7,11 +7,9 @@ pub struct RuntimeConfig {
     pub signal_url: String,
     pub api_base_url: String,
     #[serde(default)]
-    pub analytics_enabled: bool,
-    #[serde(default)]
-    pub analytics_opt_out: bool,
-    #[serde(default)]
     pub feature_flags: HashMap<String, bool>,
+    #[serde(default)]
+    pub ice_servers: Vec<String>,
 }
 
 impl Default for RuntimeConfig {
@@ -19,9 +17,8 @@ impl Default for RuntimeConfig {
         Self {
             signal_url: String::new(),
             api_base_url: String::new(),
-            analytics_enabled: true,
-            analytics_opt_out: false,
             feature_flags: HashMap::new(),
+            ice_servers: Vec::new(),
         }
     }
 }

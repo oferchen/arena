@@ -1,4 +1,4 @@
-use axum::{extract::Extension, Json};
+use axum::{Json, extract::Extension};
 use serde::Serialize;
 use std::collections::HashMap;
 
@@ -30,11 +30,8 @@ pub async fn get_config(Extension(cfg): Extension<ResolvedConfig>) -> Json<Confi
     let cfg = ConfigResponse {
         signal_url: cfg.signaling_ws_url.clone(),
         api_base_url: cfg.public_base_url.clone(),
-        analytics_enabled: !analytics_opt_out,
-        analytics_opt_out,
-        feature_flags: HashMap::new(),
-        ice_servers: Vec::new(),
+        feature_flags: cfg.feature_flags.clone(),
+        ice_servers: cfg.ice_servers.clone(),
     };
     Json(cfg)
 }
-
