@@ -51,6 +51,9 @@ struct SubmitRun {
     replay: String,
 }
 
+const MAX_REPLAY_SIZE: usize = 5 * 1024 * 1024; // 5 MB
+const MAX_REPLAY_SIZE_BASE64: usize = 4 * ((MAX_REPLAY_SIZE + 2) / 3);
+
 async fn post_run(
     Path(id): Path<Uuid>,
     State(state): State<Arc<AppState>>,
@@ -58,8 +61,16 @@ async fn post_run(
 ) -> StatusCode {
     let run_id = Uuid::new_v4();
     let score_id = Uuid::new_v4();
+    if payload.replay.len() > MAX_REPLAY_SIZE_BASE64 {
+        return StatusCode::PAYLOAD_TOO_LARGE;
+    }
     let replay_bytes = match base64::decode(payload.replay) {
-        Ok(bytes) => bytes,
+        Ok(bytes) => {
+            if bytes.len() > MAX_REPLAY_SIZE {
+                return StatusCode::PAYLOAD_TOO_LARGE;
+            }
+            bytes
+        }
         Err(_) => return StatusCode::BAD_REQUEST,
     };
     let verified = verify_score(&replay_bytes);
@@ -210,6 +221,86 @@ mod tests {
 
         let status = post_run(Path(leaderboard_id), State(state.clone()), Json(payload)).await;
         assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert!(
+            state
+                .leaderboard
+                .get_scores(leaderboard_id, LeaderboardWindow::AllTime)
+                .await
+                .is_empty()
+        );
+    }
+
+    #[tokio::test]
+    async fn post_run_accepts_valid_payload() {
+        let cfg = SmtpConfig::default();
+        let email = Arc::new(EmailService::new(cfg.clone()).unwrap());
+        let leaderboard =
+            ::leaderboard::LeaderboardService::new("sqlite::memory:", PathBuf::from("replays"))
+                .await
+                .unwrap();
+        let rooms = room::RoomManager::new(leaderboard.clone());
+        let state = Arc::new(AppState {
+            email,
+            rooms,
+            smtp: cfg,
+            analytics: Analytics::new(true, None, false),
+            leaderboard: leaderboard.clone(),
+            catalog: Catalog::new(vec![]),
+            store: Arc::new(StripeClient::new(String::new())),
+            entitlements: EntitlementStore::default(),
+            entitlements_path: PathBuf::new(),
+        });
+
+        let leaderboard_id = Uuid::new_v4();
+        let replay = base64::encode(42i32.to_le_bytes());
+        let payload = SubmitRun {
+            player_id: Uuid::new_v4(),
+            points: 42,
+            replay,
+        };
+
+        let status = post_run(Path(leaderboard_id), State(state.clone()), Json(payload)).await;
+        assert_eq!(status, StatusCode::CREATED);
+        let scores = state
+            .leaderboard
+            .get_scores(leaderboard_id, LeaderboardWindow::AllTime)
+            .await;
+        assert_eq!(scores.len(), 1);
+        assert_eq!(scores[0].points, 42);
+    }
+
+    #[tokio::test]
+    async fn post_run_rejects_oversized_payload() {
+        let cfg = SmtpConfig::default();
+        let email = Arc::new(EmailService::new(cfg.clone()).unwrap());
+        let leaderboard =
+            ::leaderboard::LeaderboardService::new("sqlite::memory:", PathBuf::from("replays"))
+                .await
+                .unwrap();
+        let rooms = room::RoomManager::new(leaderboard.clone());
+        let state = Arc::new(AppState {
+            email,
+            rooms,
+            smtp: cfg,
+            analytics: Analytics::new(true, None, false),
+            leaderboard: leaderboard.clone(),
+            catalog: Catalog::new(vec![]),
+            store: Arc::new(StripeClient::new(String::new())),
+            entitlements: EntitlementStore::default(),
+            entitlements_path: PathBuf::new(),
+        });
+
+        let leaderboard_id = Uuid::new_v4();
+        let bytes = vec![0u8; super::MAX_REPLAY_SIZE + 1];
+        let replay = base64::encode(bytes);
+        let payload = SubmitRun {
+            player_id: Uuid::new_v4(),
+            points: 42,
+            replay,
+        };
+
+        let status = post_run(Path(leaderboard_id), State(state.clone()), Json(payload)).await;
+        assert_eq!(status, StatusCode::PAYLOAD_TOO_LARGE);
         assert!(
             state
                 .leaderboard
