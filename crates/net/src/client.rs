@@ -6,15 +6,15 @@ use async_trait::async_trait;
 use bevy::prelude::*;
 use bytes::Bytes;
 use wasm_bindgen_futures::spawn_local;
-use webrtc::api::APIBuilder;
 use webrtc::api::media_engine::MediaEngine;
-use webrtc::data_channel::RTCDataChannel;
-use webrtc::data_channel::data_channel_message::DataChannelMessage;
+use webrtc::api::APIBuilder;
 use webrtc::data_channel::data_channel_init::RTCDataChannelInit;
-use webrtc::peer_connection::RTCPeerConnection;
+use webrtc::data_channel::data_channel_message::DataChannelMessage;
+use webrtc::data_channel::RTCDataChannel;
 use webrtc::peer_connection::configuration::RTCConfiguration;
+use webrtc::peer_connection::RTCPeerConnection;
 
-use crate::message::{ClientMessage, InputFrame, ServerMessage, Snapshot, apply_delta};
+use crate::message::{apply_delta, ClientMessage, InputFrame, ServerMessage, Snapshot};
 
 #[async_trait]
 pub trait DataSender: Send + Sync {
@@ -29,6 +29,7 @@ impl DataSender for RTCDataChannel {
 }
 
 static DATA_CHANNEL: Mutex<Option<Arc<dyn DataSender>>> = Mutex::new(None);
+const SNAPSHOT_QUEUE_CAPACITY: usize = 64;
 static SNAPSHOT_QUEUE: Mutex<VecDeque<Snapshot>> = Mutex::new(VecDeque::new());
 static LAST_SNAPSHOT: Mutex<Option<Snapshot>> = Mutex::new(None);
 static CONNECTION_EVENTS: Mutex<VecDeque<ConnectionEvent>> = Mutex::new(VecDeque::new());
@@ -59,9 +60,7 @@ impl ClientConnector {
             max_retransmits: Some(0),
             ..Default::default()
         };
-        let dc = pc
-            .create_data_channel("gamedata", Some(cfg))
-            .await?;
+        let dc = pc.create_data_channel("gamedata", Some(cfg)).await?;
         setup_channel(&dc);
         let dc_trait: Arc<dyn DataSender> = dc.clone();
         *DATA_CHANNEL.lock().unwrap_or_else(|e| e.into_inner()) = Some(dc_trait);
@@ -72,7 +71,7 @@ impl ClientConnector {
     #[cfg(target_arch = "wasm32")]
     pub async fn signal(&self, url: &str) -> Result<()> {
         use futures_channel::oneshot;
-        use wasm_bindgen::{JsCast, prelude::*};
+        use wasm_bindgen::{prelude::*, JsCast};
         use web_sys::{BinaryType, MessageEvent, WebSocket};
         use webrtc::peer_connection::sdp::sdp_type::RTCSdpType;
         use webrtc::peer_connection::sdp::session_description::RTCSessionDescription;
@@ -146,20 +145,27 @@ fn setup_channel(dc: &Arc<RTCDataChannel>) {
                     ServerMessage::Baseline(snapshot) => {
                         *LAST_SNAPSHOT.lock().unwrap_or_else(|e| e.into_inner()) =
                             Some(snapshot.clone());
-                        SNAPSHOT_QUEUE
-                            .lock()
-                            .unwrap_or_else(|e| e.into_inner())
-                            .push_back(snapshot);
+                        let mut queue = SNAPSHOT_QUEUE.lock().unwrap_or_else(|e| e.into_inner());
+                        if queue.len() == SNAPSHOT_QUEUE_CAPACITY {
+                            queue.pop_front();
+                            bevy::log::warn!("snapshot queue full; dropping oldest snapshot");
+                        }
+                        queue.push_back(snapshot);
                     }
                     ServerMessage::Delta(delta) => {
                         let mut last = LAST_SNAPSHOT.lock().unwrap_or_else(|e| e.into_inner());
                         if let Some(ref base) = *last {
                             if let Ok(snap) = apply_delta(base, &delta) {
                                 *last = Some(snap.clone());
-                                SNAPSHOT_QUEUE
-                                    .lock()
-                                    .unwrap_or_else(|e| e.into_inner())
-                                    .push_back(snap);
+                                let mut queue =
+                                    SNAPSHOT_QUEUE.lock().unwrap_or_else(|e| e.into_inner());
+                                if queue.len() == SNAPSHOT_QUEUE_CAPACITY {
+                                    queue.pop_front();
+                                    bevy::log::warn!(
+                                        "snapshot queue full; dropping oldest snapshot"
+                                    );
+                                }
+                                queue.push_back(snap);
                             }
                         }
                     }
@@ -215,9 +221,14 @@ pub fn set_interest_mask(mask: u64) {
 }
 
 /// Apply incoming [`Snapshot`] messages by emitting events into the world.
+///
+/// Snapshots are stored in a bounded queue. If the queue is full when a new
+/// snapshot arrives, the oldest snapshot is dropped. This function emits the
+/// remaining snapshots and silently skips any that were discarded due to
+/// capacity limits.
 pub fn apply_snapshots(mut writer: EventWriter<Snapshot>) {
     let mut queue = SNAPSHOT_QUEUE.lock().unwrap_or_else(|e| e.into_inner());
-    while let Some(snapshot) = queue.pop_front() {
+    for snapshot in queue.drain(..) {
         writer.send(snapshot);
     }
 }
