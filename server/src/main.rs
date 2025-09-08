@@ -27,6 +27,7 @@ mod email;
 mod leaderboard;
 mod payments;
 mod room;
+mod shard;
 #[cfg(test)]
 mod test_logger;
 #[cfg(test)]
@@ -438,7 +439,13 @@ async fn setup(smtp: SmtpConfig, analytics: Analytics) -> Result<AppState> {
     let leaderboard = ::leaderboard::LeaderboardService::new(&db_url, PathBuf::from("replays"))
         .await
         .map_err(|e| anyhow!(e))?;
-    let rooms = room::RoomManager::new(leaderboard.clone());
+    let registry = Arc::new(shard::MemoryShardRegistry::new());
+    let rooms = room::RoomManager::with_registry(
+        leaderboard.clone(),
+        registry,
+        "shard1".into(),
+        "127.0.0.1".into(),
+    );
     let catalog = Catalog::new(vec![Sku {
         id: "basic".to_string(),
         price_cents: 1000,

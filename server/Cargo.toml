@@ -34,6 +34,11 @@ hmac = "0.12"
 sha2 = "0.10"
 hex = "0.4"
 
+redis = { version = "0.24", optional = true, default-features = false, features = ["tokio-comp"] }
+
+[features]
+redis = ["dep:redis"]
+
 
 [dev-dependencies]
 tokio-tungstenite = "0.21"
