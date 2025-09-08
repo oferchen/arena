@@ -5,7 +5,7 @@
 //! it can be aborted during shutdown if necessary. The cleanup task is
 //! terminated when [`EmailService`] is dropped.
 
-use anyhow::{Result, anyhow};
+use anyhow::{anyhow, Result};
 use clap::{Args, ValueEnum};
 use lettre::address::AddressError;
 use lettre::transport::smtp::{
@@ -15,7 +15,7 @@ use lettre::transport::smtp::{
 use lettre::{AsyncSmtpTransport, AsyncTransport, Message, Tokio1Executor};
 use once_cell::sync::Lazy;
 use prometheus::{
-    Gauge, IntCounter, IntGaugeVec, register_gauge, register_int_counter, register_int_gauge_vec,
+    register_gauge, register_int_counter, register_int_gauge_vec, Gauge, IntCounter, IntGaugeVec,
 };
 use serde::Serialize;
 use std::collections::HashMap;
@@ -74,8 +74,8 @@ impl std::str::FromStr for StartTls {
 pub struct SmtpConfig {
     #[arg(long = "smtp-host", env = "ARENA_SMTP_HOST")]
     pub host: String,
-    #[arg(long = "smtp-port", env = "ARENA_SMTP_PORT", default_value_t = 25)]
-    pub port: u16,
+    #[arg(long = "smtp-port", env = "ARENA_SMTP_PORT")]
+    pub port: Option<u16>,
     #[arg(long = "smtp-from", env = "ARENA_SMTP_FROM")]
     pub from: String,
     #[arg(long = "smtp-starttls", env = "ARENA_SMTP_STARTTLS", value_enum, default_value_t = StartTls::Auto)]
@@ -98,7 +98,7 @@ impl Default for SmtpConfig {
     fn default() -> Self {
         Self {
             host: String::new(),
-            port: 25,
+            port: None,
             from: String::new(),
             starttls: StartTls::Auto,
             smtps: false,
@@ -115,6 +115,8 @@ impl SmtpConfig {
             Err(anyhow!("ARENA_SMTP_HOST not set"))
         } else if self.from.is_empty() {
             Err(anyhow!("ARENA_SMTP_FROM not set"))
+        } else if self.port.is_none() {
+            Err(anyhow!("ARENA_SMTP_PORT not set"))
         } else {
             Ok(self)
         }
@@ -196,7 +198,7 @@ impl EmailService {
             .map_err(|e| EmailError::Smtp(e.to_string()))?;
 
         let mut builder = AsyncSmtpTransport::<Tokio1Executor>::builder_dangerous(&config.host)
-            .port(config.port)
+            .port(config.port.expect("validated"))
             .timeout(Some(Duration::from_millis(config.timeout)));
 
         let tls_params = TlsParameters::builder(config.host.clone())
@@ -404,6 +406,7 @@ mod tests {
         SmtpConfig {
             host: "localhost".into(),
             from: "arena@localhost".into(),
+            port: Some(25),
             ..Default::default()
         }
     }
@@ -452,7 +455,13 @@ mod tests {
         let attempts = AtomicUsize::new(0);
         let res = send_with_retry(|| {
             let n = attempts.fetch_add(1, Ordering::SeqCst);
-            async move { if n < 2 { Err("fail") } else { Ok(()) } }
+            async move {
+                if n < 2 {
+                    Err("fail")
+                } else {
+                    Ok(())
+                }
+            }
         })
         .await;
         assert!(res.is_ok());

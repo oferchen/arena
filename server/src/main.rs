@@ -1,23 +1,22 @@
 use std::{net::SocketAddr, path::PathBuf, sync::Arc};
 
-use anyhow::{Result, anyhow};
+use anyhow::{anyhow, Result};
 
 use crate::email::{EmailService, SmtpConfig, StartTls};
 use ::payments::{Catalog, EntitlementList, Sku, UserId};
 use analytics::{Analytics, Event};
 use axum::{
-    Router,
     extract::{
-        Json, Path, Query, State,
         ws::{Message, WebSocket, WebSocketUpgrade},
+        Json, Path, Query, State,
     },
     http::{
-        HeaderMap, HeaderName, HeaderValue, StatusCode,
         header::{CACHE_CONTROL, SET_COOKIE},
+        HeaderMap, HeaderName, HeaderValue, StatusCode,
     },
     response::IntoResponse,
     routing::{get, get_service, post},
-    Extension,
+    Extension, Router,
 };
 use clap::Parser;
 use email_address::EmailAddress;
@@ -29,9 +28,9 @@ use webrtc::peer_connection::sdp::sdp_type::RTCSdpType;
 use webrtc::peer_connection::sdp::session_description::RTCSessionDescription;
 
 mod auth;
+mod config;
 mod email;
 mod leaderboard;
-mod config;
 mod payments;
 mod room;
 mod shard;
@@ -48,7 +47,11 @@ struct Cli {
     config: Config,
     #[arg(long, env = "ARENA_POSTHOG_KEY")]
     posthog_key: Option<String>,
-    #[arg(long = "metrics", env = "ARENA_METRICS_ENABLED", default_value_t = false)]
+    #[arg(
+        long = "metrics",
+        env = "ARENA_METRICS_ENABLED",
+        default_value_t = false
+    )]
     metrics: bool,
     #[arg(long, env = "ARENA_ANALYTICS_OPT_OUT", default_value_t = false)]
     analytics_opt_out: bool,
@@ -89,9 +92,7 @@ impl Config {
             signaling_ws_url: self
                 .signaling_ws_url
                 .ok_or_else(|| anyhow!("ARENA_SIGNALING_WS_URL not set"))?,
-            db_url: self
-                .db_url
-                .ok_or_else(|| anyhow!("ARENA_DB_URL not set"))?,
+            db_url: self.db_url.ok_or_else(|| anyhow!("ARENA_DB_URL not set"))?,
             csp: self.csp,
         })
     }
@@ -277,7 +278,7 @@ impl From<&SmtpConfig> for RedactedSmtpConfig {
     fn from(cfg: &SmtpConfig) -> Self {
         Self {
             host: cfg.host.clone(),
-            port: cfg.port,
+            port: cfg.port.expect("validated"),
             from: cfg.from.clone(),
             starttls: cfg.starttls.clone(),
             smtps: cfg.smtps,
@@ -423,10 +424,9 @@ async fn setup(cfg: &ResolvedConfig, smtp: SmtpConfig, analytics: Analytics) -> 
         anyhow!(e)
     })?);
 
-    let leaderboard =
-        ::leaderboard::LeaderboardService::new(&cfg.db_url, PathBuf::from("replays"))
-            .await
-            .map_err(|e| anyhow!(e))?;
+    let leaderboard = ::leaderboard::LeaderboardService::new(&cfg.db_url, PathBuf::from("replays"))
+        .await
+        .map_err(|e| anyhow!(e))?;
     let registry = Arc::new(shard::MemoryShardRegistry::new());
     let rooms = room::RoomManager::with_registry(
         leaderboard.clone(),
@@ -438,11 +438,7 @@ async fn setup(cfg: &ResolvedConfig, smtp: SmtpConfig, analytics: Analytics) -> 
         id: "basic".to_string(),
         price_cents: 1000,
     }]);
-    let db = match SessionBuilder::new()
-        .known_node(&cfg.db_url)
-        .build()
-        .await
-    {
+    let db = match SessionBuilder::new().known_node(&cfg.db_url).build().await {
         Ok(s) => Some(Arc::new(s)),
         Err(e) => {
             log::warn!("failed to connect to scylla: {e}");
@@ -466,11 +462,7 @@ async fn setup(cfg: &ResolvedConfig, smtp: SmtpConfig, analytics: Analytics) -> 
 async fn run(cli: Cli) -> Result<()> {
     let config = cli.config.resolve()?;
     log::info!("Using config: {:?}", config);
-    let analytics = Analytics::new(
-        !cli.analytics_opt_out,
-        cli.posthog_key.clone(),
-        cli.metrics,
-    );
+    let analytics = Analytics::new(!cli.analytics_opt_out, cli.posthog_key.clone(), cli.metrics);
     let smtp = cli.smtp.validate()?;
     let state = Arc::new(setup(&config, smtp, analytics).await?);
 
