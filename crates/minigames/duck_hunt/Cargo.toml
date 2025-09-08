@@ -21,6 +21,7 @@ bevy = { version = "0.12", default-features = false, features = [
 platform-api = { path = "../../platform-api" }
 anyhow = "1"
 rand = "0.8"
+analytics = { path = "../../analytics" }
 
 [dev-dependencies]
 tempfile = "3"
