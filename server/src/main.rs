@@ -30,6 +30,7 @@ use webrtc::peer_connection::sdp::session_description::RTCSessionDescription;
 mod auth;
 mod email;
 mod leaderboard;
+mod config;
 mod payments;
 mod room;
 mod shard;
@@ -478,6 +479,7 @@ async fn run(cli: Cli) -> Result<()> {
         .route("/auth/guest", post(guest_handler))
         .route("/ws", get(ws_handler))
         .route("/signal", get(signal_ws_handler))
+        .route("/config.json", get(config::get_config))
         .route("/store", get(store_handler))
         .route("/store/claim", post(store_claim_handler))
         .route("/entitlements/:user", get(entitlements_handler))
