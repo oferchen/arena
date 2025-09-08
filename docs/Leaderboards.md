@@ -1,14 +1,20 @@
 # Leaderboards
 
-This guide describes how to configure and use Arena's leaderboard service.
+Arena's leaderboard service persists results in Scylla and mirrors the
+top standings in Redis for fast reads. Scores are tracked in three windows:
+**daily**, **weekly**, and **all_time**.
 
 ## Configuration
 
-| Env var                 | CLI flag            | Description                          | Default              |
-| ----------------------- | ------------------- | ------------------------------------ | -------------------- |
-| `SCYLLA_URI`            | `--scylla-uri`      | Connection string for Scylla cluster | `127.0.0.1:9042`     |
-| `ARENA_REDIS_URL`       | `--redis-url`       | Redis URL for leaderboard cache      | `redis://127.0.0.1/` |
-| `ARENA_LEADERBOARD_MAX` | `--leaderboard-max` | Maximum entries per leaderboard      | `100`                |
+| Env var                 | CLI flag            | Description                              | Default              |
+| ----------------------- | ------------------- | ---------------------------------------- | -------------------- |
+| `SCYLLA_URI`            | `--scylla-uri`      | Comma‑separated list of Scylla nodes     | `127.0.0.1:9042`     |
+| `ARENA_REDIS_URL`       | `--redis-url`       | Redis URL for the top‑N cache            | `redis://127.0.0.1/` |
+| `ARENA_LEADERBOARD_MAX` | `--leaderboard-max` | Maximum entries mirrored per leaderboard | `100`                |
+
+Each score submission writes a run and windowed score to Scylla.
+The highest `ARENA_LEADERBOARD_MAX` scores for each window are maintained
+in Redis sorted sets for quick retrieval.
 
 ## Usage
 
@@ -27,8 +33,6 @@ curl https://server/leaderboard/top
 ## Integration
 
 The `leaderboard` crate exposes an API for submitting and querying scores.
-Scores are stored in Scylla and the top standings for each leaderboard window
-(`daily`, `weekly`, and `all_time`) are mirrored in Redis for fast access.
 Register `LeaderboardPlugin` on the server to persist results and on the
 client to display standings.
 

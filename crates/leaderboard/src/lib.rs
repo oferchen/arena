@@ -11,6 +11,11 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::broadcast;
 use uuid::Uuid;
 
+const WINDOWS: [LeaderboardWindow; 3] = [
+    LeaderboardWindow::Daily,
+    LeaderboardWindow::Weekly,
+    LeaderboardWindow::AllTime,
+];
 #[derive(Clone)]
 pub struct LeaderboardService {
     db: Session,
@@ -63,12 +68,16 @@ impl LeaderboardService {
 
         tokio::fs::create_dir_all(&replay_dir).await?;
         let (tx, _) = broadcast::channel(16);
+        let max = std::env::var("ARENA_LEADERBOARD_MAX")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(100);
         Ok(Self {
             db,
             cache,
             replay_dir,
             tx,
-            max: 100,
+            max,
         })
     }
 
@@ -102,11 +111,7 @@ impl LeaderboardService {
             .await
             .map_err(to_io_error)?;
 
-        for window in [
-            LeaderboardWindow::Daily,
-            LeaderboardWindow::Weekly,
-            LeaderboardWindow::AllTime,
-        ] {
+        for window in WINDOWS {
             self.db
                 .query(
                     "INSERT INTO scores (run_id, window, leaderboard_id, player_id, points, created_at, verified) VALUES (?, ?, ?, ?, ?, ?, ?)",
@@ -138,11 +143,7 @@ impl LeaderboardService {
                 .map_err(to_io_error)?;
         }
 
-        for window in [
-            LeaderboardWindow::Daily,
-            LeaderboardWindow::Weekly,
-            LeaderboardWindow::AllTime,
-        ] {
+        for window in WINDOWS {
             let scores = self.get_scores(leaderboard, window).await;
             let _ = self.tx.send(LeaderboardSnapshot {
                 leaderboard,

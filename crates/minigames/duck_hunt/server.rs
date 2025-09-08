@@ -299,7 +299,8 @@ mod tests {
     #[tokio::test]
     async fn leaderboard_records_hit() {
         let tmp = tempfile::tempdir().unwrap();
-        let service = LeaderboardService::new("sqlite::memory:", tmp.path().into())
+        std::env::set_var("ARENA_REDIS_URL", "redis://127.0.0.1/");
+        let service = LeaderboardService::new("127.0.0.1:9042", tmp.path().into())
             .await
             .unwrap();
         let server = Server {
@@ -340,7 +341,8 @@ mod tests {
     #[tokio::test]
     async fn dispatches_analytics_events() {
         let tmp = tempfile::tempdir().unwrap();
-        let service = LeaderboardService::new("sqlite::memory:", tmp.path().into())
+        std::env::set_var("ARENA_REDIS_URL", "redis://127.0.0.1/");
+        let service = LeaderboardService::new("127.0.0.1:9042", tmp.path().into())
             .await
             .unwrap();
         let server = Server {
