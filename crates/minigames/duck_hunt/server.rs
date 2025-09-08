@@ -1,11 +1,14 @@
 use analytics::{Analytics, Event};
 use chrono::Utc;
 use glam::Vec3;
-use leaderboard::{models::{LeaderboardWindow, Run, Score}, LeaderboardService};
+use leaderboard::{
+    LeaderboardService,
+    models::{LeaderboardWindow, Run, Score},
+};
+use rand::{Rng, SeedableRng, rngs::StdRng};
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 use uuid::Uuid;
-use rand::{rngs::StdRng, Rng, SeedableRng};
 
 pub mod net {
     use super::DuckState;
@@ -96,11 +99,7 @@ pub fn replicate(server: &Server, state: &DuckState) {
 pub fn spawn_wave(server: &mut Server, seed: u64, count: usize) {
     let mut rng = StdRng::seed_from_u64(seed);
     for _ in 0..count {
-        let position = Vec3::new(
-            rng.gen_range(-5.0..5.0),
-            rng.gen_range(0.5..2.5),
-            0.0,
-        );
+        let position = Vec3::new(rng.gen_range(-5.0..5.0), rng.gen_range(0.5..2.5), 0.0);
         let velocity = Vec3::new(rng.gen_range(-1.0..1.0), 0.0, 0.0);
         spawn_duck(server, position, velocity);
     }
@@ -174,8 +173,14 @@ pub async fn handle_shot(
     shot_time: Duration,
     replay: Vec<u8>,
 ) -> bool {
+    if let Some(a) = analytics {
+        a.dispatch(Event::ShotFired);
+    }
     if validate_hit(server, origin, direction, shot_time) {
         if let Some(a) = analytics {
+            a.dispatch(Event::TargetHit);
+            a.dispatch(Event::DamageTaken);
+            a.dispatch(Event::Death);
             a.dispatch(Event::CurrencyEarned);
         }
         let run_id = Uuid::new_v4();
@@ -200,6 +205,9 @@ pub async fn handle_shot(
         let _ = leaderboard
             .submit_score(leaderboard_id, score, run, replay)
             .await;
+        if let Some(a) = analytics {
+            a.dispatch(Event::LeaderboardSubmit);
+        }
         return true;
     }
     false
@@ -291,8 +299,9 @@ mod tests {
     #[tokio::test]
     async fn leaderboard_records_hit() {
         let tmp = tempfile::tempdir().unwrap();
-        let service =
-            LeaderboardService::new("sqlite::memory:", tmp.path().into()).await.unwrap();
+        let service = LeaderboardService::new("sqlite::memory:", tmp.path().into())
+            .await
+            .unwrap();
         let server = Server {
             latency: Duration::from_secs_f32(0.0),
             ducks: vec![DuckState {
@@ -326,6 +335,52 @@ mod tests {
         assert_eq!(scores[0].points, 1);
         let stored = service.get_replay(scores[0].run_id).await.unwrap();
         assert_eq!(stored, replay);
+    }
+
+    #[tokio::test]
+    async fn dispatches_analytics_events() {
+        let tmp = tempfile::tempdir().unwrap();
+        let service = LeaderboardService::new("sqlite::memory:", tmp.path().into())
+            .await
+            .unwrap();
+        let server = Server {
+            latency: Duration::from_secs_f32(0.0),
+            ducks: vec![DuckState {
+                position: Vec3::new(0.0, 0.0, 5.0),
+                velocity: Vec3::ZERO,
+                path: Vec::new(),
+                path_index: 0,
+            }],
+            snapshot_txs: Vec::new(),
+        };
+        let leaderboard_id = Uuid::new_v4();
+        let player_id = Uuid::new_v4();
+        let replay = b"shot".to_vec();
+        let analytics = Analytics::new(true, None, false);
+        let hit = handle_shot(
+            &server,
+            &service,
+            Some(&analytics),
+            leaderboard_id,
+            player_id,
+            Vec3::ZERO,
+            Vec3::Z,
+            Duration::from_secs_f32(0.0),
+            replay,
+        )
+        .await;
+        assert!(hit);
+        assert_eq!(
+            analytics.events(),
+            vec![
+                Event::ShotFired,
+                Event::TargetHit,
+                Event::DamageTaken,
+                Event::Death,
+                Event::CurrencyEarned,
+                Event::LeaderboardSubmit,
+            ]
+        );
     }
 
     #[test]

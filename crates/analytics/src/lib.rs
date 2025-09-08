@@ -30,6 +30,12 @@ pub enum Event {
     PlayerJoined,
     PlayerJumped,
     PlayerDied,
+    ShotFired,
+    TargetHit,
+    DamageTaken,
+    Death,
+    Respawn,
+    LeaderboardSubmit,
     // Economy
     ItemPurchased,
     CurrencyEarned,
@@ -106,6 +112,12 @@ impl Event {
             Event::PlayerJoined => "player_joined",
             Event::PlayerJumped => "player_jumped",
             Event::PlayerDied => "player_died",
+            Event::ShotFired => "shot_fired",
+            Event::TargetHit => "target_hit",
+            Event::DamageTaken => "damage_taken",
+            Event::Death => "death",
+            Event::Respawn => "respawn",
+            Event::LeaderboardSubmit => "leaderboard_submit",
             Event::ItemPurchased => "item_purchased",
             Event::CurrencyEarned => "currency_earned",
             Event::CurrencySpent => "currency_spent",
@@ -258,39 +270,36 @@ mod tests {
     #[test]
     fn store_and_prometheus() {
         let analytics = Analytics::new(true, None, false);
-        analytics.dispatch(Event::PlayerJoined);
-        assert_eq!(analytics.events(), vec![Event::PlayerJoined]);
-        assert_eq!(analytics.counter_value("player_joined"), 1);
+        analytics.dispatch(Event::ShotFired);
+        assert_eq!(analytics.events(), vec![Event::ShotFired]);
+        assert_eq!(analytics.counter_value("shot_fired"), 1);
     }
 
     #[cfg(not(feature = "prometheus"))]
     #[test]
     fn store() {
         let analytics = Analytics::new(true, None, false);
-        analytics.dispatch(Event::PlayerJoined);
-        assert_eq!(analytics.events(), vec![Event::PlayerJoined]);
+        analytics.dispatch(Event::ShotFired);
+        assert_eq!(analytics.events(), vec![Event::ShotFired]);
     }
 
     #[test]
     fn ring_buffer_limit() {
         unsafe { std::env::set_var(MAX_EVENTS_ENV_VAR, "2") };
         let analytics = Analytics::new(true, None, false);
-        analytics.dispatch(Event::PlayerJoined);
-        analytics.dispatch(Event::PlayerJumped);
-        analytics.dispatch(Event::PlayerDied);
-        assert_eq!(
-            analytics.events(),
-            vec![Event::PlayerJumped, Event::PlayerDied]
-        );
+        analytics.dispatch(Event::ShotFired);
+        analytics.dispatch(Event::TargetHit);
+        analytics.dispatch(Event::Death);
+        assert_eq!(analytics.events(), vec![Event::TargetHit, Event::Death]);
         unsafe { std::env::remove_var(MAX_EVENTS_ENV_VAR) };
     }
 
     #[test]
     fn flush_clears_events() {
         let analytics = Analytics::with_max_events(true, None, false, 2);
-        analytics.dispatch(Event::PlayerJoined);
+        analytics.dispatch(Event::ShotFired);
         let flushed = analytics.flush();
-        assert_eq!(flushed, vec![Event::PlayerJoined]);
+        assert_eq!(flushed, vec![Event::ShotFired]);
         assert!(analytics.events().is_empty());
     }
 
@@ -311,7 +320,7 @@ mod tests {
         }
 
         let analytics = Analytics::new(true, Some("test_key".into()), false);
-        analytics.dispatch(Event::PlayerJoined);
+        analytics.dispatch(Event::ShotFired);
 
         tokio::time::sleep(Duration::from_millis(50)).await;
         mock.assert();
@@ -321,7 +330,7 @@ mod tests {
     #[test]
     fn otlp_counter() {
         let analytics = Analytics::new(true, None, true);
-        analytics.dispatch(Event::PlayerJoined);
+        analytics.dispatch(Event::ShotFired);
         assert_eq!(analytics.otlp_count(), 1);
     }
 }

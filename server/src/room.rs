@@ -11,9 +11,11 @@ use ::leaderboard::{
     LeaderboardService,
     models::{LeaderboardWindow, Run, Score},
 };
-use chrono::Utc;
-use duck_hunt_server::server::{DuckState, Server as DuckServer, replicate, spawn_duck, validate_hit};
 use analytics::{Analytics, Event};
+use chrono::Utc;
+use duck_hunt_server::server::{
+    DuckState, Server as DuckServer, replicate, spawn_duck, validate_hit,
+};
 use glam::Vec3;
 use net::message::{InputFrame, ServerMessage, Snapshot, delta_compress};
 use net::server::ServerConnector;
@@ -66,29 +68,29 @@ struct Room {
 
 impl Room {
     fn new(leaderboard: LeaderboardService) -> Self {
+        let analytics = Analytics::new(false, None, false);
+        let mut server = DuckServer {
+            latency: StdDuration::from_secs(0),
+            ducks: Vec::new(),
+            snapshot_txs: Vec::new(),
+        };
+        spawn_duck(
+            &mut server,
+            Vec3::new(0.0, 0.0, 5.0),
+            Vec3::new(1.0, 0.0, 0.0),
+        );
+        analytics.dispatch(Event::Respawn);
         Self {
             connectors: Vec::new(),
             last_snapshot: None,
             frame: 0,
-            duck_server: {
-                let mut server = DuckServer {
-                    latency: StdDuration::from_secs(0),
-                    ducks: Vec::new(),
-                    snapshot_txs: Vec::new(),
-                };
-                spawn_duck(
-                    &mut server,
-                    Vec3::new(0.0, 0.0, 5.0),
-                    Vec3::new(1.0, 0.0, 0.0),
-                );
-                server
-            },
+            duck_server: server,
             scores: Vec::new(),
             player_ids: Vec::new(),
             leaderboard,
             leaderboard_id: LEADERBOARD_ID,
             start_time: std::time::Instant::now(),
-            analytics: Analytics::new(false, None, false),
+            analytics,
         }
     }
 
@@ -135,12 +137,16 @@ impl Room {
                 if let Ok(shot) = postcard::from_bytes::<Shot>(&frame.data) {
                     let origin = Vec3::from_array(shot.origin);
                     let direction = Vec3::from_array(shot.direction);
+                    self.analytics.dispatch(Event::ShotFired);
                     if validate_hit(
                         &self.duck_server,
                         origin,
                         direction,
                         StdDuration::from_secs_f32(shot.time),
                     ) {
+                        self.analytics.dispatch(Event::TargetHit);
+                        self.analytics.dispatch(Event::DamageTaken);
+                        self.analytics.dispatch(Event::Death);
                         self.analytics.dispatch(Event::CurrencyEarned);
                         if let Some(score) = self.scores.get_mut(i) {
                             *score += 1;
@@ -293,11 +299,7 @@ impl RoomManager {
         addr: String,
     ) -> Self {
         let room = Arc::new(Mutex::new(Room::new(leaderboard)));
-        registry.register(crate::shard::ShardInfo::new(
-            shard_id.clone(),
-            addr,
-            0,
-        ));
+        registry.register(crate::shard::ShardInfo::new(shard_id.clone(), addr, 0));
         let tick_room = Arc::clone(&room);
         tokio::spawn(async move {
             let mut interval = time::interval(Duration::from_secs_f64(1.0 / 60.0));
