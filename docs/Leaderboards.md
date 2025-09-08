@@ -8,7 +8,7 @@ top standings in Redis for fast reads. Scores are tracked in three windows:
 
 | Env var                 | CLI flag            | Description                              | Default              |
 | ----------------------- | ------------------- | ---------------------------------------- | -------------------- |
-| `SCYLLA_URI`            | `--scylla-uri`      | Comma‑separated list of Scylla nodes     | `127.0.0.1:9042`     |
+| `ARENA_DB_URL`          | `--db-url`          | Scylla database URL                      | -                    |
 | `ARENA_REDIS_URL`       | `--redis-url`       | Redis URL for the top‑N cache            | `redis://127.0.0.1/` |
 | `ARENA_LEADERBOARD_MAX` | `--leaderboard-max` | Maximum entries mirrored per leaderboard | `100`                |
 

@@ -43,9 +43,9 @@ fn smtp_cfg() -> SmtpConfig {
         let analytics = Analytics::new(true, None, false);
         let cfg = ResolvedConfig {
             bind_addr: "127.0.0.1:3000".parse().unwrap(),
-            public_url: "http://localhost".into(),
-            shard_host: "127.0.0.1".into(),
-            database_url: "127.0.0.1:9042".into(),
+            public_base_url: "http://localhost".into(),
+            signaling_ws_url: "ws://127.0.0.1".into(),
+            db_url: "127.0.0.1:9042".into(),
             csp: None,
         };
         assert!(setup(&cfg, smtp_cfg(), analytics).await.is_ok());

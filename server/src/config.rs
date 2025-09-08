@@ -21,8 +21,8 @@ pub struct ConfigResponse {
 /// HTTP handler that returns public configuration as JSON.
 pub async fn get_config(Extension(cfg): Extension<ResolvedConfig>) -> Json<ConfigResponse> {
     let cfg = ConfigResponse {
-        signal_url: format!("{}/signal", cfg.public_url),
-        api_base_url: cfg.public_url.clone(),
+        signal_url: cfg.signaling_ws_url.clone(),
+        api_base_url: cfg.public_base_url.clone(),
         feature_flags: HashMap::new(),
         ice_servers: Vec::new(),
     };

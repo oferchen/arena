@@ -6,12 +6,18 @@ provided when launching the server.
 
 ## Server
 
-| Env var            | CLI flag       | Description                                  | Default              |
-| ------------------ | -------------- | -------------------------------------------- | -------------------- |
-| `ARENA_BIND_ADDR`  | `--bind-addr`  | Address to bind the server to **(required)** | -                    |
-| `ARENA_PUBLIC_URL` | `--public-url` | Public URL of the server                     | -                    |
-| `ARENA_SHARD_HOST` | `--shard-host` | Hostname for shard connections               | -                    |
-| `ARENA_CSP`        | `--csp`        | Content Security Policy header value         | `default-src 'self'` |
+| Env var                 | CLI flag            | Description                                  | Default              |
+| ----------------------- | ------------------- | -------------------------------------------- | -------------------- |
+| `ARENA_BIND_ADDR`       | `--bind-addr`       | Address to bind the server to **(required)** | -                    |
+| `ARENA_PUBLIC_BASE_URL` | `--public-base-url` | Public base URL of the server                | -                    |
+| `ARENA_DB_URL`          | `--db-url`          | Scylla database URL                          | -                    |
+| `ARENA_CSP`             | `--csp`             | Content Security Policy header value         | `default-src 'self'` |
+
+## RTC
+
+| Env var                  | CLI flag             | Description                            | Default |
+| ------------------------ | -------------------- | -------------------------------------- | ------- |
+| `ARENA_SIGNALING_WS_URL` | `--signaling-ws-url` | WebSocket URL for the signaling server | -       |
 
 ## Analytics
 
@@ -21,6 +27,13 @@ provided when launching the server.
 | `ARENA_ANALYTICS_BATCH`    | `--analytics-batch`    | Number of events per upload                    | `20`    |
 | `ARENA_ANALYTICS_ENABLED`  | `--analytics`          | Enable analytics collection                    | `false` |
 | `ARENA_ANALYTICS_OPT_OUT`  | `--analytics-opt-out`  | Disable analytics regardless of other settings | `false` |
+| `ARENA_POSTHOG_KEY`        | `--posthog-key`        | PostHog API key                                | -       |
+
+## Metrics
+
+| Env var                 | CLI flag    | Description                  | Default |
+| ----------------------- | ----------- | ---------------------------- | ------- |
+| `ARENA_METRICS_ENABLED` | `--metrics` | Enable OpenTelemetry metrics | `false` |
 
 ## Email
 

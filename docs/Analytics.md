@@ -9,6 +9,7 @@ Arena can record gameplay events for later analysis.
 | `ARENA_ANALYTICS_ENDPOINT` | `--analytics-endpoint` | HTTP endpoint to receive events | -       |
 | `ARENA_ANALYTICS_BATCH`    | `--analytics-batch`    | Number of events per upload     | `20`    |
 | `ARENA_ANALYTICS_ENABLED`  | `--analytics`          | Enable analytics collection     | `false` |
+| `ARENA_POSTHOG_KEY`        | `--posthog-key`        | PostHog API key                 | -       |
 
 ## Usage
 
