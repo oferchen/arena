@@ -27,14 +27,20 @@ async fn leaderboard_service() -> ::leaderboard::LeaderboardService {
 }
 
 #[tokio::test]
-async fn setup_succeeds_without_env_vars() {
-    unsafe {
-        env::remove_var("DATABASE_URL");
-    }
+    async fn setup_succeeds_without_env_vars() {
+        unsafe {
+            env::remove_var("DATABASE_URL");
+        }
 
-    let analytics = Analytics::new(true, None, false);
-    assert!(setup(SmtpConfig::default(), analytics).await.is_ok());
-}
+        let analytics = Analytics::new(true, None, false);
+        let cfg = ResolvedConfig {
+            bind_addr: "127.0.0.1:3000".parse().unwrap(),
+            public_url: "http://localhost".into(),
+            shard_host: "127.0.0.1".into(),
+            database_url: "127.0.0.1:9042".into(),
+        };
+        assert!(setup(&cfg, SmtpConfig::default(), analytics).await.is_ok());
+    }
 
 #[test]
 fn cli_overrides_env() {
