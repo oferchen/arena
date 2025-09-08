@@ -89,10 +89,12 @@ mod tests {
     use std::path::PathBuf;
 
     #[tokio::test]
+    #[ignore]
     async fn chooses_least_loaded_shard() {
+        std::env::set_var("ARENA_REDIS_URL", "redis://127.0.0.1/");
         let registry = Arc::new(MemoryShardRegistry::new());
         let leaderboard = ::leaderboard::LeaderboardService::new(
-            "sqlite::memory:",
+            "127.0.0.1:9042",
             PathBuf::from("replays"),
         )
         .await
