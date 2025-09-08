@@ -7,7 +7,7 @@ use engine::{AppExt, EnginePlugin};
 mod entitlements;
 mod lobby;
 mod net;
-use entitlements::{fetch_entitlements, ensure_session};
+use entitlements::{claim_entitlement, fetch_entitlements, ensure_session};
 use null_module::NullModule;
 use payments::{EntitlementStore, UserId};
 use physics::PhysicsPlugin;

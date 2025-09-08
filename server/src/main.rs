@@ -3,7 +3,8 @@ use std::{net::SocketAddr, path::PathBuf, sync::Arc};
 use anyhow::{Result, anyhow};
 
 use crate::email::{EmailService, SmtpConfig, StartTls};
-use ::payments::{Catalog, EntitlementList, EntitlementStore, Sku, UserId};
+use ::payments::{Catalog, EntitlementList, Sku, UserId};
+use payments::EntitlementStore;
 use analytics::{Analytics, Event};
 use axum::{
     Router,
@@ -31,6 +32,7 @@ mod email;
 mod leaderboard;
 mod room;
 mod shard;
+mod payments;
 #[cfg(test)]
 mod test_logger;
 use prometheus::{Encoder, TextEncoder};
@@ -57,7 +59,6 @@ pub(crate) struct AppState {
     leaderboard: ::leaderboard::LeaderboardService,
     catalog: Catalog,
     entitlements: EntitlementStore,
-    entitlements_path: std::path::PathBuf,
     db: Option<Arc<Session>>,
 }
 
@@ -304,13 +305,7 @@ async fn store_claim_handler(
         None => return StatusCode::UNAUTHORIZED,
     };
 
-    state.entitlements.grant(user, req.sku.clone());
-    if let Err(e) = state.entitlements.save(&state.entitlements_path) {
-        log::warn!("failed to save entitlements: {e}");
-        state.analytics.dispatch(Event::Error {
-            message: e.to_string(),
-        });
-    }
+    state.entitlements.grant(user, req.sku.clone()).await;
     state.analytics.dispatch(Event::EntitlementGranted);
     StatusCode::OK
 }
@@ -319,7 +314,7 @@ async fn entitlements_handler(
     State(state): State<Arc<AppState>>,
     Path(user): Path<String>,
 ) -> Json<EntitlementList> {
-    let entitlements = state.entitlements.list(&user);
+    let entitlements = state.entitlements.list(&user).await;
     Json(EntitlementList { entitlements })
 }
 
@@ -395,14 +390,6 @@ async fn setup(smtp: SmtpConfig, analytics: Analytics) -> Result<AppState> {
         id: "basic".to_string(),
         price_cents: 1000,
     }]);
-    let entitlements_path = PathBuf::from("entitlements.json");
-    let entitlements = EntitlementStore::default();
-    if let Err(e) = entitlements.load(&entitlements_path) {
-        log::warn!("failed to load entitlements: {e}");
-        analytics.dispatch(Event::Error {
-            message: e.to_string(),
-        });
-    }
     let db = match SessionBuilder::new()
         .known_node("127.0.0.1:9042")
         .build()
@@ -414,6 +401,7 @@ async fn setup(smtp: SmtpConfig, analytics: Analytics) -> Result<AppState> {
             None
         }
     };
+    let entitlements = EntitlementStore::new(db.clone());
 
     Ok(AppState {
         email,
@@ -423,7 +411,6 @@ async fn setup(smtp: SmtpConfig, analytics: Analytics) -> Result<AppState> {
         leaderboard,
         catalog,
         entitlements,
-        entitlements_path,
         db,
     })
 }

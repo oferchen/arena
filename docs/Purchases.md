@@ -17,12 +17,12 @@ curl http://localhost:3000/store
 2. The client posts the desired SKU to `/store/claim`:
    ```bash
    curl -X POST http://localhost:3000/store/claim \
-        -H 'X-Session: <user-id>' \
+        -H 'X-Session: <session-token>' \
         -H 'Content-Type: application/json' \
         -d '{"sku":"duck_hunt"}'
    ```
-   The server verifies the session and grants the entitlement using its
-   `EntitlementStore`.
+   The server verifies the session and records the entitlement in its
+   Scylla-backed store.
 3. The entitlement is persisted server-side and can be queried later.
 
 ## Entitlements
