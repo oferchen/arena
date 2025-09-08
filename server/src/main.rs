@@ -47,12 +47,8 @@ struct Cli {
     config: Config,
     #[arg(long, env = "ARENA_POSTHOG_KEY")]
     posthog_key: Option<String>,
-    #[arg(
-        long = "metrics",
-        env = "ARENA_METRICS_ENABLED",
-        default_value_t = false
-    )]
-    metrics: bool,
+    #[arg(long = "metrics-addr", env = "ARENA_METRICS_ADDR")]
+    metrics_addr: Option<SocketAddr>,
     #[arg(long, env = "ARENA_ANALYTICS_OPT_OUT", default_value_t = false)]
     analytics_opt_out: bool,
 }
@@ -460,10 +456,17 @@ async fn setup(cfg: &ResolvedConfig, smtp: SmtpConfig, analytics: Analytics) -> 
 }
 
 async fn run(cli: Cli) -> Result<()> {
-    let config = cli.config.resolve()?;
+    let Cli {
+        smtp,
+        config,
+        posthog_key,
+        metrics_addr,
+        analytics_opt_out,
+    } = cli;
+    let config = config.resolve()?;
     log::info!("Using config: {:?}", config);
-    let analytics = Analytics::new(!cli.analytics_opt_out, cli.posthog_key.clone(), cli.metrics);
-    let smtp = cli.smtp.validate()?;
+    let analytics = Analytics::new(!analytics_opt_out, posthog_key.clone(), metrics_addr);
+    let smtp = smtp.validate()?;
     let state = Arc::new(setup(&config, smtp, analytics).await?);
 
     let assets_service =
@@ -473,7 +476,6 @@ async fn run(cli: Cli) -> Result<()> {
         ));
 
     let app = Router::new()
-        .route("/metrics", get(metrics_handler))
         .nest("/auth", auth::routes())
         .route("/auth/guest", post(guest_handler))
         .route("/ws", get(ws_handler))
@@ -511,6 +513,22 @@ async fn run(cli: Cli) -> Result<()> {
         ))
         .layer(Extension(config.clone()))
         .with_state(state.clone());
+
+    if let Some(addr) = metrics_addr {
+        let metrics_app = Router::new().route("/metrics", get(metrics_handler));
+        tokio::spawn(async move {
+            let listener = match tokio::net::TcpListener::bind(addr).await {
+                Ok(l) => l,
+                Err(e) => {
+                    log::error!("failed to bind metrics address: {e}");
+                    return;
+                }
+            };
+            if let Err(e) = axum::serve(listener, metrics_app).await {
+                log::error!("metrics server error: {e}");
+            }
+        });
+    }
 
     let listener = tokio::net::TcpListener::bind(config.bind_addr)
         .await

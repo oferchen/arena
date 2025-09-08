@@ -24,7 +24,7 @@ static ALLOC: wee_alloc::WeeAlloc = wee_alloc::WeeAlloc::INIT;
 fn main() {
     let config = future::block_on(RuntimeConfig::load());
     let enabled = std::env::var("ARENA_ANALYTICS_OPT_OUT").is_err();
-    let analytics = Analytics::new(enabled, None, false);
+    let analytics = Analytics::new(enabled, None, None);
     analytics.dispatch(Event::SessionStart);
     analytics.dispatch(Event::LevelStart { level: 1 });
     let entitlements = EntitlementStore::default();
@@ -60,7 +60,7 @@ use wasm_bindgen::prelude::*;
 pub async fn main() -> Result<(), JsValue> {
     let config = RuntimeConfig::load().await;
     let enabled = std::env::var("ARENA_ANALYTICS_OPT_OUT").is_err();
-    let analytics = Analytics::new(enabled, None, false);
+    let analytics = Analytics::new(enabled, None, None);
     analytics.dispatch(Event::SessionStart);
     analytics.dispatch(Event::LevelStart { level: 1 });
     let entitlements = EntitlementStore::default();
