@@ -1894,6 +1894,7 @@ dependencies = [
  "duck_hunt",
  "editor",
  "engine",
+ "futures-lite 2.6.1",
  "net",
  "null_module",
  "payments",
