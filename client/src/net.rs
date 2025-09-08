@@ -1,10 +1,10 @@
+#[cfg(target_arch = "wasm32")]
+use crate::config::RuntimeConfig;
 use bevy::prelude::*;
 #[cfg(target_arch = "wasm32")]
 use bevy::tasks::{AsyncComputeTaskPool, Task};
 use netcode::client::{ClientConnector, ConnectionEvent};
 use platform_api::AppState;
-#[cfg(target_arch = "wasm32")]
-use crate::config::RuntimeConfig;
 
 #[cfg(target_arch = "wasm32")]
 use futures_lite::future;
@@ -21,6 +21,10 @@ struct ConnectorTask(Task<Result<ClientConnector, String>>);
 
 #[cfg(target_arch = "wasm32")]
 fn start_connection(mut commands: Commands, config: Res<RuntimeConfig>) {
+    if config.signal_url.is_empty() {
+        bevy::log::warn!("signal_url missing; skipping connection startup");
+        return;
+    }
     let signal_url = config.signal_url.clone();
     let task = AsyncComputeTaskPool::get().spawn_local(async move {
         match ClientConnector::new().await {
