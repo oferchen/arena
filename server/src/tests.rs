@@ -13,7 +13,7 @@ use webrtc::api::media_engine::MediaEngine;
 use webrtc::peer_connection::configuration::RTCConfiguration;
 
 use crate::test_logger::{INIT, LOGGER};
-use ::payments::{Catalog, EntitlementStore, Entitlement, MockStoreProvider, Sku, StripeClient};
+use ::payments::{Catalog, EntitlementStore, Sku};
 use std::sync::Arc;
 use log::LevelFilter;
 use std::path::PathBuf;
@@ -89,7 +89,6 @@ async fn websocket_signaling_completes_handshake() {
             id: "basic".into(),
             price_cents: 1000,
         }]),
-        store: Arc::new(StripeClient::new(String::new())),
         entitlements: EntitlementStore::default(),
         entitlements_path: PathBuf::new(),
         db: None,
@@ -157,7 +156,6 @@ async fn websocket_signaling_invalid_sdp_logs_and_closes() {
             id: "basic".into(),
             price_cents: 1000,
         }]),
-        store: Arc::new(StripeClient::new(String::new())),
         entitlements: EntitlementStore::default(),
         entitlements_path: PathBuf::new(),
         db: None,
@@ -218,7 +216,6 @@ async fn websocket_signaling_unexpected_binary_logs_and_closes() {
             id: "basic".into(),
             price_cents: 1000,
         }]),
-        store: Arc::new(StripeClient::new(String::new())),
         entitlements: EntitlementStore::default(),
         entitlements_path: PathBuf::new(),
         db: None,
@@ -279,7 +276,6 @@ async fn websocket_logs_unexpected_messages_and_closes() {
             id: "basic".into(),
             price_cents: 1000,
         }]),
-        store: Arc::new(StripeClient::new(String::new())),
         entitlements: EntitlementStore::default(),
         entitlements_path: PathBuf::new(),
         db: None,
@@ -330,7 +326,6 @@ async fn mail_test_defaults_to_from_address() {
             id: "basic".into(),
             price_cents: 1000,
         }]),
-        store: Arc::new(StripeClient::new(String::new())),
         entitlements: EntitlementStore::default(),
         entitlements_path: PathBuf::new(),
         db: None,
@@ -369,7 +364,6 @@ async fn mail_test_accepts_user_address_query() {
             id: "basic".into(),
             price_cents: 1000,
         }]),
-        store: Arc::new(StripeClient::new(String::new())),
         entitlements: EntitlementStore::default(),
         entitlements_path: PathBuf::new(),
         db: None,
@@ -415,7 +409,6 @@ async fn mail_test_accepts_user_address_body() {
             id: "basic".into(),
             price_cents: 1000,
         }]),
-        store: Arc::new(StripeClient::new(String::new())),
         entitlements: EntitlementStore::default(),
         entitlements_path: PathBuf::new(),
         db: None,
@@ -460,7 +453,6 @@ async fn mail_config_redacts_password() {
             id: "basic".into(),
             price_cents: 1000,
         }]),
-        store: Arc::new(StripeClient::new(String::new())),
         entitlements: EntitlementStore::default(),
         entitlements_path: PathBuf::new(),
         db: None,
@@ -492,7 +484,6 @@ async fn admin_mail_config_route() {
             id: "basic".into(),
             price_cents: 1000,
         }]),
-        store: Arc::new(StripeClient::new(String::new())),
         entitlements: EntitlementStore::default(),
         entitlements_path: PathBuf::new(),
         db: None,
@@ -723,7 +714,6 @@ async fn round_scores_appear_in_leaderboard() {
             id: "basic".into(),
             price_cents: 1000,
         }]),
-        store: Arc::new(StripeClient::new(String::new())),
         entitlements: EntitlementStore::default(),
         entitlements_path: std::path::PathBuf::new(),
         db: None,

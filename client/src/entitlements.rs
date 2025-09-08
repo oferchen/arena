@@ -1,4 +1,5 @@
 use payments::{EntitlementList, UserId};
+use serde::Serialize;
 
 #[cfg(not(target_arch = "wasm32"))]
 pub fn user_id() -> UserId {

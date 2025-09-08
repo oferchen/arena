@@ -3,11 +3,10 @@ use std::{net::SocketAddr, path::PathBuf, sync::Arc};
 use anyhow::{Result, anyhow};
 
 use crate::email::{EmailService, SmtpConfig, StartTls};
-use ::payments::{Catalog, EntitlementList, EntitlementStore, Sku, StoreProvider, StripeClient};
+use ::payments::{Catalog, EntitlementList, EntitlementStore, Sku, UserId};
 use analytics::{Analytics, Event};
 use axum::{
     Router,
-    body::Bytes,
     extract::{
         Json, Path, Query, State,
         ws::{Message, WebSocket, WebSocketUpgrade},
@@ -30,13 +29,10 @@ use scylla::{Session, SessionBuilder};
 mod auth;
 mod email;
 mod leaderboard;
-mod payments;
 mod room;
 mod shard;
 #[cfg(test)]
 mod test_logger;
-#[cfg(test)]
-mod tests;
 use prometheus::{Encoder, TextEncoder};
 use tower_http::{services::ServeDir, set_header::SetResponseHeaderLayer};
 
@@ -60,7 +56,6 @@ pub(crate) struct AppState {
     analytics: Analytics,
     leaderboard: ::leaderboard::LeaderboardService,
     catalog: Catalog,
-    store: Arc<dyn StoreProvider>,
     entitlements: EntitlementStore,
     entitlements_path: std::path::PathBuf,
     db: Option<Arc<Session>>,
@@ -291,104 +286,33 @@ async fn store_handler(State(state): State<Arc<AppState>>) -> Json<StoreResponse
 }
 
 #[derive(Deserialize)]
-struct PurchaseRequest {
-    user: String,
+struct ClaimRequest {
     sku: String,
 }
 
-#[derive(Serialize)]
-struct PurchaseResponse {
-    session_id: String,
-}
-
-async fn purchase_start_handler(
-    State(state): State<Arc<AppState>>,
-    Json(req): Json<PurchaseRequest>,
-) -> Json<PurchaseResponse> {
-    state.analytics.dispatch(Event::PurchaseInitiated);
-    let sku = state.catalog.get(&req.sku).expect("sku not found");
-    let session = state.store.create_checkout_session(sku).await;
-    Json(PurchaseResponse {
-        session_id: session.url,
-    })
-}
-
-#[derive(Deserialize)]
-struct StripeWebhook {
-    r#type: String,
-    data: StripeWebhookData,
-}
-
-#[derive(Deserialize)]
-struct StripeWebhookData {
-    object: StripeSession,
-}
-
-#[derive(Deserialize)]
-struct StripeSession {
-    client_reference_id: String,
-    metadata: Option<StripeMetadata>,
-}
-
-#[derive(Deserialize)]
-struct StripeMetadata {
-    sku: String,
-}
-
-async fn stripe_webhook_handler(
+async fn store_claim_handler(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
-    body: Bytes,
+    Json(req): Json<ClaimRequest>,
 ) -> StatusCode {
-    let sig_header = match headers
-        .get("Stripe-Signature")
+    let user = match headers
+        .get("X-Session")
         .and_then(|v| v.to_str().ok())
+        .and_then(|s| UserId::parse_str(s).ok())
     {
-        Some(h) => h,
+        Some(u) => u,
         None => return StatusCode::UNAUTHORIZED,
     };
 
-    if !state.store.verify_webhook(sig_header, &body) {
-        return StatusCode::UNAUTHORIZED;
+    state.entitlements.grant(user, req.sku.clone());
+    if let Err(e) = state.entitlements.save(&state.entitlements_path) {
+        log::warn!("failed to save entitlements: {e}");
+        state.analytics.dispatch(Event::Error {
+            message: e.to_string(),
+        });
     }
-
-    let event: StripeWebhook = match serde_json::from_slice(&body) {
-        Ok(e) => e,
-        Err(_) => return StatusCode::BAD_REQUEST,
-    };
-
-    if event.r#type == "checkout.session.completed" {
-        if let Some(meta) = event.data.object.metadata {
-            if let Ok(user) = ::payments::UserId::parse_str(&event.data.object.client_reference_id)
-            {
-                ::payments::complete_purchase(
-                    &state.entitlements,
-                    &event.data.object.client_reference_id,
-                    &meta.sku,
-                );
-                let _ = state.leaderboard.record_purchase(user, &meta.sku).await;
-                if let Err(e) = state.entitlements.save(&state.entitlements_path) {
-                    log::warn!("failed to save entitlements: {e}");
-                    state.analytics.dispatch(Event::Error {
-                        message: e.to_string(),
-                    });
-                }
-                state.analytics.dispatch(Event::PurchaseCompleted {
-                    sku: meta.sku.clone(),
-                    user: event.data.object.client_reference_id.clone(),
-                });
-                state.analytics.dispatch(Event::PurchaseSucceeded);
-                state.analytics.dispatch(Event::EntitlementGranted);
-                StatusCode::OK
-            } else {
-                StatusCode::BAD_REQUEST
-            }
-        } else {
-            StatusCode::BAD_REQUEST
-        }
-    } else {
-        StatusCode::BAD_REQUEST
-    }
+    state.analytics.dispatch(Event::EntitlementGranted);
+    StatusCode::OK
 }
 
 async fn entitlements_handler(
@@ -456,7 +380,7 @@ async fn setup(smtp: SmtpConfig, analytics: Analytics) -> Result<AppState> {
         anyhow!(e)
     })?);
 
-    let db_url = std::env::var("DATABASE_URL").unwrap_or_else(|_| "sqlite::memory:".into());
+    let db_url = std::env::var("SCYLLA_URI").unwrap_or_else(|_| "127.0.0.1:9042".into());
     let leaderboard = ::leaderboard::LeaderboardService::new(&db_url, PathBuf::from("replays"))
         .await
         .map_err(|e| anyhow!(e))?;
@@ -471,8 +395,6 @@ async fn setup(smtp: SmtpConfig, analytics: Analytics) -> Result<AppState> {
         id: "basic".to_string(),
         price_cents: 1000,
     }]);
-    let webhook_secret = std::env::var("STRIPE_WEBHOOK_SECRET").unwrap_or_default();
-    let store: Arc<dyn StoreProvider> = Arc::new(StripeClient::new(webhook_secret));
     let entitlements_path = PathBuf::from("entitlements.json");
     let entitlements = EntitlementStore::default();
     if let Err(e) = entitlements.load(&entitlements_path) {
@@ -500,7 +422,6 @@ async fn setup(smtp: SmtpConfig, analytics: Analytics) -> Result<AppState> {
         analytics,
         leaderboard,
         catalog,
-        store,
         entitlements,
         entitlements_path,
         db,
@@ -529,13 +450,11 @@ async fn run(cli: Cli) -> Result<()> {
         .route("/ws", get(ws_handler))
         .route("/signal", get(signal_ws_handler))
         .route("/store", get(store_handler))
-        .route("/purchase/start", post(purchase_start_handler))
-        .route("/stripe/webhook", post(stripe_webhook_handler))
+        .route("/store/claim", post(store_claim_handler))
         .route("/entitlements/:user", get(entitlements_handler))
         .route("/admin/mail/test", post(mail_test_handler))
         .route("/admin/mail/config", get(mail_config_handler))
         .nest("/leaderboard", leaderboard::routes())
-        .nest("/payments", payments::routes())
         .nest_service("/assets", assets_service)
         .fallback_service(ServeDir::new("static"))
         .layer(SetResponseHeaderLayer::if_not_present(

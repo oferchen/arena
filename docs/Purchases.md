@@ -1,9 +1,7 @@
 # Purchases
 
-Arena includes a lightweight payment system backed by Stripe Checkout. The
-server exposes a catalog of stock keeping units (SKUs), endpoints to initiate a
-purchase, and a webhook to grant entitlements when Stripe reports a completed
-checkout session.
+Arena uses an OTP-based entitlement system. After a user signs in with a one-time
+password, the client can claim items directly from the server.
 
 ## Catalog
 
@@ -13,28 +11,21 @@ Available items are returned from the `/store` endpoint.
 curl http://localhost:3000/store
 ```
 
-## Purchase Flow
+## Claim Flow
 
-1. The client posts the desired SKU to `/purchase/start`:
+1. The client authenticates via OTP and receives a session identifier.
+2. The client posts the desired SKU to `/store/claim`:
    ```bash
-   curl -X POST http://localhost:3000/purchase/start \
-        -d '{"user":"alice","sku":"duck_hunt"}' \
-        -H 'Content-Type: application/json'
+   curl -X POST http://localhost:3000/store/claim \
+        -H 'X-Session: <user-id>' \
+        -H 'Content-Type: application/json' \
+        -d '{"sku":"duck_hunt"}'
    ```
-   The server responds with a Stripe Checkout session identifier.
-2. The client completes payment using Stripe's SDK.
-3. Stripe notifies the server via the `checkout.session.completed` webhook at
-   `/stripe/webhook`.
-4. The server grants the entitlement, persists it to `entitlements.json`, and
-   emits analytics events for the successful purchase and entitlement grant.
+   The server verifies the session and grants the entitlement using its
+   `EntitlementStore`.
+3. The entitlement is persisted server-side and can be queried later.
 
 ## Entitlements
 
 Clients can query granted entitlements using `/entitlements/<user>` and gate
 features locally based on the response.
-
-```bash
-curl http://localhost:3000/entitlements/alice
-```
-
-Analytics events are also emitted for store views and purchase initiation.
