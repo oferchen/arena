@@ -67,6 +67,12 @@ async fn webhook_handler(
     state
         .entitlements
         .grant(evt.user_id, evt.sku_id.clone());
+    if let Err(e) = state.entitlements.save(&state.entitlements_path) {
+        log::warn!("failed to save entitlements: {e}");
+        state.analytics.dispatch(Event::Error {
+            message: e.to_string(),
+        });
+    }
     state.analytics.dispatch(Event::PurchaseCompleted {
         sku: evt.sku_id,
         user: evt.user_id.to_string(),

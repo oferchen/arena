@@ -13,7 +13,7 @@ use webrtc::api::media_engine::MediaEngine;
 use webrtc::peer_connection::configuration::RTCConfiguration;
 
 use crate::test_logger::{INIT, LOGGER};
-use ::payments::{Catalog, EntitlementStore, Sku, StripeClient};
+use ::payments::{Catalog, EntitlementStore, Entitlement, MockStoreProvider, Sku, StripeClient};
 use std::sync::Arc;
 use log::LevelFilter;
 use std::path::PathBuf;
@@ -627,6 +627,63 @@ async fn stripe_webhook_rejects_invalid_signature() {
         .unwrap();
     assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
     assert!(!state.entitlements.has(user, "basic"));
+}
+
+#[tokio::test]
+async fn webhook_persists_entitlements() {
+    let cfg = SmtpConfig::default();
+    let email = Arc::new(EmailService::new(cfg.clone()).unwrap());
+    let leaderboard = ::leaderboard::LeaderboardService::new(
+        "sqlite::memory:",
+        std::path::PathBuf::from("replays"),
+    )
+    .await
+    .unwrap();
+    let rooms = room::RoomManager::new(leaderboard.clone());
+    let path = std::env::temp_dir().join(format!(
+        "entitlements-{}.json",
+        uuid::Uuid::new_v4()
+    ));
+    let state = Arc::new(AppState {
+        email,
+        rooms,
+        smtp: cfg.clone(),
+        analytics: Analytics::new(true, None, false),
+        leaderboard,
+        catalog: Catalog::new(vec![Sku {
+            id: "basic".into(),
+            price_cents: 1000,
+        }]),
+        store: Arc::new(MockStoreProvider::default()),
+        entitlements: EntitlementStore::default(),
+        entitlements_path: path.clone(),
+    });
+
+    let app = crate::payments::routes().with_state(state.clone());
+    let user = ::payments::UserId::new_v4();
+    let payload = serde_json::json!({
+        "user_id": user,
+        "sku_id": "basic"
+    })
+    .to_string();
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/webhook")
+                .header("Stripe-Signature", "test")
+                .header("content-type", "application/json")
+                .body(Body::from(payload))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    assert!(state.entitlements.has(user, "basic"));
+    let data = std::fs::read_to_string(&path).unwrap();
+    let ents: Vec<Entitlement> = serde_json::from_str(&data).unwrap();
+    assert!(ents.iter().any(|e| e.user_id == user && e.sku_id == "basic"));
+    let _ = std::fs::remove_file(path);
 }
 
 #[tokio::test]
