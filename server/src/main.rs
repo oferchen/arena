@@ -63,6 +63,8 @@ struct Config {
     shard_host: Option<String>,
     #[arg(long, env = "SCYLLA_URI")]
     database_url: Option<String>,
+    #[arg(long, env = "ARENA_CSP")]
+    csp: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -71,6 +73,7 @@ struct ResolvedConfig {
     public_url: String,
     shard_host: String,
     database_url: String,
+    csp: Option<String>,
 }
 
 impl Config {
@@ -86,6 +89,7 @@ impl Config {
             database_url: self
                 .database_url
                 .ok_or_else(|| anyhow!("SCYLLA_URI not set"))?,
+            csp: self.csp,
         })
     }
 }
@@ -502,7 +506,13 @@ async fn run(cli: Cli) -> Result<()> {
         ))
         .layer(SetResponseHeaderLayer::if_not_present(
             HeaderName::from_static("content-security-policy"),
-            HeaderValue::from_static("default-src 'self'"),
+            HeaderValue::from_str(
+                &config
+                    .csp
+                    .clone()
+                    .unwrap_or_else(|| "default-src 'self'".into()),
+            )
+            .expect("invalid content-security-policy"),
         ))
         .with_state(state.clone());
 
