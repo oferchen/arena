@@ -15,9 +15,9 @@ pub fn user_id() -> UserId {
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-pub fn fetch_entitlements() -> Result<Vec<String>, reqwest::Error> {
+pub fn fetch_entitlements(base_url: &str) -> Result<Vec<String>, reqwest::Error> {
     let user = user_id();
-    reqwest::blocking::get(format!("http://localhost:3000/entitlements/{user}"))
+    reqwest::blocking::get(format!("{base_url}/entitlements/{user}"))
         .and_then(|r| r.json::<EntitlementList>())
         .map(|e| e.entitlements)
 }
@@ -34,11 +34,11 @@ struct Claim<'a> {
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-pub fn claim_entitlement(sku: &str) -> Result<(), reqwest::Error> {
+pub fn claim_entitlement(base_url: &str, sku: &str) -> Result<(), reqwest::Error> {
     let user = user_id();
     let client = reqwest::blocking::Client::new();
     client
-        .post("http://localhost:3000/store/claim")
+        .post(format!("{base_url}/store/claim"))
         .header("X-Session", user.to_string())
         .json(&Claim { sku })
         .send()

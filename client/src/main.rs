@@ -7,7 +7,9 @@ use engine::{AppExt, EnginePlugin};
 mod entitlements;
 mod lobby;
 mod net;
+mod config;
 use entitlements::{claim_entitlement, fetch_entitlements, ensure_session};
+use config::RuntimeConfig;
 use null_module::NullModule;
 use payments::{EntitlementStore, UserId};
 use physics::PhysicsPlugin;
@@ -19,16 +21,17 @@ static ALLOC: wee_alloc::WeeAlloc = wee_alloc::WeeAlloc::INIT;
 
 #[cfg(not(target_arch = "wasm32"))]
 fn main() {
+    let config = RuntimeConfig::load();
     let enabled = std::env::var("ARENA_ANALYTICS_OPT_OUT").is_err();
     let analytics = Analytics::new(enabled, None, false);
     analytics.dispatch(Event::SessionStart);
     analytics.dispatch(Event::LevelStart { level: 1 });
     let entitlements = EntitlementStore::default();
     let user = ensure_session();
-    for sku in fetch_entitlements().unwrap_or_default() {
+    for sku in fetch_entitlements(&config.api_base_url).unwrap_or_default() {
         entitlements.grant(user, sku);
     }
-    let _ = claim_entitlement("basic");
+    let _ = claim_entitlement(&config.api_base_url, "basic");
     let _ = entitlements.has(user, "basic");
     analytics.dispatch(Event::EntitlementChecked);
 
@@ -36,6 +39,7 @@ fn main() {
     let mut app = App::new();
     app.insert_resource(Time::<Fixed>::from_seconds(1.0 / 60.0));
     app.insert_resource(analytics.clone());
+    app.insert_resource(config.clone());
     app.add_plugins(RenderPlugin)
         .add_plugins(PhysicsPlugin)
         .add_plugins(EnginePlugin)
@@ -53,6 +57,7 @@ use wasm_bindgen::prelude::*;
 #[cfg(target_arch = "wasm32")]
 #[wasm_bindgen(start)]
 pub async fn main() -> Result<(), JsValue> {
+    let config = RuntimeConfig::load();
     let enabled = std::env::var("ARENA_ANALYTICS_OPT_OUT").is_err();
     let analytics = Analytics::new(enabled, None, false);
     analytics.dispatch(Event::SessionStart);
@@ -70,6 +75,7 @@ pub async fn main() -> Result<(), JsValue> {
     let mut app = App::new();
     app.insert_resource(Time::<Fixed>::from_seconds(1.0 / 60.0));
     app.insert_resource(analytics.clone());
+    app.insert_resource(config.clone());
     app.add_plugins(RenderPlugin)
         .add_plugins(PhysicsPlugin)
         .add_plugins(EnginePlugin)
