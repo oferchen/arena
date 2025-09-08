@@ -7,7 +7,7 @@ use engine::{AppExt, EnginePlugin};
 mod entitlements;
 mod lobby;
 mod net;
-use entitlements::fetch_entitlements;
+use entitlements::{claim_entitlement, fetch_entitlements};
 use null_module::NullModule;
 use payments::{EntitlementStore, UserId};
 use physics::PhysicsPlugin;
@@ -28,6 +28,7 @@ fn main() {
     for sku in fetch_entitlements().unwrap_or_default() {
         entitlements.grant(user, sku);
     }
+    let _ = claim_entitlement("basic");
     let _ = entitlements.has(user, "basic");
     analytics.dispatch(Event::EntitlementChecked);
 
@@ -61,6 +62,7 @@ pub async fn main() -> Result<(), JsValue> {
     for sku in fetch_entitlements().await.unwrap_or_default() {
         entitlements.grant(user, sku);
     }
+    let _ = claim_entitlement("basic").await;
     let _ = entitlements.has(user, "basic");
     analytics.dispatch(Event::EntitlementChecked);
 

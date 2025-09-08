@@ -13,7 +13,7 @@ use webrtc::api::media_engine::MediaEngine;
 use webrtc::peer_connection::configuration::RTCConfiguration;
 
 use crate::test_logger::{INIT, LOGGER};
-use ::payments::{Catalog, EntitlementStore, Entitlement, MockStoreProvider, Sku, StripeClient};
+use ::payments::{Catalog, EntitlementStore, Sku};
 use std::sync::Arc;
 use log::LevelFilter;
 use std::path::PathBuf;
@@ -89,7 +89,6 @@ async fn websocket_signaling_completes_handshake() {
             id: "basic".into(),
             price_cents: 1000,
         }]),
-        store: Arc::new(StripeClient::new(String::new())),
         entitlements: EntitlementStore::default(),
         entitlements_path: PathBuf::new(),
     });
@@ -156,7 +155,6 @@ async fn websocket_signaling_invalid_sdp_logs_and_closes() {
             id: "basic".into(),
             price_cents: 1000,
         }]),
-        store: Arc::new(StripeClient::new(String::new())),
         entitlements: EntitlementStore::default(),
         entitlements_path: PathBuf::new(),
     });
@@ -216,7 +214,6 @@ async fn websocket_signaling_unexpected_binary_logs_and_closes() {
             id: "basic".into(),
             price_cents: 1000,
         }]),
-        store: Arc::new(StripeClient::new(String::new())),
         entitlements: EntitlementStore::default(),
         entitlements_path: PathBuf::new(),
     });
@@ -276,7 +273,6 @@ async fn websocket_logs_unexpected_messages_and_closes() {
             id: "basic".into(),
             price_cents: 1000,
         }]),
-        store: Arc::new(StripeClient::new(String::new())),
         entitlements: EntitlementStore::default(),
         entitlements_path: PathBuf::new(),
     });
@@ -326,7 +322,6 @@ async fn mail_test_defaults_to_from_address() {
             id: "basic".into(),
             price_cents: 1000,
         }]),
-        store: Arc::new(StripeClient::new(String::new())),
         entitlements: EntitlementStore::default(),
         entitlements_path: PathBuf::new(),
     });
@@ -364,7 +359,6 @@ async fn mail_test_accepts_user_address_query() {
             id: "basic".into(),
             price_cents: 1000,
         }]),
-        store: Arc::new(StripeClient::new(String::new())),
         entitlements: EntitlementStore::default(),
         entitlements_path: PathBuf::new(),
     });
@@ -409,7 +403,6 @@ async fn mail_test_accepts_user_address_body() {
             id: "basic".into(),
             price_cents: 1000,
         }]),
-        store: Arc::new(StripeClient::new(String::new())),
         entitlements: EntitlementStore::default(),
         entitlements_path: PathBuf::new(),
     });
@@ -453,7 +446,6 @@ async fn mail_config_redacts_password() {
             id: "basic".into(),
             price_cents: 1000,
         }]),
-        store: Arc::new(StripeClient::new(String::new())),
         entitlements: EntitlementStore::default(),
         entitlements_path: PathBuf::new(),
     });
@@ -484,7 +476,6 @@ async fn admin_mail_config_route() {
             id: "basic".into(),
             price_cents: 1000,
         }]),
-        store: Arc::new(StripeClient::new(String::new())),
         entitlements: EntitlementStore::default(),
         entitlements_path: PathBuf::new(),
     });
@@ -507,184 +498,6 @@ async fn admin_mail_config_route() {
     assert_eq!(response.status(), StatusCode::OK);
 }
 
-#[tokio::test]
-async fn stripe_webhook_accepts_valid_signature() {
-    let secret = "whsec_test";
-
-    let cfg = SmtpConfig::default();
-    let email = Arc::new(EmailService::new(cfg.clone()).unwrap());
-    let leaderboard = ::leaderboard::LeaderboardService::new(
-        "sqlite::memory:",
-        std::path::PathBuf::from("replays"),
-    )
-    .await
-    .unwrap();
-    let rooms = room::RoomManager::new(leaderboard.clone());
-    let state = Arc::new(AppState {
-        email,
-        rooms,
-        smtp: cfg.clone(),
-        analytics: Analytics::new(true, None, false),
-        leaderboard,
-        catalog: Catalog::new(vec![Sku {
-            id: "basic".into(),
-            price_cents: 1000,
-        }]),
-        store: Arc::new(StripeClient::new(secret)),
-        entitlements: EntitlementStore::default(),
-        entitlements_path: PathBuf::new(),
-    });
-
-    let app = Router::new()
-        .route("/stripe/webhook", post(stripe_webhook_handler))
-        .with_state(state.clone());
-
-    let user = ::payments::UserId::new_v4();
-    let payload = serde_json::json!({
-        "type": "checkout.session.completed",
-        "data": {"object": {"client_reference_id": user.to_string(), "metadata": {"sku": "basic"}}}
-    })
-    .to_string();
-
-    let timestamp = 12345;
-    use hmac::{Hmac, Mac};
-    use sha2::Sha256;
-    type HmacSha256 = Hmac<Sha256>;
-    let mut mac = HmacSha256::new_from_slice(secret.as_bytes()).unwrap();
-    mac.update(format!("{}.{}", timestamp, payload).as_bytes());
-    let sig = hex::encode(mac.finalize().into_bytes());
-    let header = format!("t={timestamp},v1={sig}");
-
-    let response = app
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/stripe/webhook")
-                .header("Stripe-Signature", header)
-                .header("content-type", "application/json")
-                .body(Body::from(payload))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(response.status(), StatusCode::OK);
-    assert!(state.entitlements.has(user, "basic"));
-    assert!(state.analytics.events().iter().any(|e| matches!(e, Event::PurchaseCompleted { sku, user: u } if sku == "basic" && u == &user.to_string())));
-}
-
-#[tokio::test]
-async fn stripe_webhook_rejects_invalid_signature() {
-    let secret = "whsec_test";
-
-    let cfg = SmtpConfig::default();
-    let email = Arc::new(EmailService::new(cfg.clone()).unwrap());
-    let leaderboard = ::leaderboard::LeaderboardService::new(
-        "sqlite::memory:",
-        std::path::PathBuf::from("replays"),
-    )
-    .await
-    .unwrap();
-    let rooms = room::RoomManager::new(leaderboard.clone());
-    let state = Arc::new(AppState {
-        email,
-        rooms,
-        smtp: cfg.clone(),
-        analytics: Analytics::new(true, None, false),
-        leaderboard,
-        catalog: Catalog::new(vec![Sku {
-            id: "basic".into(),
-            price_cents: 1000,
-        }]),
-        store: Arc::new(StripeClient::new(secret)),
-        entitlements: EntitlementStore::default(),
-        entitlements_path: PathBuf::new(),
-    });
-
-    let app = Router::new()
-        .route("/stripe/webhook", post(stripe_webhook_handler))
-        .with_state(state.clone());
-
-    let user = ::payments::UserId::new_v4();
-    let payload = serde_json::json!({
-        "type": "checkout.session.completed",
-        "data": {"object": {"client_reference_id": user.to_string(), "metadata": {"sku": "basic"}}}
-    })
-    .to_string();
-
-    let header = "t=12345,v1=badsignature";
-
-    let response = app
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/stripe/webhook")
-                .header("Stripe-Signature", header)
-                .header("content-type", "application/json")
-                .body(Body::from(payload))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
-    assert!(!state.entitlements.has(user, "basic"));
-}
-
-#[tokio::test]
-async fn webhook_persists_entitlements() {
-    let cfg = SmtpConfig::default();
-    let email = Arc::new(EmailService::new(cfg.clone()).unwrap());
-    let leaderboard = ::leaderboard::LeaderboardService::new(
-        "sqlite::memory:",
-        std::path::PathBuf::from("replays"),
-    )
-    .await
-    .unwrap();
-    let rooms = room::RoomManager::new(leaderboard.clone());
-    let path = std::env::temp_dir().join(format!(
-        "entitlements-{}.json",
-        uuid::Uuid::new_v4()
-    ));
-    let state = Arc::new(AppState {
-        email,
-        rooms,
-        smtp: cfg.clone(),
-        analytics: Analytics::new(true, None, false),
-        leaderboard,
-        catalog: Catalog::new(vec![Sku {
-            id: "basic".into(),
-            price_cents: 1000,
-        }]),
-        store: Arc::new(MockStoreProvider::default()),
-        entitlements: EntitlementStore::default(),
-        entitlements_path: path.clone(),
-    });
-
-    let app = crate::payments::routes().with_state(state.clone());
-    let user = ::payments::UserId::new_v4();
-    let payload = serde_json::json!({
-        "user_id": user,
-        "sku_id": "basic"
-    })
-    .to_string();
-    let response = app
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/webhook")
-                .header("Stripe-Signature", "test")
-                .header("content-type", "application/json")
-                .body(Body::from(payload))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(response.status(), StatusCode::OK);
-    assert!(state.entitlements.has(user, "basic"));
-    let data = std::fs::read_to_string(&path).unwrap();
-    let ents: Vec<Entitlement> = serde_json::from_str(&data).unwrap();
-    assert!(ents.iter().any(|e| e.user_id == user && e.sku_id == "basic"));
-    let _ = std::fs::remove_file(path);
-}
 
 #[tokio::test]
 async fn round_scores_appear_in_leaderboard() {
@@ -711,7 +524,6 @@ async fn round_scores_appear_in_leaderboard() {
             id: "basic".into(),
             price_cents: 1000,
         }]),
-        store: Arc::new(StripeClient::new(String::new())),
         entitlements: EntitlementStore::default(),
         entitlements_path: std::path::PathBuf::new(),
     });

@@ -182,7 +182,7 @@ mod tests {
         email::{EmailService, SmtpConfig},
         room,
     };
-    use ::payments::{Catalog, EntitlementStore, Sku, StripeClient};
+    use ::payments::{Catalog, EntitlementStore, Sku};
     use analytics::Analytics;
     use axum::Json;
     use axum::extract::{Path, State};
@@ -208,7 +208,6 @@ mod tests {
                 id: "basic".into(),
                 price_cents: 1000,
             }]),
-            store: Arc::new(StripeClient::new(String::new())),
             entitlements: EntitlementStore::default(),
             entitlements_path: PathBuf::new(),
         });
@@ -247,7 +246,6 @@ mod tests {
             analytics: Analytics::new(true, None, false),
             leaderboard: leaderboard.clone(),
             catalog: Catalog::new(vec![]),
-            store: Arc::new(StripeClient::new(String::new())),
             entitlements: EntitlementStore::default(),
             entitlements_path: PathBuf::new(),
         });
@@ -287,7 +285,6 @@ mod tests {
             analytics: Analytics::new(true, None, false),
             leaderboard: leaderboard.clone(),
             catalog: Catalog::new(vec![]),
-            store: Arc::new(StripeClient::new(String::new())),
             entitlements: EntitlementStore::default(),
             entitlements_path: PathBuf::new(),
         });
@@ -328,7 +325,6 @@ mod tests {
             analytics: Analytics::new(true, None, false),
             leaderboard: leaderboard.clone(),
             catalog: Catalog::new(vec![]),
-            store: Arc::new(StripeClient::new(String::new())),
             entitlements: EntitlementStore::default(),
             entitlements_path: PathBuf::new(),
         });
@@ -370,7 +366,6 @@ mod tests {
             analytics: Analytics::new(true, None, false),
             leaderboard: leaderboard.clone(),
             catalog: Catalog::new(vec![]),
-            store: Arc::new(StripeClient::new(String::new())),
             entitlements: EntitlementStore::default(),
             entitlements_path: PathBuf::new(),
         });

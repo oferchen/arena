@@ -1,4 +1,5 @@
 use payments::{EntitlementList, UserId};
+use serde::Serialize;
 
 #[cfg(not(target_arch = "wasm32"))]
 pub fn user_id() -> UserId {
@@ -19,6 +20,24 @@ pub fn fetch_entitlements() -> Result<Vec<String>, reqwest::Error> {
     reqwest::blocking::get(format!("http://localhost:3000/entitlements/{user}"))
         .and_then(|r| r.json::<EntitlementList>())
         .map(|e| e.entitlements)
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+#[derive(Serialize)]
+struct ClaimRequest<'a> {
+    sku: &'a str,
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub fn claim_entitlement(sku: &str) -> Result<(), reqwest::Error> {
+    let user = user_id();
+    let req = ClaimRequest { sku };
+    reqwest::blocking::Client::new()
+        .post("http://localhost:3000/store/claim")
+        .header("X-Session", user.to_string())
+        .json(&req)
+        .send()
+        .map(|_| ())
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -54,4 +73,32 @@ pub async fn fetch_entitlements() -> Result<Vec<String>, wasm_bindgen::JsValue> 
     let json = JsFuture::from(resp.json()?).await?;
     let list: EntitlementList = from_value(json)?;
     Ok(list.entitlements)
+}
+
+#[cfg(target_arch = "wasm32")]
+#[derive(Serialize)]
+struct ClaimRequest<'a> {
+    sku: &'a str,
+}
+
+#[cfg(target_arch = "wasm32")]
+pub async fn claim_entitlement(sku: &str) -> Result<(), wasm_bindgen::JsValue> {
+    use wasm_bindgen::JsCast;
+    use wasm_bindgen::JsValue;
+    use wasm_bindgen_futures::JsFuture;
+    use web_sys::{Request, RequestInit};
+
+    let user = user_id()?;
+    let mut opts = RequestInit::new();
+    opts.method("POST");
+    let body = serde_json::to_string(&ClaimRequest { sku })
+        .map_err(|e| JsValue::from_str(&e.to_string()))?;
+    opts.body(Some(&JsValue::from_str(&body)));
+    let request = Request::new_with_str_and_init("/store/claim", &opts)?;
+    let headers = request.headers();
+    headers.set("Content-Type", "application/json")?;
+    headers.set("X-Session", &user.to_string())?;
+    let window = web_sys::window().ok_or_else(|| JsValue::from_str("no window"))?;
+    JsFuture::from(window.fetch_with_request(&request)).await?;
+    Ok(())
 }
