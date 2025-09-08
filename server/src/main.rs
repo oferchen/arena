@@ -364,7 +364,12 @@ async fn stripe_webhook_handler(
                     &meta.sku,
                 );
                 let _ = state.leaderboard.record_purchase(user, &meta.sku).await;
-                let _ = state.entitlements.save(&state.entitlements_path);
+                if let Err(e) = state.entitlements.save(&state.entitlements_path) {
+                    log::warn!("failed to save entitlements: {e}");
+                    state.analytics.dispatch(Event::Error {
+                        message: e.to_string(),
+                    });
+                }
                 state.analytics.dispatch(Event::PurchaseCompleted {
                     sku: meta.sku.clone(),
                     user: event.data.object.client_reference_id.clone(),
