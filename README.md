@@ -74,6 +74,7 @@ Additional resources:
 
 Documentation lives under `docs/`:
 
+- [Configuration](docs/Config.md)
 - [Netcode](docs/netcode.md)
 - [Operations](docs/ops.md)
 - [Modules](docs/modules.md)
