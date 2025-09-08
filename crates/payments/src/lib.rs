@@ -5,9 +5,9 @@ use std::sync::RwLock;
 pub use uuid::Uuid as UserId;
 
 use async_trait::async_trait;
+use hex;
 use hmac::{Hmac, Mac};
 use sha2::Sha256;
-use hex;
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Sku {
@@ -89,7 +89,10 @@ impl StoreProvider for StripeClient {
             Err(_) => return false,
         };
 
-        let mut mac = Hmac::<Sha256>::new_from_slice(self.secret.as_bytes()).unwrap();
+        let mut mac = match Hmac::<Sha256>::new_from_slice(self.secret.as_bytes()) {
+            Ok(m) => m,
+            Err(_) => return false,
+        };
         mac.update(signed_payload.as_bytes());
 
         let expected = match hex::decode(sig) {
@@ -284,5 +287,19 @@ mod tests {
         store.load(&path).unwrap();
         assert_eq!(store.list(&user.to_string()).len(), 1);
         let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn verify_webhook_invalid_secret_length() {
+        let client = StripeClient::new("");
+        let signature = "t=1,v1=00";
+        assert!(!client.verify_webhook(signature, b"{}"));
+    }
+
+    #[test]
+    fn verify_webhook_malformed_signature() {
+        let client = StripeClient::new("secret");
+        let signature = "t=1,v1=zzzz";
+        assert!(!client.verify_webhook(signature, b"{}"));
     }
 }
