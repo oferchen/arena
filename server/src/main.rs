@@ -30,8 +30,6 @@ mod room;
 mod shard;
 #[cfg(test)]
 mod test_logger;
-#[cfg(test)]
-mod tests;
 use prometheus::{Encoder, TextEncoder};
 use tower_http::{services::ServeDir, set_header::SetResponseHeaderLayer};
 
@@ -435,7 +433,7 @@ async fn setup(smtp: SmtpConfig, analytics: Analytics) -> Result<AppState> {
         anyhow!(e)
     })?);
 
-    let db_url = std::env::var("DATABASE_URL").unwrap_or_else(|_| "sqlite::memory:".into());
+    let db_url = std::env::var("SCYLLA_URI").unwrap_or_else(|_| "127.0.0.1:9042".into());
     let leaderboard = ::leaderboard::LeaderboardService::new(&db_url, PathBuf::from("replays"))
         .await
         .map_err(|e| anyhow!(e))?;
