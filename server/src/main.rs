@@ -46,10 +46,10 @@ struct Cli {
     smtp: SmtpConfig,
     #[command(flatten)]
     config: Config,
-    #[arg(long, env = "POSTHOG_KEY")]
+    #[arg(long, env = "ARENA_POSTHOG_KEY")]
     posthog_key: Option<String>,
-    #[arg(long, env = "ENABLE_OTEL", default_value_t = false)]
-    enable_otel: bool,
+    #[arg(long = "metrics", env = "ARENA_METRICS_ENABLED", default_value_t = false)]
+    metrics: bool,
     #[arg(long, env = "ARENA_ANALYTICS_OPT_OUT", default_value_t = false)]
     analytics_opt_out: bool,
 }
@@ -58,12 +58,12 @@ struct Cli {
 struct Config {
     #[arg(long, env = "ARENA_BIND_ADDR")]
     bind_addr: Option<SocketAddr>,
-    #[arg(long, env = "ARENA_PUBLIC_URL")]
-    public_url: Option<String>,
-    #[arg(long, env = "ARENA_SHARD_HOST")]
-    shard_host: Option<String>,
-    #[arg(long, env = "SCYLLA_URI")]
-    database_url: Option<String>,
+    #[arg(long, env = "ARENA_PUBLIC_BASE_URL")]
+    public_base_url: Option<String>,
+    #[arg(long, env = "ARENA_SIGNALING_WS_URL")]
+    signaling_ws_url: Option<String>,
+    #[arg(long, env = "ARENA_DB_URL")]
+    db_url: Option<String>,
     #[arg(long, env = "ARENA_CSP")]
     csp: Option<String>,
 }
@@ -71,9 +71,9 @@ struct Config {
 #[derive(Debug, Clone)]
 pub struct ResolvedConfig {
     pub bind_addr: SocketAddr,
-    pub public_url: String,
-    pub shard_host: String,
-    pub database_url: String,
+    pub public_base_url: String,
+    pub signaling_ws_url: String,
+    pub db_url: String,
     pub csp: Option<String>,
 }
 
@@ -83,15 +83,15 @@ impl Config {
             bind_addr: self
                 .bind_addr
                 .ok_or_else(|| anyhow!("ARENA_BIND_ADDR not set"))?,
-            public_url: self
-                .public_url
-                .ok_or_else(|| anyhow!("ARENA_PUBLIC_URL not set"))?,
-            shard_host: self
-                .shard_host
-                .ok_or_else(|| anyhow!("ARENA_SHARD_HOST not set"))?,
-            database_url: self
-                .database_url
-                .ok_or_else(|| anyhow!("SCYLLA_URI not set"))?,
+            public_base_url: self
+                .public_base_url
+                .ok_or_else(|| anyhow!("ARENA_PUBLIC_BASE_URL not set"))?,
+            signaling_ws_url: self
+                .signaling_ws_url
+                .ok_or_else(|| anyhow!("ARENA_SIGNALING_WS_URL not set"))?,
+            db_url: self
+                .db_url
+                .ok_or_else(|| anyhow!("ARENA_DB_URL not set"))?,
             csp: self.csp,
         })
     }
@@ -424,7 +424,7 @@ async fn setup(cfg: &ResolvedConfig, smtp: SmtpConfig, analytics: Analytics) -> 
     })?);
 
     let leaderboard =
-        ::leaderboard::LeaderboardService::new(&cfg.database_url, PathBuf::from("replays"))
+        ::leaderboard::LeaderboardService::new(&cfg.db_url, PathBuf::from("replays"))
             .await
             .map_err(|e| anyhow!(e))?;
     let registry = Arc::new(shard::MemoryShardRegistry::new());
@@ -432,14 +432,14 @@ async fn setup(cfg: &ResolvedConfig, smtp: SmtpConfig, analytics: Analytics) -> 
         leaderboard.clone(),
         registry,
         "shard1".into(),
-        cfg.shard_host.clone(),
+        cfg.signaling_ws_url.clone(),
     );
     let catalog = Catalog::new(vec![Sku {
         id: "basic".to_string(),
         price_cents: 1000,
     }]);
     let db = match SessionBuilder::new()
-        .known_node(&cfg.database_url)
+        .known_node(&cfg.db_url)
         .build()
         .await
     {
@@ -469,7 +469,7 @@ async fn run(cli: Cli) -> Result<()> {
     let analytics = Analytics::new(
         !cli.analytics_opt_out,
         cli.posthog_key.clone(),
-        cli.enable_otel,
+        cli.metrics,
     );
     let smtp = cli.smtp.validate()?;
     let state = Arc::new(setup(&config, smtp, analytics).await?);
