@@ -2,19 +2,19 @@ use std::sync::Arc;
 
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::{
-    Json, Router,
     extract::{Path, Query, State},
     http::StatusCode,
     response::IntoResponse,
     routing::{get, post},
+    Json, Router,
 };
 use chrono::Utc;
 use serde::Deserialize;
 use uuid::Uuid;
 
 use ::leaderboard::{
-    LeaderboardService,
     models::{LeaderboardWindow, Run, Score},
+    LeaderboardService,
 };
 use analytics::Event;
 
@@ -185,8 +185,8 @@ mod tests {
     };
     use ::payments::{Catalog, Sku};
     use analytics::Analytics;
-    use axum::Json;
     use axum::extract::{Path, State};
+    use axum::Json;
     use leaderboard::models::LeaderboardWindow;
     use std::path::PathBuf;
 
@@ -194,6 +194,7 @@ mod tests {
         SmtpConfig {
             host: "localhost".into(),
             from: "arena@localhost".into(),
+            port: Some(25),
             ..Default::default()
         }
     }
@@ -208,11 +209,7 @@ mod tests {
             ::leaderboard::LeaderboardService::new("127.0.0.1:9042", PathBuf::from("replays"))
                 .await
                 .unwrap();
-        let rooms = room::RoomManager::new(
-            leaderboard.clone(),
-            "local".into(),
-            "localhost".into(),
-        );
+        let rooms = room::RoomManager::new(leaderboard.clone(), "local".into(), "localhost".into());
         let state = Arc::new(AppState {
             email,
             rooms,
@@ -236,13 +233,11 @@ mod tests {
 
         let status = post_run(Path(leaderboard_id), State(state.clone()), Json(payload)).await;
         assert_eq!(status, StatusCode::BAD_REQUEST);
-        assert!(
-            state
-                .leaderboard
-                .get_scores(leaderboard_id, LeaderboardWindow::AllTime)
-                .await
-                .is_empty()
-        );
+        assert!(state
+            .leaderboard
+            .get_scores(leaderboard_id, LeaderboardWindow::AllTime)
+            .await
+            .is_empty());
     }
 
     #[tokio::test]
@@ -255,11 +250,7 @@ mod tests {
             ::leaderboard::LeaderboardService::new("127.0.0.1:9042", PathBuf::from("replays"))
                 .await
                 .unwrap();
-        let rooms = room::RoomManager::new(
-            leaderboard.clone(),
-            "local".into(),
-            "localhost".into(),
-        );
+        let rooms = room::RoomManager::new(leaderboard.clone(), "local".into(), "localhost".into());
         let state = Arc::new(AppState {
             email,
             rooms,
@@ -300,11 +291,7 @@ mod tests {
             ::leaderboard::LeaderboardService::new("127.0.0.1:9042", PathBuf::from("replays"))
                 .await
                 .unwrap();
-        let rooms = room::RoomManager::new(
-            leaderboard.clone(),
-            "local".into(),
-            "localhost".into(),
-        );
+        let rooms = room::RoomManager::new(leaderboard.clone(), "local".into(), "localhost".into());
         let state = Arc::new(AppState {
             email,
             rooms,
@@ -327,13 +314,11 @@ mod tests {
 
         let status = post_run(Path(leaderboard_id), State(state.clone()), Json(payload)).await;
         assert_eq!(status, StatusCode::PAYLOAD_TOO_LARGE);
-        assert!(
-            state
-                .leaderboard
-                .get_scores(leaderboard_id, LeaderboardWindow::AllTime)
-                .await
-                .is_empty()
-        );
+        assert!(state
+            .leaderboard
+            .get_scores(leaderboard_id, LeaderboardWindow::AllTime)
+            .await
+            .is_empty());
     }
 
     #[tokio::test]
@@ -346,11 +331,7 @@ mod tests {
             ::leaderboard::LeaderboardService::new("127.0.0.1:9042", PathBuf::from("replays"))
                 .await
                 .unwrap();
-        let rooms = room::RoomManager::new(
-            leaderboard.clone(),
-            "local".into(),
-            "localhost".into(),
-        );
+        let rooms = room::RoomManager::new(leaderboard.clone(), "local".into(), "localhost".into());
         let state = Arc::new(AppState {
             email,
             rooms,
@@ -374,13 +355,11 @@ mod tests {
 
         let status = post_run(Path(leaderboard_id), State(state.clone()), Json(payload)).await;
         assert_eq!(status, StatusCode::BAD_REQUEST);
-        assert!(
-            state
-                .leaderboard
-                .get_scores(leaderboard_id, LeaderboardWindow::AllTime)
-                .await
-                .is_empty()
-        );
+        assert!(state
+            .leaderboard
+            .get_scores(leaderboard_id, LeaderboardWindow::AllTime)
+            .await
+            .is_empty());
     }
 
     #[tokio::test]
@@ -393,11 +372,7 @@ mod tests {
             ::leaderboard::LeaderboardService::new("127.0.0.1:9042", PathBuf::from("replays"))
                 .await
                 .unwrap();
-        let rooms = room::RoomManager::new(
-            leaderboard.clone(),
-            "local".into(),
-            "localhost".into(),
-        );
+        let rooms = room::RoomManager::new(leaderboard.clone(), "local".into(), "localhost".into());
         let state = Arc::new(AppState {
             email,
             rooms,

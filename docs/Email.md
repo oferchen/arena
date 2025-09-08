@@ -9,7 +9,7 @@ email.
 | Env var                 | CLI flag            | Description                               | Default |
 | ----------------------- | ------------------- | ----------------------------------------- | ------- |
 | `ARENA_SMTP_HOST`       | `--smtp-host`       | SMTP server hostname                      | -       |
-| `ARENA_SMTP_PORT`       | `--smtp-port`       | SMTP server port                          | `25`    |
+| `ARENA_SMTP_PORT`       | `--smtp-port`       | SMTP server port                          | -       |
 | `ARENA_SMTP_FROM`       | `--smtp-from`       | Sender address for all mail               | -       |
 | `ARENA_SMTP_STARTTLS`   | `--smtp-starttls`   | STARTTLS mode (`auto`, `always`, `never`) | `auto`  |
 | `ARENA_SMTP_SMTPS`      | `--smtp-smtps`      | Use SMTPS (implicit TLS)                  | `false` |
