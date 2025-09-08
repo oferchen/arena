@@ -178,23 +178,31 @@ fn verify_score(replay: &[u8]) -> Option<i32> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::payments::EntitlementStore;
     use crate::{
         email::{EmailService, SmtpConfig},
         room,
     };
     use ::payments::{Catalog, Sku};
-    use crate::payments::EntitlementStore;
     use analytics::Analytics;
     use axum::Json;
     use axum::extract::{Path, State};
     use leaderboard::models::LeaderboardWindow;
     use std::path::PathBuf;
 
+    fn smtp_cfg() -> SmtpConfig {
+        SmtpConfig {
+            host: "localhost".into(),
+            from: "arena@localhost".into(),
+            ..Default::default()
+        }
+    }
+
     #[tokio::test]
     #[ignore]
     async fn post_run_rejects_malformed_base64() {
         std::env::set_var("ARENA_REDIS_URL", "redis://127.0.0.1/");
-        let cfg = SmtpConfig::default();
+        let cfg = smtp_cfg();
         let email = Arc::new(EmailService::new(cfg.clone()).unwrap());
         let leaderboard =
             ::leaderboard::LeaderboardService::new("127.0.0.1:9042", PathBuf::from("replays"))
@@ -212,7 +220,7 @@ mod tests {
                 price_cents: 1000,
             }]),
             entitlements: EntitlementStore::default(),
-        db: None,
+            db: None,
         });
 
         let leaderboard_id = Uuid::new_v4();
@@ -237,7 +245,7 @@ mod tests {
     #[ignore]
     async fn post_run_accepts_valid_payload() {
         std::env::set_var("ARENA_REDIS_URL", "redis://127.0.0.1/");
-        let cfg = SmtpConfig::default();
+        let cfg = smtp_cfg();
         let email = Arc::new(EmailService::new(cfg.clone()).unwrap());
         let leaderboard =
             ::leaderboard::LeaderboardService::new("127.0.0.1:9042", PathBuf::from("replays"))
@@ -252,7 +260,7 @@ mod tests {
             leaderboard: leaderboard.clone(),
             catalog: Catalog::new(vec![]),
             entitlements: EntitlementStore::default(),
-        db: None,
+            db: None,
         });
 
         let leaderboard_id = Uuid::new_v4();
@@ -278,7 +286,7 @@ mod tests {
     #[ignore]
     async fn post_run_rejects_oversized_payload() {
         std::env::set_var("ARENA_REDIS_URL", "redis://127.0.0.1/");
-        let cfg = SmtpConfig::default();
+        let cfg = smtp_cfg();
         let email = Arc::new(EmailService::new(cfg.clone()).unwrap());
         let leaderboard =
             ::leaderboard::LeaderboardService::new("127.0.0.1:9042", PathBuf::from("replays"))
@@ -293,7 +301,7 @@ mod tests {
             leaderboard: leaderboard.clone(),
             catalog: Catalog::new(vec![]),
             entitlements: EntitlementStore::default(),
-        db: None,
+            db: None,
         });
 
         let leaderboard_id = Uuid::new_v4();
@@ -320,7 +328,7 @@ mod tests {
     #[ignore]
     async fn post_run_rejects_invalid_score() {
         std::env::set_var("ARENA_REDIS_URL", "redis://127.0.0.1/");
-        let cfg = SmtpConfig::default();
+        let cfg = smtp_cfg();
         let email = Arc::new(EmailService::new(cfg.clone()).unwrap());
         let leaderboard =
             ::leaderboard::LeaderboardService::new("127.0.0.1:9042", PathBuf::from("replays"))
@@ -335,7 +343,7 @@ mod tests {
             leaderboard: leaderboard.clone(),
             catalog: Catalog::new(vec![]),
             entitlements: EntitlementStore::default(),
-        db: None,
+            db: None,
         });
 
         let leaderboard_id = Uuid::new_v4();
@@ -363,7 +371,7 @@ mod tests {
     #[ignore]
     async fn verify_endpoint_marks_score_verified() {
         std::env::set_var("ARENA_REDIS_URL", "redis://127.0.0.1/");
-        let cfg = SmtpConfig::default();
+        let cfg = smtp_cfg();
         let email = Arc::new(EmailService::new(cfg.clone()).unwrap());
         let leaderboard =
             ::leaderboard::LeaderboardService::new("127.0.0.1:9042", PathBuf::from("replays"))
@@ -378,7 +386,7 @@ mod tests {
             leaderboard: leaderboard.clone(),
             catalog: Catalog::new(vec![]),
             entitlements: EntitlementStore::default(),
-        db: None,
+            db: None,
         });
 
         let leaderboard_id = Uuid::new_v4();

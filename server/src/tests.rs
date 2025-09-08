@@ -26,6 +26,14 @@ async fn leaderboard_service() -> ::leaderboard::LeaderboardService {
         .unwrap()
 }
 
+fn smtp_cfg() -> SmtpConfig {
+    SmtpConfig {
+        host: "localhost".into(),
+        from: "arena@localhost".into(),
+        ..Default::default()
+    }
+}
+
 #[tokio::test]
     async fn setup_succeeds_without_env_vars() {
         unsafe {
@@ -39,52 +47,72 @@ async fn leaderboard_service() -> ::leaderboard::LeaderboardService {
             shard_host: "127.0.0.1".into(),
             database_url: "127.0.0.1:9042".into(),
         };
-        assert!(setup(&cfg, SmtpConfig::default(), analytics).await.is_ok());
+        assert!(setup(&cfg, smtp_cfg(), analytics).await.is_ok());
     }
 
 #[test]
 fn cli_overrides_env() {
     unsafe {
         env::set_var("ARENA_SMTP_HOST", "envhost");
+        env::set_var("ARENA_SMTP_FROM", "envfrom@example.com");
     }
     let cli = Cli::try_parse_from(["prog", "--smtp-host", "clihost"]).unwrap();
     assert_eq!(cli.smtp.host, "clihost");
+    cli.smtp.validate().unwrap();
     unsafe {
         env::remove_var("ARENA_SMTP_HOST");
+        env::remove_var("ARENA_SMTP_FROM");
     }
 }
 
 #[test]
 fn env_used_when_no_cli() {
     unsafe {
+        env::set_var("ARENA_SMTP_HOST", "envhost");
+        env::set_var("ARENA_SMTP_FROM", "envfrom@example.com");
         env::set_var("ARENA_SMTP_PORT", "2525");
     }
     let cli = Cli::try_parse_from(["prog"]).unwrap();
     assert_eq!(cli.smtp.port, 2525);
+    cli.smtp.validate().unwrap();
     unsafe {
+        env::remove_var("ARENA_SMTP_HOST");
+        env::remove_var("ARENA_SMTP_FROM");
         env::remove_var("ARENA_SMTP_PORT");
     }
 }
 
 #[test]
 fn invalid_starttls_cli_value_errors() {
+    unsafe {
+        env::set_var("ARENA_SMTP_HOST", "envhost");
+        env::set_var("ARENA_SMTP_FROM", "envfrom@example.com");
+    }
     assert!(Cli::try_parse_from(["prog", "--smtp-starttls", "bogus"]).is_err());
+    unsafe {
+        env::remove_var("ARENA_SMTP_HOST");
+        env::remove_var("ARENA_SMTP_FROM");
+    }
 }
 
 #[test]
 fn invalid_starttls_env_value_errors() {
     unsafe {
+        env::set_var("ARENA_SMTP_HOST", "envhost");
+        env::set_var("ARENA_SMTP_FROM", "envfrom@example.com");
         env::set_var("ARENA_SMTP_STARTTLS", "bogus");
     }
     assert!(Cli::try_parse_from(["prog"]).is_err());
     unsafe {
+        env::remove_var("ARENA_SMTP_HOST");
+        env::remove_var("ARENA_SMTP_FROM");
         env::remove_var("ARENA_SMTP_STARTTLS");
     }
 }
 
 #[tokio::test]
 async fn websocket_signaling_completes_handshake() {
-    let cfg = SmtpConfig::default();
+    let cfg = smtp_cfg();
     let email = Arc::new(EmailService::new(cfg.clone()).unwrap());
     let leaderboard = leaderboard_service().await;
     let rooms = room::RoomManager::new(leaderboard.clone());
@@ -145,7 +173,7 @@ async fn websocket_signaling_invalid_sdp_logs_and_closes() {
     log::set_max_level(LevelFilter::Warn);
     LOGGER.messages.lock().unwrap().clear();
 
-    let cfg = SmtpConfig::default();
+    let cfg = smtp_cfg();
     let email = Arc::new(EmailService::new(cfg.clone()).unwrap());
     let leaderboard = leaderboard_service().await;
     let rooms = room::RoomManager::new(leaderboard.clone());
@@ -199,7 +227,7 @@ async fn websocket_signaling_unexpected_binary_logs_and_closes() {
     log::set_max_level(LevelFilter::Warn);
     LOGGER.messages.lock().unwrap().clear();
 
-    let cfg = SmtpConfig::default();
+    let cfg = smtp_cfg();
     let email = Arc::new(EmailService::new(cfg.clone()).unwrap());
     let leaderboard = leaderboard_service().await;
     let rooms = room::RoomManager::new(leaderboard.clone());
@@ -253,7 +281,7 @@ async fn websocket_logs_unexpected_messages_and_closes() {
     log::set_max_level(LevelFilter::Warn);
     LOGGER.messages.lock().unwrap().clear();
 
-    let cfg = SmtpConfig::default();
+    let cfg = smtp_cfg();
     let email = Arc::new(EmailService::new(cfg.clone()).unwrap());
     let leaderboard = leaderboard_service().await;
     let rooms = room::RoomManager::new(leaderboard.clone());
@@ -296,7 +324,7 @@ async fn websocket_logs_unexpected_messages_and_closes() {
 #[tokio::test]
 #[serial]
 async fn mail_test_defaults_to_from_address() {
-    let mut cfg = SmtpConfig::default();
+    let mut cfg = smtp_cfg();
     cfg.from = "default@example.com".into();
     let email = Arc::new(EmailService::new(cfg.clone()).unwrap());
     let leaderboard = leaderboard_service().await;
@@ -328,7 +356,7 @@ async fn mail_test_defaults_to_from_address() {
 #[tokio::test]
 #[serial]
 async fn mail_test_accepts_user_address_query() {
-    let mut cfg = SmtpConfig::default();
+    let mut cfg = smtp_cfg();
     cfg.from = "query@example.com".into();
     let email = Arc::new(EmailService::new(cfg.clone()).unwrap());
     let leaderboard = leaderboard_service().await;
@@ -367,7 +395,7 @@ async fn mail_test_accepts_user_address_query() {
 #[tokio::test]
 #[serial]
 async fn mail_test_accepts_user_address_body() {
-    let mut cfg = SmtpConfig::default();
+    let mut cfg = smtp_cfg();
     cfg.from = "body@example.com".into();
     let email = Arc::new(EmailService::new(cfg.clone()).unwrap());
     let leaderboard = leaderboard_service().await;
@@ -405,7 +433,7 @@ async fn mail_test_accepts_user_address_body() {
 
 #[tokio::test]
 async fn mail_config_redacts_password() {
-    let mut cfg = SmtpConfig::default();
+    let mut cfg = smtp_cfg();
     cfg.pass = Some("secret".into());
     let email = Arc::new(EmailService::new(cfg.clone()).unwrap());
     let leaderboard = leaderboard_service().await;
@@ -431,7 +459,7 @@ async fn mail_config_redacts_password() {
 
 #[tokio::test]
 async fn admin_mail_config_route() {
-    let cfg = SmtpConfig::default();
+    let cfg = smtp_cfg();
     let email = Arc::new(EmailService::new(cfg.clone()).unwrap());
     let leaderboard = leaderboard_service().await;
     let rooms = room::RoomManager::new(leaderboard.clone());
@@ -473,7 +501,7 @@ async fn round_scores_appear_in_leaderboard() {
     use ::leaderboard::models::Score;
     use std::time::Duration;
 
-    let cfg = SmtpConfig::default();
+    let cfg = smtp_cfg();
     let email = Arc::new(EmailService::new(cfg.clone()).unwrap());
     let leaderboard = leaderboard_service().await;
     let rooms = room::RoomManager::new(leaderboard.clone());

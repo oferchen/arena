@@ -6,16 +6,16 @@ email.
 
 ## Environment variables and CLI flags
 
-| Env var                 | CLI flag            | Description                               | Default           |
-| ----------------------- | ------------------- | ----------------------------------------- | ----------------- |
-| `ARENA_SMTP_HOST`       | `--smtp-host`       | SMTP server hostname                      | `localhost`       |
-| `ARENA_SMTP_PORT`       | `--smtp-port`       | SMTP server port                          | `25`              |
-| `ARENA_SMTP_FROM`       | `--smtp-from`       | Sender address for all mail               | `arena@localhost` |
-| `ARENA_SMTP_STARTTLS`   | `--smtp-starttls`   | STARTTLS mode (`auto`, `always`, `never`) | `auto`            |
-| `ARENA_SMTP_SMTPS`      | `--smtp-smtps`      | Use SMTPS (implicit TLS)                  | `false`           |
-| `ARENA_SMTP_USER`       | `--smtp-user`       | SMTP username                             | -                 |
-| `ARENA_SMTP_PASS`       | `--smtp-pass`       | SMTP password                             | -                 |
-| `ARENA_SMTP_TIMEOUT_MS` | `--smtp-timeout-ms` | Connection timeout in milliseconds        | `10000`           |
+| Env var                 | CLI flag            | Description                               | Default |
+| ----------------------- | ------------------- | ----------------------------------------- | ------- |
+| `ARENA_SMTP_HOST`       | `--smtp-host`       | SMTP server hostname                      | -       |
+| `ARENA_SMTP_PORT`       | `--smtp-port`       | SMTP server port                          | `25`    |
+| `ARENA_SMTP_FROM`       | `--smtp-from`       | Sender address for all mail               | -       |
+| `ARENA_SMTP_STARTTLS`   | `--smtp-starttls`   | STARTTLS mode (`auto`, `always`, `never`) | `auto`  |
+| `ARENA_SMTP_SMTPS`      | `--smtp-smtps`      | Use SMTPS (implicit TLS)                  | `false` |
+| `ARENA_SMTP_USER`       | `--smtp-user`       | SMTP username                             | -       |
+| `ARENA_SMTP_PASS`       | `--smtp-pass`       | SMTP password                             | -       |
+| `ARENA_SMTP_TIMEOUT_MS` | `--smtp-timeout-ms` | Connection timeout in milliseconds        | `10000` |
 
 ## Authentication
 

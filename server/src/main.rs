@@ -4,7 +4,6 @@ use anyhow::{Result, anyhow};
 
 use crate::email::{EmailService, SmtpConfig, StartTls};
 use ::payments::{Catalog, EntitlementList, Sku, UserId};
-use payments::EntitlementStore;
 use analytics::{Analytics, Event};
 use axum::{
     Router,
@@ -13,8 +12,8 @@ use axum::{
         ws::{Message, WebSocket, WebSocketUpgrade},
     },
     http::{
-        header::{CACHE_CONTROL, SET_COOKIE},
         HeaderMap, HeaderName, HeaderValue, StatusCode,
+        header::{CACHE_CONTROL, SET_COOKIE},
     },
     response::IntoResponse,
     routing::{get, get_service, post},
@@ -22,17 +21,18 @@ use axum::{
 use clap::Parser;
 use email_address::EmailAddress;
 use net::server::ServerConnector;
+use payments::EntitlementStore;
+use scylla::{Session, SessionBuilder};
 use serde::{Deserialize, Serialize};
 use webrtc::peer_connection::sdp::sdp_type::RTCSdpType;
 use webrtc::peer_connection::sdp::session_description::RTCSessionDescription;
-use scylla::{Session, SessionBuilder};
 
 mod auth;
 mod email;
 mod leaderboard;
+mod payments;
 mod room;
 mod shard;
-mod payments;
 #[cfg(test)]
 mod test_logger;
 use prometheus::{Encoder, TextEncoder};
@@ -409,14 +409,16 @@ async fn shutdown_signal() {
 }
 
 async fn setup(cfg: &ResolvedConfig, smtp: SmtpConfig, analytics: Analytics) -> Result<AppState> {
+    let smtp = smtp.validate()?;
     let email = Arc::new(EmailService::new(smtp.clone()).map_err(|e| {
         log::error!("failed to initialize email service: {e}");
         anyhow!(e)
     })?);
 
-    let leaderboard = ::leaderboard::LeaderboardService::new(&cfg.database_url, PathBuf::from("replays"))
-        .await
-        .map_err(|e| anyhow!(e))?;
+    let leaderboard =
+        ::leaderboard::LeaderboardService::new(&cfg.database_url, PathBuf::from("replays"))
+            .await
+            .map_err(|e| anyhow!(e))?;
     let registry = Arc::new(shard::MemoryShardRegistry::new());
     let rooms = room::RoomManager::with_registry(
         leaderboard.clone(),
@@ -461,7 +463,7 @@ async fn run(cli: Cli) -> Result<()> {
         cli.posthog_key.clone(),
         cli.enable_otel,
     );
-    let smtp = cli.smtp;
+    let smtp = cli.smtp.validate()?;
     let state = Arc::new(setup(&config, smtp, analytics).await?);
 
     let assets_service =
@@ -502,10 +504,12 @@ async fn run(cli: Cli) -> Result<()> {
         ))
         .with_state(state.clone());
 
-    let listener = tokio::net::TcpListener::bind(config.bind_addr).await.map_err(|e| {
-        log::error!("failed to bind to address: {e}");
-        e
-    })?;
+    let listener = tokio::net::TcpListener::bind(config.bind_addr)
+        .await
+        .map_err(|e| {
+            log::error!("failed to bind to address: {e}");
+            e
+        })?;
 
     let res = axum::serve(listener, app)
         .with_graceful_shutdown(shutdown_signal())
