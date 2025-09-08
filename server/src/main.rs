@@ -42,12 +42,51 @@ use tower_http::{services::ServeDir, set_header::SetResponseHeaderLayer};
 struct Cli {
     #[command(flatten)]
     smtp: SmtpConfig,
+    #[command(flatten)]
+    config: Config,
     #[arg(long, env = "POSTHOG_KEY")]
     posthog_key: Option<String>,
     #[arg(long, env = "ENABLE_OTEL", default_value_t = false)]
     enable_otel: bool,
     #[arg(long, env = "ARENA_ANALYTICS_OPT_OUT", default_value_t = false)]
     analytics_opt_out: bool,
+}
+
+#[derive(Parser, Debug, Clone)]
+struct Config {
+    #[arg(long, env = "ARENA_BIND_ADDR", default_value = "0.0.0.0:3000")]
+    bind_addr: SocketAddr,
+    #[arg(long, env = "ARENA_PUBLIC_URL")]
+    public_url: Option<String>,
+    #[arg(long, env = "ARENA_SHARD_HOST")]
+    shard_host: Option<String>,
+    #[arg(long, env = "SCYLLA_URI")]
+    database_url: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+struct ResolvedConfig {
+    bind_addr: SocketAddr,
+    public_url: String,
+    shard_host: String,
+    database_url: String,
+}
+
+impl Config {
+    fn resolve(self) -> Result<ResolvedConfig> {
+        Ok(ResolvedConfig {
+            bind_addr: self.bind_addr,
+            public_url: self
+                .public_url
+                .ok_or_else(|| anyhow!("ARENA_PUBLIC_URL not set"))?,
+            shard_host: self
+                .shard_host
+                .ok_or_else(|| anyhow!("ARENA_SHARD_HOST not set"))?,
+            database_url: self
+                .database_url
+                .ok_or_else(|| anyhow!("SCYLLA_URI not set"))?,
+        })
+    }
 }
 
 #[derive(Clone)]
@@ -369,14 +408,13 @@ async fn shutdown_signal() {
     }
 }
 
-async fn setup(smtp: SmtpConfig, analytics: Analytics) -> Result<AppState> {
+async fn setup(cfg: &ResolvedConfig, smtp: SmtpConfig, analytics: Analytics) -> Result<AppState> {
     let email = Arc::new(EmailService::new(smtp.clone()).map_err(|e| {
         log::error!("failed to initialize email service: {e}");
         anyhow!(e)
     })?);
 
-    let db_url = std::env::var("SCYLLA_URI").unwrap_or_else(|_| "127.0.0.1:9042".into());
-    let leaderboard = ::leaderboard::LeaderboardService::new(&db_url, PathBuf::from("replays"))
+    let leaderboard = ::leaderboard::LeaderboardService::new(&cfg.database_url, PathBuf::from("replays"))
         .await
         .map_err(|e| anyhow!(e))?;
     let registry = Arc::new(shard::MemoryShardRegistry::new());
@@ -384,14 +422,14 @@ async fn setup(smtp: SmtpConfig, analytics: Analytics) -> Result<AppState> {
         leaderboard.clone(),
         registry,
         "shard1".into(),
-        "127.0.0.1".into(),
+        cfg.shard_host.clone(),
     );
     let catalog = Catalog::new(vec![Sku {
         id: "basic".to_string(),
         price_cents: 1000,
     }]);
     let db = match SessionBuilder::new()
-        .known_node("127.0.0.1:9042")
+        .known_node(&cfg.database_url)
         .build()
         .await
     {
@@ -416,13 +454,15 @@ async fn setup(smtp: SmtpConfig, analytics: Analytics) -> Result<AppState> {
 }
 
 async fn run(cli: Cli) -> Result<()> {
+    let config = cli.config.resolve()?;
+    log::info!("Using config: {:?}", config);
     let analytics = Analytics::new(
         !cli.analytics_opt_out,
         cli.posthog_key.clone(),
         cli.enable_otel,
     );
     let smtp = cli.smtp;
-    let state = Arc::new(setup(smtp, analytics).await?);
+    let state = Arc::new(setup(&config, smtp, analytics).await?);
 
     let assets_service =
         get_service(ServeDir::new("assets")).layer(SetResponseHeaderLayer::if_not_present(
@@ -462,8 +502,7 @@ async fn run(cli: Cli) -> Result<()> {
         ))
         .with_state(state.clone());
 
-    let addr = SocketAddr::from(([0, 0, 0, 0], 3000));
-    let listener = tokio::net::TcpListener::bind(addr).await.map_err(|e| {
+    let listener = tokio::net::TcpListener::bind(config.bind_addr).await.map_err(|e| {
         log::error!("failed to bind to address: {e}");
         e
     })?;
