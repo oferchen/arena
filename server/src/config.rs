@@ -1,24 +1,30 @@
-use axum::Json;
+use axum::{extract::Extension, Json};
 use serde::Serialize;
 use std::collections::HashMap;
+
+use crate::ResolvedConfig;
 
 /// Public configuration returned to clients.
 #[derive(Serialize)]
 pub struct ConfigResponse {
-    /// WebSocket signaling path
-    pub signaling_path: String,
+    /// WebSocket signaling URL
+    pub signal_url: String,
     /// Base URL for API requests
     pub api_base_url: String,
     /// Feature flags exposed to the client
     pub feature_flags: HashMap<String, bool>,
+    /// ICE servers used for establishing peer connections
+    #[serde(default)]
+    pub ice_servers: Vec<String>,
 }
 
 /// HTTP handler that returns public configuration as JSON.
-pub async fn get_config() -> Json<ConfigResponse> {
+pub async fn get_config(Extension(cfg): Extension<ResolvedConfig>) -> Json<ConfigResponse> {
     let cfg = ConfigResponse {
-        signaling_path: "/signal".to_string(),
-        api_base_url: "/".to_string(),
+        signal_url: format!("{}/signal", cfg.public_url),
+        api_base_url: cfg.public_url.clone(),
         feature_flags: HashMap::new(),
+        ice_servers: Vec::new(),
     };
     Json(cfg)
 }
