@@ -1,9 +1,9 @@
 use std::sync::Arc;
 use std::sync::RwLock;
 
+use ::payments::{Entitlement, UserId};
 use chrono::Utc;
 use scylla::{IntoTypedRows, Session};
-use ::payments::{Entitlement, UserId};
 
 #[derive(Clone, Default)]
 pub struct EntitlementStore {
@@ -19,12 +19,21 @@ impl EntitlementStore {
         }
     }
 
+    #[cfg(test)]
+    fn inner(&self) -> Arc<RwLock<Vec<Entitlement>>> {
+        self.inner.clone()
+    }
+
     pub async fn grant(&self, user_id: UserId, sku_id: String) {
         if let Some(db) = &self.db {
-            let query = "INSERT INTO entitlements_by_user (user_id, sku_id, granted_at) VALUES (?, ?, ?)";
+            let query =
+                "INSERT INTO entitlements_by_user (user_id, sku_id, granted_at) VALUES (?, ?, ?)";
             let _ = db.query(query, (user_id, sku_id.clone(), Utc::now())).await;
         }
-        let mut inner = self.inner.write().unwrap();
+        let mut inner = match self.inner.write() {
+            Ok(inner) => inner,
+            Err(e) => e.into_inner(),
+        };
         if inner
             .iter()
             .any(|e| e.user_id == user_id && e.sku_id == sku_id)
@@ -52,13 +61,55 @@ impl EntitlementStore {
                 }
             }
         }
-        self
-            .inner
-            .read()
-            .unwrap()
+        let inner = match self.inner.read() {
+            Ok(inner) => inner,
+            Err(e) => e.into_inner(),
+        };
+        inner
             .iter()
             .filter(|e| e.user_id.to_string() == user_id)
             .map(|e| e.sku_id.clone())
             .collect()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn grant_recovers_from_poison() {
+        let store = EntitlementStore::new(None);
+
+        let inner = store.inner();
+        let inner_clone = inner.clone();
+        let _ = std::thread::spawn(move || {
+            let _guard = inner_clone.write().unwrap();
+            panic!("poison");
+        })
+        .join();
+
+        let user = UserId::new_v4();
+        store.grant(user, "sku".to_string()).await;
+        let list = store.list(&user.to_string()).await;
+        assert_eq!(list, vec!["sku".to_string()]);
+    }
+
+    #[tokio::test]
+    async fn list_recovers_from_poison() {
+        let store = EntitlementStore::new(None);
+        let user = UserId::new_v4();
+        store.grant(user, "sku".to_string()).await;
+
+        let inner = store.inner();
+        let inner_clone = inner.clone();
+        let _ = std::thread::spawn(move || {
+            let _guard = inner_clone.write().unwrap();
+            panic!("poison");
+        })
+        .join();
+
+        let list = store.list(&user.to_string()).await;
+        assert_eq!(list, vec!["sku".to_string()]);
     }
 }
