@@ -4,9 +4,9 @@ use sea_orm::entity::prelude::*;
 #[sea_orm(table_name = "players")]
 pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
-    pub id: Uuid,
+    pub id: String,
     pub handle: String,
-    pub region: String,
+    pub region: Option<String>,
     pub created_at: DateTimeUtc,
 }
 

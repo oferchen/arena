@@ -1,21 +1,21 @@
 use std::{collections::HashMap, net::SocketAddr, path::PathBuf, sync::Arc};
 
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 
 use crate::email::{EmailService, SmtpConfig, StartTls};
 use analytics::{Analytics, Event};
 use axum::{
+    Extension, Router,
     extract::{
-        ws::{Message, WebSocket, WebSocketUpgrade},
         Json, Path, Query, State,
+        ws::{Message, WebSocket, WebSocketUpgrade},
     },
     http::{
-        header::{CACHE_CONTROL, SET_COOKIE},
         HeaderMap, HeaderName, HeaderValue, StatusCode,
+        header::{CACHE_CONTROL, SET_COOKIE},
     },
     response::IntoResponse,
     routing::{get, get_service, post},
-    Extension, Router,
 };
 use clap::Parser;
 use email_address::EmailAddress;
@@ -518,9 +518,9 @@ async fn guest_handler(State(state): State<Arc<AppState>>) -> impl IntoResponse 
     let id = uuid::Uuid::new_v4();
     if let Some(db) = &state.db {
         let active = players::ActiveModel {
-            id: Set(id),
+            id: Set(id.to_string()),
             handle: Set(String::new()),
-            region: Set(String::new()),
+            region: Set(None),
             created_at: Set(chrono::Utc::now()),
         };
         let _ = active.insert(db).await;

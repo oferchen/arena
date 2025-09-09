@@ -7,8 +7,9 @@ pub mod login_tokens {
     pub struct Model {
         #[sea_orm(primary_key, auto_increment = false)]
         pub token: String,
-        pub player: Uuid,
+        pub player_id: String,
         pub created_at: DateTimeUtc,
+        pub expires_at: DateTimeUtc,
     }
     #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
     pub enum Relation {}
@@ -36,7 +37,7 @@ pub mod runs {
         #[sea_orm(primary_key, auto_increment = false)]
         pub id: Uuid,
         pub leaderboard: Uuid,
-        pub player_id: Uuid,
+        pub player_id: String,
         pub replay_path: String,
         pub created_at: DateTimeUtc,
         pub flagged: bool,
@@ -64,7 +65,7 @@ pub mod scores {
         pub id: Uuid,
         pub run: Uuid,
         pub leaderboard: Uuid,
-        pub player_id: Uuid,
+        pub player_id: String,
         pub points: i32,
         pub created_at: DateTimeUtc,
         pub verified: bool,
@@ -92,7 +93,7 @@ pub mod entitlements {
     #[sea_orm(table_name = "entitlements")]
     pub struct Model {
         #[sea_orm(primary_key, auto_increment = false)]
-        pub player: Uuid,
+        pub player_id: String,
         #[sea_orm(primary_key, auto_increment = false)]
         pub sku: String,
         pub granted_at: DateTimeUtc,
@@ -109,7 +110,7 @@ pub mod purchases {
     pub struct Model {
         #[sea_orm(primary_key, auto_increment = false)]
         pub id: Uuid,
-        pub player: Uuid,
+        pub player_id: String,
         pub sku: String,
         pub created_at: DateTimeUtc,
     }
@@ -140,7 +141,7 @@ pub mod analytics_events {
     pub struct Model {
         #[sea_orm(primary_key, auto_increment = false)]
         pub ts: DateTimeUtc,
-        pub player_id: Option<Uuid>,
+        pub player_id: Option<String>,
         pub session_id: Option<Uuid>,
         pub kind: String,
         pub payload_json: Option<JsonValue>,

@@ -392,14 +392,14 @@ impl Analytics {
 }
 
 mod events {
-    use sea_orm::{entity::prelude::*, JsonValue};
+    use sea_orm::{JsonValue, entity::prelude::*};
 
     #[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
     #[sea_orm(table_name = "analytics_events")]
     pub struct Model {
         #[sea_orm(primary_key, auto_increment = false)]
         pub ts: DateTimeUtc,
-        pub player_id: Option<Uuid>,
+        pub player_id: Option<String>,
         pub session_id: Option<Uuid>,
         pub kind: String,
         pub payload_json: Option<JsonValue>,
