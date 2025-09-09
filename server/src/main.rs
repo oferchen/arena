@@ -635,7 +635,9 @@ async fn run(cli: Cli) -> Result<()> {
         log_level: _,
     } = cli;
     if let Some(url) = &posthog_url {
-        std::env::set_var("POSTHOG_ENDPOINT", url);
+        unsafe {
+            std::env::set_var("POSTHOG_ENDPOINT", url);
+        }
     }
     let mut config = config.resolve()?;
     config.analytics_enabled =
@@ -645,7 +647,9 @@ async fn run(cli: Cli) -> Result<()> {
     config.posthog_url = posthog_url;
     config.analytics_otlp_endpoint = analytics_otlp_endpoint;
     if let Some(addr) = config.analytics_otlp_endpoint {
-        std::env::set_var("OTEL_EXPORTER_OTLP_ENDPOINT", format!("http://{}", addr));
+        unsafe {
+            std::env::set_var("OTEL_EXPORTER_OTLP_ENDPOINT", format!("http://{}", addr));
+        }
     }
     tracing::info!("Using config: {:?}", config);
     let state = Arc::new(setup(&config, smtp, posthog_key.clone()).await?);
@@ -745,7 +749,9 @@ async fn main() {
     let cli = Cli::parse();
     if std::env::var("RUST_LOG").is_err() {
         if let Some(level) = &cli.log_level {
-            std::env::set_var("RUST_LOG", level);
+            unsafe {
+                std::env::set_var("RUST_LOG", level);
+            }
         }
     }
     if std::env::var("ARENA_JSON_LOGS").is_ok() {

@@ -305,6 +305,7 @@ impl Analytics {
                     session_id: Set(None),
                     kind: Set(event.name().to_string()),
                     payload_json: Set(payload),
+                    ..Default::default()
                 });
             }
             events::Entity::insert_many(models).exec(db).await?;
@@ -400,7 +401,8 @@ mod events {
     #[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
     #[sea_orm(table_name = "analytics_events")]
     pub struct Model {
-        #[sea_orm(primary_key, auto_increment = false)]
+        #[sea_orm(primary_key)]
+        pub id: i64,
         pub ts: DateTimeUtc,
         pub player_id: Option<String>,
         pub session_id: Option<Uuid>,
