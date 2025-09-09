@@ -49,6 +49,12 @@ These enable cross-origin isolation required by the client.
 
 For deployment and operational details, consult the [Operations guide](docs/ops.md).
 
+### Configuration
+
+The server reads environment variables prefixed with `ARENA_` or the
+corresponding CLI flags. Set `ARENA_REPLAYS_DIR` (or `--replays-dir`) to change
+the directory used for storing match replays. The default is `replays/`.
+
 ## Development
 
 Run Prettier before committing changes:

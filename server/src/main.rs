@@ -77,6 +77,8 @@ struct Config {
     static_dir: Option<PathBuf>,
     #[arg(long, env = "ARENA_ASSETS_DIR")]
     assets_dir: Option<PathBuf>,
+    #[arg(long, env = "ARENA_REPLAYS_DIR")]
+    replays_dir: Option<PathBuf>,
     #[arg(long, env = "ARENA_ENABLE_SW", default_value_t = false)]
     enable_sw: bool,
     #[arg(long, env = "ARENA_CSP")]
@@ -133,6 +135,7 @@ pub struct ResolvedConfig {
     pub enable_coop_coep: bool,
     pub static_dir: PathBuf,
     pub assets_dir: PathBuf,
+    pub replays_dir: PathBuf,
     pub enable_sw: bool,
     pub csp: Option<String>,
     pub ice_servers: Vec<IceServerConfig>,
@@ -181,6 +184,9 @@ impl Config {
             assets_dir: self
                 .assets_dir
                 .ok_or_else(|| anyhow!("ARENA_ASSETS_DIR not set"))?,
+            replays_dir: self
+                .replays_dir
+                .unwrap_or_else(|| PathBuf::from("replays")),
             enable_sw: self.enable_sw,
             csp: self.csp,
             ice_servers,
@@ -560,9 +566,10 @@ async fn setup(
         anyhow!(e)
     })?);
 
-    let leaderboard = ::leaderboard::LeaderboardService::new(&cfg.db_url, PathBuf::from("replays"))
-        .await
-        .map_err(|e| anyhow!(e))?;
+    let leaderboard =
+        ::leaderboard::LeaderboardService::new(&cfg.db_url, cfg.replays_dir.clone())
+            .await
+            .map_err(|e| anyhow!(e))?;
     let registry = Arc::new(shard::MemoryShardRegistry::new());
     let rooms = room::RoomManager::with_registry(
         leaderboard.clone(),
