@@ -1,39 +1,41 @@
 use chrono::{DateTime, Utc};
-use sea_orm::{QueryFilter, entity::prelude::*, ActiveValue::Set};
+use sea_orm::{ActiveValue::Set, DbErr, QueryFilter, entity::prelude::*};
 
 pub async fn insert_otp(
     db: &DatabaseConnection,
     email_hash: &str,
     code: &str,
     expires_at: DateTime<Utc>,
-) {
+) -> Result<(), DbErr> {
     let active = email_otps::ActiveModel {
         email_hash: Set(email_hash.to_owned()),
         code: Set(code.to_owned()),
         expires_at: Set(expires_at.into()),
     };
-    let _ = email_otps::Entity::insert(active).exec(db).await;
+    email_otps::Entity::insert(active).exec(db).await?;
+    Ok(())
 }
 
 pub async fn fetch_otp(
     db: &DatabaseConnection,
     email_hash: &str,
-) -> Option<(String, DateTime<Utc>)> {
-    if let Ok(Some(row)) = email_otps::Entity::find()
+) -> Result<Option<(String, DateTime<Utc>)>, DbErr> {
+    if let Some(row) = email_otps::Entity::find()
         .filter(email_otps::Column::EmailHash.eq(email_hash))
         .one(db)
-        .await
+        .await?
     {
-        return Some((row.code, row.expires_at.into()));
+        return Ok(Some((row.code, row.expires_at.into())));
     }
-    None
+    Ok(None)
 }
 
-pub async fn delete_otp(db: &DatabaseConnection, email_hash: &str) {
-    let _ = email_otps::Entity::delete_many()
+pub async fn delete_otp(db: &DatabaseConnection, email_hash: &str) -> Result<(), DbErr> {
+    email_otps::Entity::delete_many()
         .filter(email_otps::Column::EmailHash.eq(email_hash))
         .exec(db)
-        .await;
+        .await?;
+    Ok(())
 }
 
 mod email_otps {
