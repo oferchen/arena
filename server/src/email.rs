@@ -20,7 +20,7 @@ use prometheus::{
 use serde::Serialize;
 use std::collections::HashMap;
 use std::fmt;
-use std::sync::Mutex;
+use std::sync::{atomic::{AtomicUsize, Ordering}, Mutex};
 use std::time::{Duration, Instant};
 use thiserror::Error;
 use tokio::sync::mpsc::{self, UnboundedSender};
@@ -127,7 +127,11 @@ impl SmtpConfig {
 
 static RATE_LIMITS: Lazy<Mutex<HashMap<String, Instant>>> =
     Lazy::new(|| Mutex::new(HashMap::new()));
-static CLEANUP: Lazy<JoinHandle<()>> = Lazy::new(|| {
+static ACTIVE_SERVICES: AtomicUsize = AtomicUsize::new(0);
+static CLEANUP_TASK: Lazy<Mutex<Option<JoinHandle<()>>>> =
+    Lazy::new(|| Mutex::new(None));
+
+fn spawn_cleanup() -> JoinHandle<()> {
     tokio::spawn(async move {
         loop {
             tokio::time::sleep(CLEANUP_INTERVAL).await;
@@ -139,7 +143,7 @@ static CLEANUP: Lazy<JoinHandle<()>> = Lazy::new(|| {
             map.retain(|_, &mut instant| now.duration_since(instant) < RATE_LIMIT);
         }
     })
-});
+}
 const RATE_LIMIT: Duration = Duration::from_secs(60);
 const CLEANUP_INTERVAL: Duration = Duration::from_secs(60);
 
@@ -155,14 +159,6 @@ static EMAIL_LAST_ERROR: Lazy<IntGaugeVec> = Lazy::new(|| {
 static EMAIL_LAST_LATENCY: Lazy<Gauge> = Lazy::new(|| {
     register_gauge!("email_last_latency_seconds", "Last email latency seconds").unwrap()
 });
-
-/// Access the cleanup task's [`JoinHandle`].
-///
-/// The task is started on first use and can be aborted during shutdown
-/// if necessary.
-pub fn cleanup_handle() -> &'static JoinHandle<()> {
-    Lazy::force(&CLEANUP)
-}
 
 // retry behaviour
 const MAX_RETRIES: u32 = 5;
@@ -188,7 +184,6 @@ pub enum EmailError {
 pub struct EmailService {
     from: String,
     sender: UnboundedSender<Message>,
-    cleanup: &'static JoinHandle<()>,
 }
 
 impl EmailService {
@@ -232,7 +227,11 @@ impl EmailService {
         T::Error: std::fmt::Display,
     {
         // Start periodic cleanup once
-        let cleanup = cleanup_handle();
+        if ACTIVE_SERVICES.fetch_add(1, Ordering::SeqCst) == 0 {
+            let handle = spawn_cleanup();
+            let mut guard = CLEANUP_TASK.lock().unwrap_or_else(|e| e.into_inner());
+            *guard = Some(handle);
+        }
         let (tx, mut rx) = mpsc::unbounded_channel::<Message>();
         tokio::spawn(async move {
             while let Some(msg) = rx.recv().await {
@@ -266,11 +265,7 @@ impl EmailService {
                 }
             }
         });
-        Self {
-            from,
-            sender: tx,
-            cleanup,
-        }
+        Self { from, sender: tx }
     }
 
     fn allowed(to: &str) -> Result<bool, EmailError> {
@@ -344,16 +339,23 @@ impl EmailService {
         &self.from
     }
 
-    pub fn abort_cleanup(&self) {
-        self.cleanup.abort();
-    }
 }
 
 impl Drop for EmailService {
     fn drop(&mut self) {
-        // Terminate the cleanup task when the service is dropped.
-        self.abort_cleanup();
+        if ACTIVE_SERVICES.fetch_sub(1, Ordering::SeqCst) == 1 {
+            let mut guard = CLEANUP_TASK.lock().unwrap_or_else(|e| e.into_inner());
+            if let Some(handle) = guard.take() {
+                handle.abort();
+            }
+        }
     }
+}
+
+#[cfg(test)]
+fn cleanup_task_exists() -> bool {
+    let guard = CLEANUP_TASK.lock().unwrap_or_else(|e| e.into_inner());
+    guard.is_some()
 }
 
 async fn send_with_retry<F, Fut, E>(mut send: F) -> Result<(), E>
@@ -500,5 +502,31 @@ mod tests {
             .get_metric_with_label_values(&["stub error"])
             .unwrap();
         assert_eq!(gauge.get(), 1);
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn cleanup_task_lifecycle() {
+        clear_limits();
+        assert!(!cleanup_task_exists());
+
+        let transport = lettre::transport::stub::AsyncStubTransport::new_ok();
+        let svc1 = EmailService::new_with_transport("noreply@example.com".into(), transport.clone());
+        assert!(cleanup_task_exists());
+
+        {
+            let svc2 = EmailService::new_with_transport("noreply@example.com".into(), transport.clone());
+            assert!(cleanup_task_exists());
+            drop(svc2);
+        }
+
+        assert!(cleanup_task_exists());
+        drop(svc1);
+        assert!(!cleanup_task_exists());
+
+        let svc3 = EmailService::new_with_transport("noreply@example.com".into(), transport);
+        assert!(cleanup_task_exists());
+        drop(svc3);
+        assert!(!cleanup_task_exists());
     }
 }

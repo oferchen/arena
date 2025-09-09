@@ -629,7 +629,6 @@ async fn run(cli: Cli) -> Result<()> {
     let res = axum::serve(listener, app)
         .with_graceful_shutdown(shutdown_signal())
         .await;
-    state.email.abort_cleanup();
     res.map_err(|e| {
         log::error!("server error: {e}");
         e
