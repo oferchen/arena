@@ -21,19 +21,16 @@ provided when launching the server.
 
 ## Analytics
 
-| Env var                    | CLI flag               | Description                                    | Default |
-| -------------------------- | ---------------------- | ---------------------------------------------- | ------- |
-| `ARENA_ANALYTICS_ENDPOINT` | `--analytics-endpoint` | HTTP endpoint to receive events                | -       |
-| `ARENA_ANALYTICS_BATCH`    | `--analytics-batch`    | Number of events per upload                    | `20`    |
-| `ARENA_ANALYTICS_ENABLED`  | `--analytics`          | Enable analytics collection                    | `false` |
-| `ARENA_ANALYTICS_OPT_OUT`  | `--analytics-opt-out`  | Disable analytics regardless of other settings | `false` |
-| `ARENA_POSTHOG_KEY`        | `--posthog-key`        | PostHog API key                                | -       |
+| Env var                   | CLI flag              | Description                                    | Default |
+| ------------------------- | --------------------- | ---------------------------------------------- | ------- |
+| `ARENA_ANALYTICS_OPT_OUT` | `--analytics-opt-out` | Disable analytics regardless of other settings | `false` |
+| `ARENA_POSTHOG_KEY`       | `--posthog-key`       | PostHog API key (enables analytics)            | -       |
 
 ## Metrics
 
-| Env var                 | CLI flag    | Description                  | Default |
-| ----------------------- | ----------- | ---------------------------- | ------- |
-| `ARENA_METRICS_ENABLED` | `--metrics` | Enable OpenTelemetry metrics | `false` |
+| Env var              | CLI flag         | Description                 | Default |
+| -------------------- | ---------------- | --------------------------- | ------- |
+| `ARENA_METRICS_ADDR` | `--metrics-addr` | OTLP metrics export address | -       |
 
 ## Email
 
