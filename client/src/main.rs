@@ -11,7 +11,7 @@ mod config;
 use entitlements::{claim_entitlement, fetch_entitlements, ensure_session};
 use config::RuntimeConfig;
 use null_module::NullModule;
-use payments::{EntitlementStore, UserId};
+use purchases::{EntitlementStore, UserId};
 use physics::PhysicsPlugin;
 use render::RenderPlugin;
 use futures_lite::future;

@@ -1999,9 +1999,9 @@ dependencies = [
  "futures-lite 2.6.1",
  "net",
  "null_module",
- "payments",
  "physics",
  "platform-api",
+ "purchases",
  "render",
  "reqwest 0.12.23",
  "serde",
@@ -5389,16 +5389,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "57c0d7b74b563b49d38dae00a0c37d4d6de9b432382b2892f0574ddcae73fd0a"
 
 [[package]]
-name = "payments"
-version = "0.1.0"
-dependencies = [
- "chrono",
- "serde",
- "serde_json",
- "uuid",
-]
-
-[[package]]
 name = "pem"
 version = "3.0.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5760,6 +5750,17 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 1.0.109",
+]
+
+[[package]]
+name = "purchases"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "sea-orm",
+ "serde",
+ "serde_json",
+ "uuid",
 ]
 
 [[package]]
@@ -6755,9 +6756,9 @@ dependencies = [
  "migration",
  "net",
  "once_cell",
- "payments",
  "postcard",
  "prometheus",
+ "purchases",
  "rand",
  "sea-orm",
  "serde",

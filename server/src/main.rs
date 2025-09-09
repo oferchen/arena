@@ -3,7 +3,7 @@ use std::{collections::HashMap, net::SocketAddr, path::PathBuf, sync::Arc};
 use anyhow::{Result, anyhow};
 
 use crate::email::{EmailService, SmtpConfig, StartTls};
-use ::payments::{Catalog, EntitlementList, Sku, UserId};
+use purchases::{Catalog, EntitlementList, Sku, UserId};
 use analytics::{Analytics, Event};
 use axum::{
     Extension, Router,
@@ -22,7 +22,6 @@ use clap::Parser;
 use email_address::EmailAddress;
 use migration::{Migrator, MigratorTrait};
 use net::server::ServerConnector;
-use payments::EntitlementStore;
 use sea_orm::{ActiveModelTrait, ActiveValue::Set, Database, DatabaseConnection};
 use serde::{Deserialize, Serialize};
 use storage::connect as connect_db;
@@ -34,7 +33,6 @@ mod config;
 mod email;
 mod leaderboard;
 mod otp_store;
-mod payments;
 mod players;
 mod room;
 mod shard;
@@ -199,7 +197,6 @@ pub(crate) struct AppState {
     analytics: Analytics,
     leaderboard: ::leaderboard::LeaderboardService,
     catalog: Catalog,
-    entitlements: EntitlementStore,
     db: Option<DatabaseConnection>,
 }
 
@@ -446,16 +443,26 @@ async fn store_claim_handler(
         None => return StatusCode::UNAUTHORIZED,
     };
 
-    state.entitlements.grant(user, req.sku.clone()).await;
-    state.analytics.dispatch(Event::EntitlementGranted);
-    StatusCode::OK
+    if let Some(db) = &state.db {
+        let _ = purchases::grant_entitlement(db, user, &req.sku).await;
+        state.analytics.dispatch(Event::EntitlementGranted);
+        StatusCode::OK
+    } else {
+        StatusCode::INTERNAL_SERVER_ERROR
+    }
 }
 
 async fn entitlements_handler(
     State(state): State<Arc<AppState>>,
     Path(user): Path<String>,
 ) -> Json<EntitlementList> {
-    let entitlements = state.entitlements.list(&user).await;
+    let entitlements = if let Some(db) = &state.db {
+        purchases::list_entitlements(db, &user)
+            .await
+            .unwrap_or_default()
+    } else {
+        Vec::new()
+    };
     Json(EntitlementList { entitlements })
 }
 
@@ -574,8 +581,6 @@ async fn setup(
         posthog_key,
         metrics_addr,
     );
-    let entitlements = EntitlementStore::new(Some(db.clone()));
-
     Ok(AppState {
         email,
         rooms,
@@ -583,7 +588,6 @@ async fn setup(
         analytics,
         leaderboard,
         catalog,
-        entitlements,
         db: Some(db),
     })
 }

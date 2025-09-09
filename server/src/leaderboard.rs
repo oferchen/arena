@@ -220,12 +220,11 @@ mod verify_score_tests {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::payments::EntitlementStore;
     use crate::{
         email::{EmailService, SmtpConfig},
         room,
     };
-    use ::payments::{Catalog, Sku};
+    use purchases::{Catalog, Sku};
     use analytics::Analytics;
     use axum::Json;
     use axum::extract::{Path, State};
@@ -261,7 +260,6 @@ mod tests {
                 id: "basic".into(),
                 price_cents: 1000,
             }]),
-            entitlements: EntitlementStore::default(),
             db: None,
         });
 
@@ -300,7 +298,6 @@ mod tests {
             analytics: Analytics::new(true, None, None),
             leaderboard: leaderboard.clone(),
             catalog: Catalog::new(vec![]),
-            entitlements: EntitlementStore::default(),
             db: None,
         });
 
@@ -340,7 +337,6 @@ mod tests {
             analytics: Analytics::new(true, None, None),
             leaderboard: leaderboard.clone(),
             catalog: Catalog::new(vec![]),
-            entitlements: EntitlementStore::default(),
             db: None,
         });
 
@@ -381,7 +377,6 @@ mod tests {
             analytics: Analytics::new(true, None, None),
             leaderboard: leaderboard.clone(),
             catalog: Catalog::new(vec![]),
-            entitlements: EntitlementStore::default(),
             db: None,
         });
 
@@ -423,7 +418,6 @@ mod tests {
             analytics: Analytics::new(true, None, None),
             leaderboard: leaderboard.clone(),
             catalog: Catalog::new(vec![]),
-            entitlements: EntitlementStore::default(),
             db: None,
         });
 
