@@ -11,7 +11,7 @@ mod config;
 use entitlements::{claim_entitlement, fetch_entitlements, ensure_session};
 use config::RuntimeConfig;
 use null_module::NullModule;
-use purchases::{EntitlementStore, UserId};
+use std::collections::HashSet;
 use physics::PhysicsPlugin;
 use render::RenderPlugin;
 use futures_lite::future;
@@ -27,13 +27,11 @@ fn main() {
     let analytics = Analytics::new(enabled, None, None);
     analytics.dispatch(Event::SessionStart);
     analytics.dispatch(Event::LevelStart { level: 1 });
-    let entitlements = EntitlementStore::default();
-    let user = ensure_session();
-    for sku in fetch_entitlements(&config.api_base_url).unwrap_or_default() {
-        entitlements.grant(user, sku);
-    }
+    let mut entitlements: HashSet<String> =
+        fetch_entitlements(&config.api_base_url).unwrap_or_default().into_iter().collect();
+    let _ = ensure_session();
     let _ = claim_entitlement(&config.api_base_url, "basic");
-    let _ = entitlements.has(user, "basic");
+    let _ = entitlements.contains("basic");
     analytics.dispatch(Event::EntitlementChecked);
 
     // Initialize the Bevy application
@@ -46,7 +44,7 @@ fn main() {
         .add_plugins(EnginePlugin)
         .add_plugins(net::ClientNetPlugin)
         .add_plugins(lobby::LobbyPlugin);
-    if entitlements.has(user, "duck_hunt") {
+    if entitlements.contains("duck_hunt") {
         app.add_game_module::<DuckHuntPlugin>();
     }
     app.add_game_module::<NullModule>().run();
@@ -63,13 +61,11 @@ pub async fn main() -> Result<(), JsValue> {
     let analytics = Analytics::new(enabled, None, None);
     analytics.dispatch(Event::SessionStart);
     analytics.dispatch(Event::LevelStart { level: 1 });
-    let entitlements = EntitlementStore::default();
-    let user = ensure_session(&config.api_base_url).await?;
-    for sku in fetch_entitlements(&config.api_base_url).await.unwrap_or_default() {
-        entitlements.grant(user, sku);
-    }
+    let mut entitlements: HashSet<String> =
+        fetch_entitlements(&config.api_base_url).await.unwrap_or_default().into_iter().collect();
+    let _user = ensure_session(&config.api_base_url).await?;
     let _ = claim_entitlement(&config.api_base_url, "basic").await;
-    let _ = entitlements.has(user, "basic");
+    let _ = entitlements.contains("basic");
     analytics.dispatch(Event::EntitlementChecked);
 
     // Initialize the Bevy application
@@ -82,7 +78,7 @@ pub async fn main() -> Result<(), JsValue> {
         .add_plugins(EnginePlugin)
         .add_plugins(net::ClientNetPlugin)
         .add_plugins(lobby::LobbyPlugin);
-    if entitlements.has(user, "duck_hunt") {
+    if entitlements.contains("duck_hunt") {
         app.add_game_module::<DuckHuntPlugin>();
     }
     app.add_game_module::<NullModule>().run();

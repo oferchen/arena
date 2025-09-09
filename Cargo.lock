@@ -5759,7 +5759,6 @@ dependencies = [
  "chrono",
  "sea-orm",
  "serde",
- "serde_json",
  "uuid",
 ]
 
