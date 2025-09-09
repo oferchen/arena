@@ -231,7 +231,7 @@ mod tests {
     use axum::extract::{Path, State};
     use axum::Json;
     use leaderboard::models::LeaderboardWindow;
-    use migration::{sea_orm::Database, Migrator, MigratorTrait};
+    use sea_orm::{DatabaseBackend, DatabaseConnection, MockDatabase};
     use purchases::{Catalog, Sku};
     use std::path::PathBuf;
 
@@ -244,12 +244,15 @@ mod tests {
         }
     }
 
-    async fn leaderboard_service() -> ::leaderboard::LeaderboardService {
-        let db = Database::connect("127.0.0.1:9042").await.unwrap();
-        Migrator::up(&db, None).await.unwrap();
-        ::leaderboard::LeaderboardService::new("127.0.0.1:9042", PathBuf::from("replays"))
-            .await
-            .unwrap()
+    async fn leaderboard_service() -> (::leaderboard::LeaderboardService, DatabaseConnection) {
+        let db = MockDatabase::new(DatabaseBackend::Postgres).into_connection();
+        let service = ::leaderboard::LeaderboardService::with_db(
+            db.clone(),
+            PathBuf::from("replays"),
+        )
+        .await
+        .unwrap();
+        (service, db)
     }
 
     #[tokio::test]
@@ -257,7 +260,7 @@ mod tests {
     async fn post_run_rejects_malformed_base64() {
         let cfg = smtp_cfg();
         let email = Arc::new(EmailService::new(cfg.clone()).unwrap());
-        let leaderboard = leaderboard_service().await;
+        let (leaderboard, db) = leaderboard_service().await;
         let rooms = room::RoomManager::new(leaderboard.clone(), "local".into(), "localhost".into());
         let state = Arc::new(AppState {
             email,
@@ -269,7 +272,7 @@ mod tests {
                 id: "basic".into(),
                 price_cents: 1000,
             }]),
-            db: None,
+            db,
             email_salt: "salt".into(),
         });
 
@@ -294,7 +297,7 @@ mod tests {
     async fn post_run_accepts_valid_payload() {
         let cfg = smtp_cfg();
         let email = Arc::new(EmailService::new(cfg.clone()).unwrap());
-        let leaderboard = leaderboard_service().await;
+        let (leaderboard, db) = leaderboard_service().await;
         let rooms = room::RoomManager::new(leaderboard.clone(), "local".into(), "localhost".into());
         let state = Arc::new(AppState {
             email,
@@ -303,7 +306,7 @@ mod tests {
             analytics: Analytics::new(true, None, None, None),
             leaderboard: leaderboard.clone(),
             catalog: Catalog::new(vec![]),
-            db: None,
+            db,
             email_salt: "salt".into(),
         });
 
@@ -334,7 +337,7 @@ mod tests {
     async fn post_run_rejects_oversized_payload() {
         let cfg = smtp_cfg();
         let email = Arc::new(EmailService::new(cfg.clone()).unwrap());
-        let leaderboard = leaderboard_service().await;
+        let (leaderboard, db) = leaderboard_service().await;
         let rooms = room::RoomManager::new(leaderboard.clone(), "local".into(), "localhost".into());
         let state = Arc::new(AppState {
             email,
@@ -343,7 +346,7 @@ mod tests {
             analytics: Analytics::new(true, None, None, None),
             leaderboard: leaderboard.clone(),
             catalog: Catalog::new(vec![]),
-            db: None,
+            db,
             email_salt: "salt".into(),
         });
 
@@ -370,7 +373,7 @@ mod tests {
     async fn post_run_rejects_invalid_score() {
         let cfg = smtp_cfg();
         let email = Arc::new(EmailService::new(cfg.clone()).unwrap());
-        let leaderboard = leaderboard_service().await;
+        let (leaderboard, db) = leaderboard_service().await;
         let rooms = room::RoomManager::new(leaderboard.clone(), "local".into(), "localhost".into());
         let state = Arc::new(AppState {
             email,
@@ -379,7 +382,7 @@ mod tests {
             analytics: Analytics::new(true, None, None, None),
             leaderboard: leaderboard.clone(),
             catalog: Catalog::new(vec![]),
-            db: None,
+            db,
             email_salt: "salt".into(),
         });
 
@@ -407,7 +410,7 @@ mod tests {
     async fn verify_endpoint_marks_score_verified() {
         let cfg = smtp_cfg();
         let email = Arc::new(EmailService::new(cfg.clone()).unwrap());
-        let leaderboard = leaderboard_service().await;
+        let (leaderboard, db) = leaderboard_service().await;
         let rooms = room::RoomManager::new(leaderboard.clone(), "local".into(), "localhost".into());
         let state = Arc::new(AppState {
             email,
@@ -416,7 +419,7 @@ mod tests {
             analytics: Analytics::new(true, None, None, None),
             leaderboard: leaderboard.clone(),
             catalog: Catalog::new(vec![]),
-            db: None,
+            db,
             email_salt: "salt".into(),
         });
 

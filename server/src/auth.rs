@@ -45,11 +45,7 @@ async fn request_handler(
     Json(body): Json<RequestBody>,
 ) -> impl IntoResponse {
     let email_hash = hash_email(&body.email, &state.email_salt);
-    let db = match &state.db {
-        Some(db) => db,
-        None => return StatusCode::INTERNAL_SERVER_ERROR,
-    };
-    match otp_store::fetch_otp(db, &email_hash).await {
+    match otp_store::fetch_otp(&state.db, &email_hash).await {
         Ok(Some((_, expires_at))) => {
             let now = Utc::now();
             if now < expires_at {
@@ -58,7 +54,7 @@ async fn request_handler(
                     return StatusCode::TOO_MANY_REQUESTS;
                 }
             }
-            if let Err(e) = otp_store::delete_otp(db, &email_hash).await {
+            if let Err(e) = otp_store::delete_otp(&state.db, &email_hash).await {
                 tracing::error!("failed to delete OTP: {e}");
                 return StatusCode::INTERNAL_SERVER_ERROR;
             }
@@ -72,7 +68,7 @@ async fn request_handler(
     let code = rand::thread_rng().sample(Uniform::new(0, 1_000_000));
     let code_str = format!("{:06}", code);
     let expires_at = Utc::now() + ChronoDuration::from_std(OTP_TTL).unwrap();
-    if let Err(e) = otp_store::insert_otp(db, &email_hash, &code_str, expires_at).await {
+    if let Err(e) = otp_store::insert_otp(&state.db, &email_hash, &code_str, expires_at).await {
         tracing::error!("failed to insert OTP: {e}");
         return StatusCode::INTERNAL_SERVER_ERROR;
     }
@@ -85,22 +81,10 @@ async fn verify_handler(
     Json(body): Json<VerifyBody>,
 ) -> impl IntoResponse {
     let email_hash = hash_email(&body.email, &state.email_salt);
-    let db = match &state.db {
-        Some(db) => db,
-        None => {
-            return (
-                StatusCode::UNAUTHORIZED,
-                Json(VerifyResponse {
-                    token: String::new(),
-                }),
-            )
-                .into_response();
-        }
-    };
-    match otp_store::fetch_otp(db, &email_hash).await {
+    match otp_store::fetch_otp(&state.db, &email_hash).await {
         Ok(Some((code, expires_at))) => {
             if code == body.code && Utc::now() <= expires_at {
-                if let Err(e) = otp_store::delete_otp(db, &email_hash).await {
+                if let Err(e) = otp_store::delete_otp(&state.db, &email_hash).await {
                     tracing::error!("failed to delete OTP: {e}");
                     return (
                         StatusCode::INTERNAL_SERVER_ERROR,
