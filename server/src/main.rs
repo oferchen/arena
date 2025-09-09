@@ -31,6 +31,7 @@ mod auth;
 mod config;
 mod email;
 mod leaderboard;
+mod otp_store;
 mod payments;
 mod room;
 mod shard;
