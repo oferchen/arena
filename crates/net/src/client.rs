@@ -55,7 +55,7 @@ impl ClientConnector {
         m.register_default_codecs()?;
         let api = APIBuilder::new().with_media_engine(m).build();
         let pc = api.new_peer_connection(RTCConfiguration::default()).await?;
-        let mut cfg = RTCDataChannelInit {
+        let cfg = RTCDataChannelInit {
             ordered: Some(false),
             max_retransmits: Some(0),
             ..Default::default()
