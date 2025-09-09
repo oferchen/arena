@@ -3,16 +3,16 @@ use std::sync::RwLock;
 
 use ::payments::{Entitlement, UserId};
 use chrono::Utc;
-use scylla::{IntoTypedRows, Session};
+use sqlx::PgPool;
 
 #[derive(Clone, Default)]
 pub struct EntitlementStore {
-    db: Option<Arc<Session>>,
+    db: Option<PgPool>,
     inner: Arc<RwLock<Vec<Entitlement>>>,
 }
 
 impl EntitlementStore {
-    pub fn new(db: Option<Arc<Session>>) -> Self {
+    pub fn new(db: Option<PgPool>) -> Self {
         Self {
             db,
             inner: Arc::new(RwLock::new(Vec::new())),
@@ -26,9 +26,13 @@ impl EntitlementStore {
 
     pub async fn grant(&self, user_id: UserId, sku_id: String) {
         if let Some(db) = &self.db {
-            let query =
-                "INSERT INTO entitlements_by_user (user_id, sku_id, granted_at) VALUES (?, ?, ?)";
-            let _ = db.query(query, (user_id, sku_id.clone(), Utc::now())).await;
+            let query = "INSERT INTO entitlements_by_user (user_id, sku_id, granted_at) VALUES ($1, $2, $3)";
+            let _ = sqlx::query(query)
+                .bind(user_id)
+                .bind(&sku_id)
+                .bind(Utc::now())
+                .execute(db)
+                .await;
         }
         let mut inner = match self.inner.write() {
             Ok(inner) => inner,
@@ -50,14 +54,13 @@ impl EntitlementStore {
     pub async fn list(&self, user_id: &str) -> Vec<String> {
         if let Some(db) = &self.db {
             if let Ok(id) = UserId::parse_str(user_id) {
-                let query = "SELECT sku_id FROM entitlements_by_user WHERE user_id = ?";
-                if let Ok(res) = db.query(query, (id,)).await {
-                    if let Some(rows) = res.rows {
-                        return rows
-                            .into_typed::<(String,)>()
-                            .filter_map(|r| r.ok().map(|(sku,)| sku))
-                            .collect();
-                    }
+                let query = "SELECT sku_id FROM entitlements_by_user WHERE user_id = $1";
+                if let Ok(rows) = sqlx::query_scalar::<_, String>(query)
+                    .bind(id)
+                    .fetch_all(db)
+                    .await
+                {
+                    return rows;
                 }
             }
         }
