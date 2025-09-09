@@ -270,6 +270,7 @@ mod tests {
                 price_cents: 1000,
             }]),
             db: None,
+            email_salt: "salt".into(),
         });
 
         let leaderboard_id = Uuid::new_v4();
@@ -303,6 +304,7 @@ mod tests {
             leaderboard: leaderboard.clone(),
             catalog: Catalog::new(vec![]),
             db: None,
+            email_salt: "salt".into(),
         });
 
         let leaderboard_id = Uuid::new_v4();
@@ -342,6 +344,7 @@ mod tests {
             leaderboard: leaderboard.clone(),
             catalog: Catalog::new(vec![]),
             db: None,
+            email_salt: "salt".into(),
         });
 
         let leaderboard_id = Uuid::new_v4();
@@ -377,6 +380,7 @@ mod tests {
             leaderboard: leaderboard.clone(),
             catalog: Catalog::new(vec![]),
             db: None,
+            email_salt: "salt".into(),
         });
 
         let leaderboard_id = Uuid::new_v4();
@@ -413,6 +417,7 @@ mod tests {
             leaderboard: leaderboard.clone(),
             catalog: Catalog::new(vec![]),
             db: None,
+            email_salt: "salt".into(),
         });
 
         let leaderboard_id = Uuid::new_v4();

@@ -17,11 +17,9 @@ use crate::{AppState, otp_store};
 
 const REQUEST_COOLDOWN: Duration = Duration::from_secs(60);
 const OTP_TTL: Duration = Duration::from_secs(300);
-const SALT: &str = "arena_salt";
-
-fn hash_email(email: &str) -> String {
+fn hash_email(email: &str, salt: &str) -> String {
     let mut hasher = Sha256::new();
-    hasher.update(SALT.as_bytes());
+    hasher.update(salt.as_bytes());
     hasher.update(email.as_bytes());
     hex::encode(hasher.finalize())
 }
@@ -46,7 +44,7 @@ async fn request_handler(
     State(state): State<Arc<AppState>>,
     Json(body): Json<RequestBody>,
 ) -> impl IntoResponse {
-    let email_hash = hash_email(&body.email);
+    let email_hash = hash_email(&body.email, &state.email_salt);
     let db = match &state.db {
         Some(db) => db,
         None => return StatusCode::INTERNAL_SERVER_ERROR,
@@ -73,7 +71,7 @@ async fn verify_handler(
     State(state): State<Arc<AppState>>,
     Json(body): Json<VerifyBody>,
 ) -> impl IntoResponse {
-    let email_hash = hash_email(&body.email);
+    let email_hash = hash_email(&body.email, &state.email_salt);
     let db = match &state.db {
         Some(db) => db,
         None => {

@@ -63,6 +63,7 @@ async fn setup_succeeds_without_env_vars() {
         analytics_local: false,
         posthog_url: None,
         analytics_otlp_endpoint: None,
+        email_salt: "salt".into(),
     };
     assert!(setup(&cfg, smtp_cfg(), None).await.is_ok());
 }
@@ -104,11 +105,13 @@ fn missing_bind_addr_errors() {
     unsafe {
         env::remove_var("ARENA_BIND_ADDR");
         env::set_var("ARENA_RTC_ICE_SERVERS_JSON", "[]");
+        env::set_var("ARENA_EMAIL_SALT", "salt");
     }
     let cli = Cli::try_parse_from(["prog"]).unwrap();
     assert!(cli.config.clone().resolve().is_err());
     unsafe {
         env::remove_var("ARENA_RTC_ICE_SERVERS_JSON");
+        env::remove_var("ARENA_EMAIL_SALT");
     }
 }
 
@@ -152,6 +155,7 @@ async fn config_json_respects_cli_overrides() {
         env::set_var("ARENA_ASSETS_DIR", "assets");
         env::set_var("ARENA_ANALYTICS_OPT_OUT", "false");
         env::set_var("ARENA_RTC_ICE_SERVERS_JSON", "[]");
+        env::set_var("ARENA_EMAIL_SALT", "salt");
     }
     let cli = Cli::try_parse_from([
         "prog",
@@ -187,6 +191,7 @@ async fn config_json_respects_cli_overrides() {
         env::remove_var("ARENA_ASSETS_DIR");
         env::remove_var("ARENA_ANALYTICS_OPT_OUT");
         env::remove_var("ARENA_RTC_ICE_SERVERS_JSON");
+        env::remove_var("ARENA_EMAIL_SALT");
     }
 }
 
@@ -207,6 +212,7 @@ async fn websocket_signaling_completes_handshake() {
             price_cents: 1000,
         }]),
         db: None,
+        email_salt: "salt".into(),
     });
 
     let app = Router::new()
@@ -264,6 +270,7 @@ async fn websocket_signaling_invalid_sdp_logs_and_closes() {
             price_cents: 1000,
         }]),
         db: None,
+        email_salt: "salt".into(),
     });
 
     let app = Router::new()
@@ -313,6 +320,7 @@ async fn websocket_signaling_unexpected_binary_logs_and_closes() {
             price_cents: 1000,
         }]),
         db: None,
+        email_salt: "salt".into(),
     });
 
     let app = Router::new()
@@ -362,6 +370,7 @@ async fn websocket_logs_unexpected_messages_and_closes() {
             price_cents: 1000,
         }]),
         db: None,
+        email_salt: "salt".into(),
     });
 
     let app = Router::new()
@@ -405,6 +414,7 @@ async fn mail_test_defaults_to_from_address() {
             price_cents: 1000,
         }]),
         db: None,
+        email_salt: "salt".into(),
     });
 
     assert_eq!(
@@ -436,6 +446,7 @@ async fn mail_test_accepts_user_address_query() {
             price_cents: 1000,
         }]),
         db: None,
+        email_salt: "salt".into(),
     });
 
     assert_eq!(
@@ -474,6 +485,7 @@ async fn mail_test_accepts_user_address_body() {
             price_cents: 1000,
         }]),
         db: None,
+        email_salt: "salt".into(),
     });
 
     assert_eq!(
@@ -511,6 +523,7 @@ async fn mail_config_redacts_password() {
             price_cents: 1000,
         }]),
         db: None,
+        email_salt: "salt".into(),
     });
 
     let Json(redacted) = mail_config_handler(State(state)).await;
@@ -535,6 +548,7 @@ async fn admin_mail_config_route() {
             price_cents: 1000,
         }]),
         db: None,
+        email_salt: "salt".into(),
     });
 
     let app = Router::new()
@@ -576,6 +590,7 @@ async fn round_scores_appear_in_leaderboard() {
             price_cents: 1000,
         }]),
         db: None,
+        email_salt: "salt".into(),
     });
 
     let app = Router::new()
