@@ -1,3 +1,8 @@
+//! Utilities for collecting analytics events for Arena.
+//!
+//! Up to `DEFAULT_MAX_EVENTS` events are retained in memory. Set the
+//! `ARENA_ANALYTICS_MAX_EVENTS` environment variable to change this limit.
+
 use std::{net::SocketAddr, sync::{Arc, Mutex}};
 
 #[cfg(feature = "otlp")]
@@ -11,7 +16,7 @@ use serde::Serialize;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 const DEFAULT_MAX_EVENTS: usize = 10_000;
-const MAX_EVENTS_ENV_VAR: &str = "ANALYTICS_MAX_EVENTS";
+const MAX_EVENTS_ENV_VAR: &str = "ARENA_ANALYTICS_MAX_EVENTS";
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 pub enum Event {
