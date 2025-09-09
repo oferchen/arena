@@ -1,29 +1,30 @@
 use std::{collections::HashMap, net::SocketAddr, path::PathBuf, sync::Arc};
 
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 
 use crate::email::{EmailService, SmtpConfig, StartTls};
 use ::payments::{Catalog, EntitlementList, Sku, UserId};
 use analytics::{Analytics, Event};
 use axum::{
+    Extension, Router,
     extract::{
-        ws::{Message, WebSocket, WebSocketUpgrade},
         Json, Path, Query, State,
+        ws::{Message, WebSocket, WebSocketUpgrade},
     },
     http::{
-        header::{CACHE_CONTROL, SET_COOKIE},
         HeaderMap, HeaderName, HeaderValue, StatusCode,
+        header::{CACHE_CONTROL, SET_COOKIE},
     },
     response::IntoResponse,
     routing::{get, get_service, post},
-    Extension, Router,
 };
 use clap::Parser;
 use email_address::EmailAddress;
 use net::server::ServerConnector;
 use payments::EntitlementStore;
-use scylla::{Session, SessionBuilder};
 use serde::{Deserialize, Serialize};
+use sqlx::PgPool;
+use storage::connect as connect_db;
 use webrtc::peer_connection::sdp::sdp_type::RTCSdpType;
 use webrtc::peer_connection::sdp::session_description::RTCSessionDescription;
 
@@ -71,7 +72,10 @@ struct Config {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct IceServerConfig {
-    #[serde(deserialize_with = "deserialize_urls", serialize_with = "serialize_urls")]
+    #[serde(
+        deserialize_with = "deserialize_urls",
+        serialize_with = "serialize_urls"
+    )]
     pub urls: Vec<String>,
     #[serde(default)]
     pub username: Option<String>,
@@ -163,7 +167,7 @@ pub(crate) struct AppState {
     leaderboard: ::leaderboard::LeaderboardService,
     catalog: Catalog,
     entitlements: EntitlementStore,
-    db: Option<Arc<Session>>,
+    db: Option<PgPool>,
 }
 
 async fn ws_handler(State(state): State<Arc<AppState>>, ws: WebSocketUpgrade) -> impl IntoResponse {
@@ -518,14 +522,8 @@ async fn setup(cfg: &ResolvedConfig, smtp: SmtpConfig, analytics: Analytics) -> 
         id: "basic".to_string(),
         price_cents: 1000,
     }]);
-    let db = match SessionBuilder::new().known_node(&cfg.db_url).build().await {
-        Ok(s) => Some(Arc::new(s)),
-        Err(e) => {
-            log::warn!("failed to connect to scylla: {e}");
-            None
-        }
-    };
-    let entitlements = EntitlementStore::new(db.clone());
+    let db = connect_db(&cfg.db_url).await?;
+    let entitlements = EntitlementStore::new(Some(db.clone()));
 
     Ok(AppState {
         email,
@@ -535,7 +533,7 @@ async fn setup(cfg: &ResolvedConfig, smtp: SmtpConfig, analytics: Analytics) -> 
         leaderboard,
         catalog,
         entitlements,
-        db,
+        db: Some(db),
     })
 }
 
