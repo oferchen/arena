@@ -24,7 +24,7 @@ static ALLOC: wee_alloc::WeeAlloc = wee_alloc::WeeAlloc::INIT;
 fn main() {
     let config = future::block_on(RuntimeConfig::load());
     let enabled = config.analytics_enabled && !config.analytics_opt_out;
-    let analytics = Analytics::new(enabled, None, None);
+    let analytics = Analytics::new(enabled, None, None, None);
     analytics.dispatch(Event::SessionStart);
     analytics.dispatch(Event::LevelStart { level: 1 });
     let mut entitlements: HashSet<String> =
@@ -58,7 +58,7 @@ use wasm_bindgen::prelude::*;
 pub async fn main() -> Result<(), JsValue> {
     let config = RuntimeConfig::load().await;
     let enabled = config.analytics_enabled && !config.analytics_opt_out;
-    let analytics = Analytics::new(enabled, None, None);
+    let analytics = Analytics::new(enabled, None, None, None);
     analytics.dispatch(Event::SessionStart);
     analytics.dispatch(Event::LevelStart { level: 1 });
     let mut entitlements: HashSet<String> =

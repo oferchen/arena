@@ -50,6 +50,12 @@ persistence.
 | `ARENA_SMTP_PASS`       | `--smtp-pass`       | SMTP password                             | -       |
 | `ARENA_SMTP_TIMEOUT_MS` | `--smtp-timeout-ms` | Connection timeout in milliseconds        | `10000` |
 
+## Auth
+
+| Env var            | CLI flag       | Description                                           | Default |
+| ------------------ | -------------- | ----------------------------------------------------- | ------- |
+| `ARENA_EMAIL_SALT` | `--email-salt` | Salt used when hashing email addresses **(required)** | -       |
+
 ## Leaderboards
 
 | Env var                 | CLI flag            | Description                              | Default   |

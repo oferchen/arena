@@ -100,6 +100,8 @@ struct Config {
     rtc_ice_servers_json: Option<String>,
     #[arg(long, env = "ARENA_METRICS_ADDR")]
     metrics_addr: Option<SocketAddr>,
+    #[arg(long, env = "ARENA_EMAIL_SALT")]
+    email_salt: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -162,6 +164,7 @@ pub struct ResolvedConfig {
     pub analytics_local: bool,
     pub posthog_url: Option<String>,
     pub analytics_otlp_endpoint: Option<SocketAddr>,
+    pub email_salt: String,
 }
 
 impl Config {
@@ -214,6 +217,9 @@ impl Config {
             analytics_local: false,
             posthog_url: None,
             analytics_otlp_endpoint: None,
+            email_salt: self
+                .email_salt
+                .ok_or_else(|| anyhow!("ARENA_EMAIL_SALT not set"))?,
         })
     }
 }
@@ -227,6 +233,7 @@ pub(crate) struct AppState {
     leaderboard: ::leaderboard::LeaderboardService,
     catalog: Catalog,
     db: Option<DatabaseConnection>,
+    email_salt: String,
 }
 
 async fn ws_handler(State(state): State<Arc<AppState>>, ws: WebSocketUpgrade) -> impl IntoResponse {
@@ -625,6 +632,7 @@ async fn setup(
         leaderboard,
         catalog,
         db: Some(db),
+        email_salt: cfg.email_salt.clone(),
     })
 }
 

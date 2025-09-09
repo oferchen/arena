@@ -363,7 +363,7 @@ mod tests {
         let leaderboard_id = Uuid::new_v4();
         let player_id = Uuid::new_v4();
         let replay = b"shot".to_vec();
-        let analytics = Analytics::new(true, None, None);
+        let analytics = Analytics::new(true, None, None, None);
         let hit = handle_shot(
             &server,
             &service,
