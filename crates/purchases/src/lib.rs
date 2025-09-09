@@ -1,4 +1,4 @@
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use sea_orm::{
     ActiveValue::Set, DatabaseConnection, QueryFilter, TransactionError, TransactionTrait,
     entity::prelude::*, sea_query::OnConflict,
@@ -6,6 +6,8 @@ use sea_orm::{
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 pub use uuid::Uuid as UserId;
+
+type DateTimeUtc = DateTime<Utc>;
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Sku {

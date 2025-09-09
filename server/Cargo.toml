@@ -34,7 +34,7 @@ hmac = "0.12"
 sha2 = "0.10"
 hex = "0.4"
 rand = "0.8"
-sea-orm = { version = "0.12", features=["sqlx-postgres","runtime-tokio-rustls","macros"] }
+sea-orm = { version = "0.12", default-features = false, features = ["sqlx-postgres", "runtime-tokio-rustls", "macros", "with-uuid", "with-chrono", "with-json"] }
 storage = { path = "../crates/storage" }
 migration = { path = "migration" }
 
