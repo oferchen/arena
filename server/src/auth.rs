@@ -1,6 +1,4 @@
-use std::collections::HashMap;
-use std::sync::Mutex;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use axum::{
     Router,
@@ -10,16 +8,16 @@ use axum::{
     routing::post,
     Json,
 };
-use once_cell::sync::Lazy;
+use chrono::{Duration as ChronoDuration, Utc};
 use rand::{distributions::Uniform, Rng};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
-use crate::AppState;
+use crate::{otp_store, AppState};
 
-static OTP_STORE: Lazy<Mutex<HashMap<String, (String, Instant)>>> = Lazy::new(|| Mutex::new(HashMap::new()));
 const REQUEST_COOLDOWN: Duration = Duration::from_secs(60);
+const OTP_TTL: Duration = Duration::from_secs(300);
 const SALT: &str = "arena_salt";
 
 fn hash_email(email: &str) -> String {
@@ -47,26 +45,39 @@ struct VerifyResponse {
 
 async fn request_handler(State(state): State<std::sync::Arc<AppState>>, Json(body): Json<RequestBody>) -> StatusCode {
     let email_hash = hash_email(&body.email);
-    let mut store = OTP_STORE.lock().unwrap();
-    if let Some((_, ts)) = store.get(&email_hash) {
-        if ts.elapsed() < REQUEST_COOLDOWN {
-            return StatusCode::TOO_MANY_REQUESTS;
+    let db = match &state.db {
+        Some(db) => db,
+        None => return StatusCode::INTERNAL_SERVER_ERROR,
+    };
+    if let Some((_, expires_at)) = otp_store::fetch_otp(db, &email_hash).await {
+        let now = Utc::now();
+        if now < expires_at {
+            let created_at =
+                expires_at - ChronoDuration::from_std(OTP_TTL).unwrap();
+            if now < created_at + ChronoDuration::from_std(REQUEST_COOLDOWN).unwrap() {
+                return StatusCode::TOO_MANY_REQUESTS;
+            }
         }
+        let _ = otp_store::delete_otp(db, &email_hash).await;
     }
     let mut rng = rand::thread_rng();
     let code = rng.sample(Uniform::new(0, 1_000_000));
     let code_str = format!("{:06}", code);
-    store.insert(email_hash, (code_str.clone(), Instant::now()));
+    let expires_at = Utc::now() + ChronoDuration::from_std(OTP_TTL).unwrap();
+    let _ = otp_store::insert_otp(db, &email_hash, &code_str, expires_at).await;
     let _ = state.email.send_otp_code(&body.email, &code_str);
     StatusCode::OK
 }
 
-async fn verify_handler(State(_state): State<std::sync::Arc<AppState>>, Json(body): Json<VerifyBody>) -> impl IntoResponse {
+async fn verify_handler(State(state): State<std::sync::Arc<AppState>>, Json(body): Json<VerifyBody>) -> impl IntoResponse {
     let email_hash = hash_email(&body.email);
-    let mut store = OTP_STORE.lock().unwrap();
-    let token = if let Some((code, _)) = store.get(&email_hash) {
-        if code == &body.code {
-            store.remove(&email_hash);
+    let db = match &state.db {
+        Some(db) => db,
+        None => return (HeaderMap::new(), Json(VerifyResponse { token: String::new() })),
+    };
+    let token = if let Some((code, expires_at)) = otp_store::fetch_otp(db, &email_hash).await {
+        if code == body.code && Utc::now() <= expires_at {
+            let _ = otp_store::delete_otp(db, &email_hash).await;
             Uuid::new_v4().to_string()
         } else {
             String::new()
