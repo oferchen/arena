@@ -176,19 +176,18 @@ impl MigrationTrait for Migration {
                     .table(AnalyticsEvents::Table)
                     .if_not_exists()
                     .col(
-                        ColumnDef::new(AnalyticsEvents::Id)
-                            .big_integer()
-                            .not_null()
-                            .auto_increment()
-                            .primary_key(),
-                    )
-                    .col(ColumnDef::new(AnalyticsEvents::Name).string().not_null())
-                    .col(ColumnDef::new(AnalyticsEvents::Data).string().null())
-                    .col(
-                        ColumnDef::new(AnalyticsEvents::CreatedAt)
+                        ColumnDef::new(AnalyticsEvents::Ts)
                             .timestamp_with_time_zone()
                             .not_null()
-                            .default(Expr::cust("NOW()")),
+                            .primary_key(),
+                    )
+                    .col(ColumnDef::new(AnalyticsEvents::PlayerId).uuid().null())
+                    .col(ColumnDef::new(AnalyticsEvents::SessionId).uuid().null())
+                    .col(ColumnDef::new(AnalyticsEvents::Kind).string().not_null())
+                    .col(
+                        ColumnDef::new(AnalyticsEvents::PayloadJson)
+                            .json_binary()
+                            .null(),
                     )
                     .to_owned(),
             )
@@ -199,13 +198,17 @@ impl MigrationTrait for Migration {
                 Table::create()
                     .table(AnalyticsRollups::Table)
                     .if_not_exists()
-                    .col(ColumnDef::new(AnalyticsRollups::Event).string().not_null())
-                    .col(ColumnDef::new(AnalyticsRollups::Bucket).timestamp_with_time_zone().not_null())
-                    .col(ColumnDef::new(AnalyticsRollups::Count).big_integer().not_null())
+                    .col(
+                        ColumnDef::new(AnalyticsRollups::BucketStart)
+                            .timestamp_with_time_zone()
+                            .not_null(),
+                    )
+                    .col(ColumnDef::new(AnalyticsRollups::Kind).string().not_null())
+                    .col(ColumnDef::new(AnalyticsRollups::Value).double().not_null())
                     .primary_key(
                         Index::create()
-                            .col(AnalyticsRollups::Event)
-                            .col(AnalyticsRollups::Bucket),
+                            .col(AnalyticsRollups::BucketStart)
+                            .col(AnalyticsRollups::Kind),
                     )
                     .to_owned(),
             )
@@ -328,10 +331,10 @@ enum Purchases { Id, Player, Sku, CreatedAt, Table }
 enum Levels { Id, Name, Data, Table }
 
 #[derive(Iden)]
-enum AnalyticsEvents { Id, Name, Data, CreatedAt, Table }
+enum AnalyticsEvents { Ts, PlayerId, SessionId, Kind, PayloadJson, Table }
 
 #[derive(Iden)]
-enum AnalyticsRollups { Event, Bucket, Count, Table }
+enum AnalyticsRollups { BucketStart, Kind, Value, Table }
 
 #[derive(Iden)]
 enum MailOutbox { Id, Recipient, Subject, Body, CreatedAt, Table }

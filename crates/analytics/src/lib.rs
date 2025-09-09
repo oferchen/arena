@@ -14,6 +14,7 @@ use sea_orm::{
     entity::prelude::*,
     sea_query::{Alias, Expr, Func, OnConflict, PostgresQueryBuilder, Query, SimpleExpr},
 };
+use serde_json::json;
 use tokio::time::{Duration, interval};
 
 #[cfg(feature = "otlp")]
@@ -289,15 +290,19 @@ impl Analytics {
         if let Some(db) = &self.db {
             let mut models = Vec::with_capacity(events.len());
             for event in events {
-                let data = match &event {
-                    Event::Error { message } => Some(message.clone()),
+                let payload = match &event {
+                    Event::Error { message } => Some(json!({ "message": message })),
+                    Event::PurchaseCompleted { sku, user } => {
+                        Some(json!({ "sku": sku, "user": user }))
+                    }
                     _ => None,
                 };
                 models.push(events::ActiveModel {
-                    name: Set(event.name().to_string()),
-                    data: Set(data),
-                    created_at: Set(Utc::now()),
-                    ..Default::default()
+                    ts: Set(Utc::now()),
+                    player_id: Set(None),
+                    session_id: Set(None),
+                    kind: Set(event.name().to_string()),
+                    payload_json: Set(payload),
                 });
             }
             events::Entity::insert_many(models).exec(db).await?;
@@ -317,41 +322,41 @@ impl Analytics {
         let now = Utc::now();
         let from = now - chrono::Duration::hours(1);
         let select = Query::select()
-            .expr_as(Expr::col(events::Column::Name), Alias::new("event"))
             .expr_as(
                 Func::cust(Alias::new("date_trunc"))
                     .arg("hour")
-                    .arg(Expr::col(events::Column::CreatedAt)),
-                Alias::new("bucket"),
+                    .arg(Expr::col(events::Column::Ts)),
+                Alias::new("bucket_start"),
             )
+            .expr_as(Expr::col(events::Column::Kind), Alias::new("kind"))
             .expr_as(
-                Func::count(Expr::col(events::Column::Id)),
-                Alias::new("count"),
+                Func::count(Expr::col(events::Column::Kind)),
+                Alias::new("value"),
             )
             .from(events::Entity)
-            .and_where(Expr::col(events::Column::CreatedAt).gte(from))
-            .and_where(Expr::col(events::Column::CreatedAt).lt(now))
+            .and_where(Expr::col(events::Column::Ts).gte(from))
+            .and_where(Expr::col(events::Column::Ts).lt(now))
             .add_group_by([
-                SimpleExpr::from(Expr::col(events::Column::Name)),
                 Into::<SimpleExpr>::into(
                     Func::cust(Alias::new("date_trunc"))
                         .arg("hour")
-                        .arg(Expr::col(events::Column::CreatedAt)),
+                        .arg(Expr::col(events::Column::Ts)),
                 ),
+                SimpleExpr::from(Expr::col(events::Column::Kind)),
             ])
             .to_owned();
         let insert = Query::insert()
             .into_table(rollups::Entity)
             .columns([
-                rollups::Column::Event,
-                rollups::Column::Bucket,
-                rollups::Column::Count,
+                rollups::Column::BucketStart,
+                rollups::Column::Kind,
+                rollups::Column::Value,
             ])
             .select_from(select)
             .unwrap()
             .on_conflict(
-                OnConflict::columns([rollups::Column::Event, rollups::Column::Bucket])
-                    .update_column(rollups::Column::Count)
+                OnConflict::columns([rollups::Column::BucketStart, rollups::Column::Kind])
+                    .update_column(rollups::Column::Value)
                     .to_owned(),
             )
             .build(PostgresQueryBuilder);
@@ -387,16 +392,17 @@ impl Analytics {
 }
 
 mod events {
-    use sea_orm::entity::prelude::*;
+    use sea_orm::{entity::prelude::*, JsonValue};
 
     #[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
     #[sea_orm(table_name = "analytics_events")]
     pub struct Model {
-        #[sea_orm(primary_key)]
-        pub id: i64,
-        pub name: String,
-        pub data: Option<String>,
-        pub created_at: DateTimeUtc,
+        #[sea_orm(primary_key, auto_increment = false)]
+        pub ts: DateTimeUtc,
+        pub player_id: Option<Uuid>,
+        pub session_id: Option<Uuid>,
+        pub kind: String,
+        pub payload_json: Option<JsonValue>,
     }
 
     #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
@@ -412,10 +418,10 @@ mod rollups {
     #[sea_orm(table_name = "analytics_rollups")]
     pub struct Model {
         #[sea_orm(primary_key, auto_increment = false)]
-        pub event: String,
+        pub bucket_start: DateTimeUtc,
         #[sea_orm(primary_key, auto_increment = false)]
-        pub bucket: DateTimeUtc,
-        pub count: i64,
+        pub kind: String,
+        pub value: f64,
     }
 
     #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
