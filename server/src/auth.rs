@@ -69,28 +69,41 @@ async fn request_handler(State(state): State<std::sync::Arc<AppState>>, Json(bod
     StatusCode::OK
 }
 
-async fn verify_handler(State(state): State<std::sync::Arc<AppState>>, Json(body): Json<VerifyBody>) -> impl IntoResponse {
+async fn verify_handler(
+    State(state): State<std::sync::Arc<AppState>>,
+    Json(body): Json<VerifyBody>,
+) -> impl IntoResponse {
     let email_hash = hash_email(&body.email);
     let db = match &state.db {
         Some(db) => db,
-        None => return (HeaderMap::new(), Json(VerifyResponse { token: String::new() })),
+        None => {
+            return (
+                StatusCode::UNAUTHORIZED,
+                Json(VerifyResponse {
+                    token: String::new(),
+                }),
+            )
+                .into_response()
+        }
     };
-    let token = if let Some((code, expires_at)) = otp_store::fetch_otp(db, &email_hash).await {
+    if let Some((code, expires_at)) = otp_store::fetch_otp(db, &email_hash).await {
         if code == body.code && Utc::now() <= expires_at {
             let _ = otp_store::delete_otp(db, &email_hash).await;
-            Uuid::new_v4().to_string()
-        } else {
-            String::new()
+            let token = Uuid::new_v4().to_string();
+            let mut headers = HeaderMap::new();
+            let cookie =
+                format!("session={}; Path=/; Secure; HttpOnly; SameSite=Lax", token);
+            headers.insert(SET_COOKIE, HeaderValue::from_str(&cookie).unwrap());
+            return (headers, Json(VerifyResponse { token })).into_response();
         }
-    } else {
-        String::new()
-    };
-    let mut headers = HeaderMap::new();
-    headers.insert(
-        SET_COOKIE,
-        HeaderValue::from_str(&format!("session={}; Path=/; HttpOnly", token)).unwrap(),
-    );
-    (headers, Json(VerifyResponse { token }))
+    }
+    (
+        StatusCode::UNAUTHORIZED,
+        Json(VerifyResponse {
+            token: String::new(),
+        }),
+    )
+        .into_response()
 }
 
 pub fn routes() -> Router<std::sync::Arc<AppState>> {
