@@ -29,6 +29,7 @@ persistence.
 | `ARENA_POSTHOG_URL`             | `--posthog-url`             | PostHog endpoint URL                           | -       |
 | `ARENA_ANALYTICS_OPT_OUT`       | `--analytics-opt-out`       | Disable analytics regardless of other settings | `false` |
 | `ARENA_ANALYTICS_OTLP_ENDPOINT` | `--analytics-otlp-endpoint` | OTLP metrics export address                    | -       |
+| `ARENA_METRICS_ADDR`            | `--metrics-addr`            | Prometheus metrics listener address            | -       |
 
 ## Logging
 

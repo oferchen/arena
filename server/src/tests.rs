@@ -57,6 +57,7 @@ async fn setup_succeeds_without_env_vars() {
         csp: None,
         ice_servers: Vec::new(),
         feature_flags: HashMap::new(),
+        metrics_addr: None,
         analytics_enabled: false,
         analytics_opt_out: false,
         analytics_local: false,

@@ -98,6 +98,8 @@ struct Config {
     csp: Option<String>,
     #[arg(long, env = "ARENA_RTC_ICE_SERVERS_JSON")]
     rtc_ice_servers_json: Option<String>,
+    #[arg(long, env = "ARENA_METRICS_ADDR")]
+    metrics_addr: Option<SocketAddr>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -154,6 +156,7 @@ pub struct ResolvedConfig {
     pub csp: Option<String>,
     pub ice_servers: Vec<IceServerConfig>,
     pub feature_flags: HashMap<String, bool>,
+    pub metrics_addr: Option<SocketAddr>,
     pub analytics_enabled: bool,
     pub analytics_opt_out: bool,
     pub analytics_local: bool,
@@ -205,6 +208,7 @@ impl Config {
             csp: self.csp,
             ice_servers,
             feature_flags,
+            metrics_addr: self.metrics_addr,
             analytics_enabled: false,
             analytics_opt_out: false,
             analytics_local: false,
@@ -611,7 +615,7 @@ async fn setup(
         cfg.analytics_enabled && !cfg.analytics_opt_out,
         Some(db.clone()),
         posthog_key,
-        cfg.analytics_otlp_endpoint,
+        cfg.metrics_addr,
     );
     Ok(AppState {
         email,
@@ -711,7 +715,7 @@ async fn run(cli: Cli) -> Result<()> {
         .layer(Extension(config.clone()))
         .with_state(state.clone());
 
-    if let Some(addr) = config.analytics_otlp_endpoint {
+    if let Some(addr) = config.metrics_addr {
         let metrics_app = Router::new().route("/metrics", get(metrics_handler));
         tokio::spawn(async move {
             let listener = match tokio::net::TcpListener::bind(addr).await {
