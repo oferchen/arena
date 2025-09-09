@@ -50,10 +50,10 @@ provided when launching the server.
 
 ## Leaderboards
 
-| Env var                 | CLI flag            | Description                              | Default              |
-| ----------------------- | ------------------- | ---------------------------------------- | -------------------- |
-| `ARENA_REDIS_URL`       | `--redis-url`       | Redis URL for the top‑N cache            | `redis://127.0.0.1/` |
-| `ARENA_LEADERBOARD_MAX` | `--leaderboard-max` | Maximum entries mirrored per leaderboard | `100`                |
+| Env var                 | CLI flag            | Description                                  | Default |
+| ----------------------- | ------------------- | -------------------------------------------- | ------- |
+| `ARENA_REDIS_URL`       | `--redis-url`       | Redis URL for the top‑N cache **(required)** | -       |
+| `ARENA_LEADERBOARD_MAX` | `--leaderboard-max` | Maximum entries mirrored per leaderboard     | `100`   |
 
 ## Editor
 

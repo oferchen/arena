@@ -5,11 +5,12 @@ use std::path::PathBuf;
 
 use chrono::Utc;
 use models::{LeaderboardWindow, Run, Score};
-use redis::{aio::ConnectionManager, AsyncCommands};
+use redis::aio::ConnectionManager;
 use scylla::{Session, SessionBuilder};
 use serde::{Deserialize, Serialize};
 use tokio::sync::broadcast;
 use uuid::Uuid;
+use anyhow::Context;
 
 const WINDOWS: [LeaderboardWindow; 3] = [
     LeaderboardWindow::Daily,
@@ -34,6 +35,8 @@ pub struct LeaderboardSnapshot {
 
 impl LeaderboardService {
     pub async fn new(database_url: &str, replay_dir: PathBuf) -> Result<Self, anyhow::Error> {
+        let redis_url =
+            std::env::var("ARENA_REDIS_URL").context("ARENA_REDIS_URL must be set")?;
         let db = SessionBuilder::new()
             .known_node(database_url)
             .build()
@@ -61,8 +64,6 @@ impl LeaderboardService {
         )
         .await?;
 
-        let redis_url =
-            std::env::var("ARENA_REDIS_URL").unwrap_or_else(|_| "redis://127.0.0.1/".into());
         let client = redis::Client::open(redis_url)?;
         let cache = ConnectionManager::new(client).await?;
 
@@ -88,6 +89,7 @@ impl LeaderboardService {
         mut run: Run,
         replay: Vec<u8>,
     ) -> io::Result<()> {
+        use redis::AsyncCommands;
         if !replay.is_empty() {
             let filename = format!("{}", run.id);
             let path = self.replay_dir.join(&filename);
@@ -159,6 +161,7 @@ impl LeaderboardService {
         leaderboard: Uuid,
         window: LeaderboardWindow,
     ) -> Vec<Score> {
+        use redis::AsyncCommands;
         let key = format!("lb:{}:{}", leaderboard, window.as_str());
         let mut conn = self.cache.clone();
         let vals: Vec<String> = conn
