@@ -47,6 +47,12 @@ async fn setup_succeeds_without_env_vars() {
         public_base_url: "http://localhost".into(),
         signaling_ws_url: "ws://127.0.0.1".into(),
         db_url: "127.0.0.1:9042".into(),
+        db_max_conns: 1,
+        migrate_on_start: false,
+        enable_coop_coep: false,
+        static_dir: PathBuf::from("static"),
+        assets_dir: PathBuf::from("assets"),
+        enable_sw: false,
         csp: None,
         ice_servers: Vec::new(),
         feature_flags: HashMap::new(),
@@ -132,6 +138,9 @@ async fn config_json_respects_cli_overrides() {
         env::set_var("ARENA_PUBLIC_BASE_URL", "http://env");
         env::set_var("ARENA_SIGNALING_WS_URL", "ws://env");
         env::set_var("ARENA_DB_URL", "envdb");
+        env::set_var("ARENA_DB_MAX_CONNS", "1");
+        env::set_var("ARENA_STATIC_DIR", "static");
+        env::set_var("ARENA_ASSETS_DIR", "assets");
         env::set_var("ARENA_ANALYTICS_OPT_OUT", "false");
     }
     let cli =
@@ -147,6 +156,9 @@ async fn config_json_respects_cli_overrides() {
         env::remove_var("ARENA_PUBLIC_BASE_URL");
         env::remove_var("ARENA_SIGNALING_WS_URL");
         env::remove_var("ARENA_DB_URL");
+        env::remove_var("ARENA_DB_MAX_CONNS");
+        env::remove_var("ARENA_STATIC_DIR");
+        env::remove_var("ARENA_ASSETS_DIR");
         env::remove_var("ARENA_ANALYTICS_OPT_OUT");
     }
 }

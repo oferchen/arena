@@ -14,6 +14,10 @@ pub struct RuntimeConfig {
     pub analytics_enabled: bool,
     #[serde(default)]
     pub analytics_opt_out: bool,
+    #[serde(default)]
+    pub enable_coop_coep: bool,
+    #[serde(default)]
+    pub enable_sw: bool,
 }
 
 #[derive(Clone, Deserialize, Serialize, Debug, PartialEq)]
@@ -59,6 +63,8 @@ impl Default for RuntimeConfig {
             ice_servers: Vec::new(),
             analytics_enabled: false,
             analytics_opt_out: false,
+            enable_coop_coep: false,
+            enable_sw: false,
         }
     }
 }

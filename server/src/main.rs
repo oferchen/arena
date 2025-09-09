@@ -67,6 +67,18 @@ struct Config {
     signaling_ws_url: Option<String>,
     #[arg(long, env = "ARENA_DB_URL")]
     db_url: Option<String>,
+    #[arg(long, env = "ARENA_DB_MAX_CONNS")]
+    db_max_conns: Option<u32>,
+    #[arg(long, env = "ARENA_MIGRATE_ON_START", default_value_t = false)]
+    migrate_on_start: bool,
+    #[arg(long, env = "ARENA_ENABLE_COOP_COEP", default_value_t = false)]
+    enable_coop_coep: bool,
+    #[arg(long, env = "ARENA_STATIC_DIR")]
+    static_dir: Option<PathBuf>,
+    #[arg(long, env = "ARENA_ASSETS_DIR")]
+    assets_dir: Option<PathBuf>,
+    #[arg(long, env = "ARENA_ENABLE_SW", default_value_t = false)]
+    enable_sw: bool,
     #[arg(long, env = "ARENA_CSP")]
     csp: Option<String>,
     #[arg(long, env = "ARENA_RTC_ICE_SERVERS_JSON")]
@@ -116,6 +128,12 @@ pub struct ResolvedConfig {
     pub public_base_url: String,
     pub signaling_ws_url: String,
     pub db_url: String,
+    pub db_max_conns: u32,
+    pub migrate_on_start: bool,
+    pub enable_coop_coep: bool,
+    pub static_dir: PathBuf,
+    pub assets_dir: PathBuf,
+    pub enable_sw: bool,
     pub csp: Option<String>,
     pub ice_servers: Vec<IceServerConfig>,
     pub feature_flags: HashMap<String, bool>,
@@ -152,6 +170,18 @@ impl Config {
                 .signaling_ws_url
                 .ok_or_else(|| anyhow!("ARENA_SIGNALING_WS_URL not set"))?,
             db_url: self.db_url.ok_or_else(|| anyhow!("ARENA_DB_URL not set"))?,
+            db_max_conns: self
+                .db_max_conns
+                .ok_or_else(|| anyhow!("ARENA_DB_MAX_CONNS not set"))?,
+            migrate_on_start: self.migrate_on_start,
+            enable_coop_coep: self.enable_coop_coep,
+            static_dir: self
+                .static_dir
+                .ok_or_else(|| anyhow!("ARENA_STATIC_DIR not set"))?,
+            assets_dir: self
+                .assets_dir
+                .ok_or_else(|| anyhow!("ARENA_ASSETS_DIR not set"))?,
+            enable_sw: self.enable_sw,
             csp: self.csp,
             ice_servers,
             feature_flags,
@@ -529,9 +559,11 @@ async fn setup(cfg: &ResolvedConfig, smtp: SmtpConfig, analytics: Analytics) -> 
         id: "basic".to_string(),
         price_cents: 1000,
     }]);
-    let migration_db = Database::connect(&cfg.db_url).await?;
-    Migrator::up(&migration_db, None).await?;
-    let db = connect_db(&cfg.db_url).await?;
+    if cfg.migrate_on_start {
+        let migration_db = Database::connect(&cfg.db_url).await?;
+        Migrator::up(&migration_db, None).await?;
+    }
+    let db = connect_db(&cfg.db_url, cfg.db_max_conns).await?;
     let entitlements = EntitlementStore::new(Some(db.clone()));
 
     Ok(AppState {
@@ -566,12 +598,12 @@ async fn run(cli: Cli) -> Result<()> {
     let state = Arc::new(setup(&config, smtp, analytics).await?);
 
     let assets_service =
-        get_service(ServeDir::new("assets")).layer(SetResponseHeaderLayer::if_not_present(
+        get_service(ServeDir::new(&config.assets_dir)).layer(SetResponseHeaderLayer::if_not_present(
             CACHE_CONTROL,
             HeaderValue::from_static("public, max-age=31536000, immutable"),
         ));
 
-    let app = Router::new()
+    let mut app = Router::new()
         .nest("/auth", auth::routes())
         .route("/auth/guest", post(guest_handler))
         .route("/ws", get(ws_handler))
@@ -584,19 +616,25 @@ async fn run(cli: Cli) -> Result<()> {
         .route("/admin/mail/config", get(mail_config_handler))
         .nest("/leaderboard", leaderboard::routes())
         .nest_service("/assets", assets_service)
-        .fallback_service(ServeDir::new("static"))
-        .layer(SetResponseHeaderLayer::if_not_present(
-            HeaderName::from_static("cross-origin-opener-policy"),
-            HeaderValue::from_static("same-origin"),
-        ))
-        .layer(SetResponseHeaderLayer::if_not_present(
-            HeaderName::from_static("cross-origin-embedder-policy"),
-            HeaderValue::from_static("require-corp"),
-        ))
-        .layer(SetResponseHeaderLayer::if_not_present(
-            HeaderName::from_static("cross-origin-resource-policy"),
-            HeaderValue::from_static("same-origin"),
-        ))
+        .fallback_service(ServeDir::new(&config.static_dir));
+
+    if config.enable_coop_coep {
+        app = app
+            .layer(SetResponseHeaderLayer::if_not_present(
+                HeaderName::from_static("cross-origin-opener-policy"),
+                HeaderValue::from_static("same-origin"),
+            ))
+            .layer(SetResponseHeaderLayer::if_not_present(
+                HeaderName::from_static("cross-origin-embedder-policy"),
+                HeaderValue::from_static("require-corp"),
+            ))
+            .layer(SetResponseHeaderLayer::if_not_present(
+                HeaderName::from_static("cross-origin-resource-policy"),
+                HeaderValue::from_static("same-origin"),
+            ));
+    }
+
+    let app = app
         .layer(SetResponseHeaderLayer::if_not_present(
             HeaderName::from_static("content-security-policy"),
             HeaderValue::from_str(

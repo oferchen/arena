@@ -22,6 +22,12 @@ pub struct ConfigResponse {
     /// ICE servers used for establishing peer connections
     #[serde(default)]
     pub ice_servers: Vec<IceServerConfig>,
+    /// Whether COOP/COEP headers are enabled
+    #[serde(default)]
+    pub enable_coop_coep: bool,
+    /// Whether service workers are enabled
+    #[serde(default)]
+    pub enable_sw: bool,
 }
 
 /// HTTP handler that returns public configuration as JSON.
@@ -33,6 +39,8 @@ pub async fn get_config(Extension(cfg): Extension<ResolvedConfig>) -> Json<Confi
         analytics_opt_out: cfg.analytics_opt_out,
         feature_flags: cfg.feature_flags.clone(),
         ice_servers: cfg.ice_servers.clone(),
+        enable_coop_coep: cfg.enable_coop_coep,
+        enable_sw: cfg.enable_sw,
     };
     Json(cfg)
 }
