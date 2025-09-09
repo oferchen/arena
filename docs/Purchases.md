@@ -1,7 +1,8 @@
 # Purchases
 
 Arena uses an OTP-based entitlement system. After a user signs in with a one-time
-password, the client can claim items directly from the server.
+password, the client can claim items directly from the server. Entitlements are
+stored in PostgreSQL via SeaORM.
 
 ## Catalog
 
@@ -22,7 +23,7 @@ curl http://localhost:3000/store
         -d '{"sku":"duck_hunt"}'
    ```
    The server verifies the session and records the entitlement in its
-   Scylla-backed store.
+   PostgreSQL-backed store using SeaORM.
 3. The entitlement is persisted server-side and can be queried later.
 
 ## Entitlements

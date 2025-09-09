@@ -2,7 +2,8 @@
 
 Arena is configured through environment variables prefixed with `ARENA_` or
 equivalent CLI flags. `ARENA_BIND_ADDR` or the `--bind-addr` flag must be
-provided when launching the server.
+provided when launching the server. Arena uses PostgreSQL with SeaORM for data
+persistence.
 
 ## Server
 
@@ -10,7 +11,7 @@ provided when launching the server.
 | ----------------------- | ------------------- | -------------------------------------------- | -------------------- |
 | `ARENA_BIND_ADDR`       | `--bind-addr`       | Address to bind the server to **(required)** | -                    |
 | `ARENA_PUBLIC_BASE_URL` | `--public-base-url` | Public base URL of the server                | -                    |
-| `ARENA_DB_URL`          | `--db-url`          | Scylla database URL                          | -                    |
+| `ARENA_DB_URL`          | `--db-url`          | PostgreSQL database URL                      | -                    |
 | `ARENA_CSP`             | `--csp`             | Content Security Policy header value         | `default-src 'self'` |
 
 ## RTC

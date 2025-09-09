@@ -1,16 +1,18 @@
 # Leaderboards
 
-Arena's leaderboard service persists results in Scylla. Scores are tracked in
-three windows: **daily**, **weekly**, and **all_time**.
+Arena's leaderboard service persists results in PostgreSQL using SeaORM as the
+persistence layer. Scores are tracked in three windows: **daily**, **weekly**,
+and **all_time**.
 
 ## Configuration
 
 | Env var                 | CLI flag            | Description                              | Default |
 | ----------------------- | ------------------- | ---------------------------------------- | ------- |
-| `ARENA_DB_URL`          | `--db-url`          | Scylla database URL                      | -       |
+| `ARENA_DB_URL`          | `--db-url`          | PostgreSQL database URL                  | -       |
 | `ARENA_LEADERBOARD_MAX` | `--leaderboard-max` | Maximum entries mirrored per leaderboard | `100`   |
 
-Each score submission writes a run and windowed score to Scylla. The highest
+Each score submission writes a run and windowed score to PostgreSQL via
+SeaORM. The highest
 `ARENA_LEADERBOARD_MAX` scores for each window are maintained for quick
 retrieval.
 
