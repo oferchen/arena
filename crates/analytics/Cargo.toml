@@ -8,14 +8,14 @@ prometheus = { version = "0.13", optional = true }
 opentelemetry = { version = "0.22", features = ["metrics"], optional = true }
 reqwest = { version = "0.11", features = ["json", "rustls-tls"], optional = true }
 serde = { version = "1", features = ["derive"] }
-serde_json = { version = "1", optional = true }
+serde_json = { version = "1" }
 tokio = { version = "1", features = ["rt", "macros"] }
 chrono = { version = "0.4", features = ["serde"] }
 sea-orm = { version = "0.12", features = ["sqlx-postgres", "runtime-tokio-rustls", "macros"] }
 
 [features]
 default = ["posthog", "otlp", "prometheus"]
-posthog = ["reqwest", "serde_json"]
+posthog = ["reqwest"]
 otlp = ["opentelemetry"]
 prometheus = ["dep:prometheus"]
 

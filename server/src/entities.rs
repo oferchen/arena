@@ -1,4 +1,4 @@
-use sea_orm::entity::prelude::*;
+use sea_orm::{entity::prelude::*, JsonValue};
 
 pub mod login_tokens {
     use super::*;
@@ -130,11 +130,12 @@ pub mod analytics_events {
     #[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
     #[sea_orm(table_name = "analytics_events")]
     pub struct Model {
-        #[sea_orm(primary_key)]
-        pub id: i64,
-        pub name: String,
-        pub data: Option<String>,
-        pub created_at: DateTimeUtc,
+        #[sea_orm(primary_key, auto_increment = false)]
+        pub ts: DateTimeUtc,
+        pub player_id: Option<Uuid>,
+        pub session_id: Option<Uuid>,
+        pub kind: String,
+        pub payload_json: Option<JsonValue>,
     }
     #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
     pub enum Relation {}
@@ -147,10 +148,10 @@ pub mod analytics_rollups {
     #[sea_orm(table_name = "analytics_rollups")]
     pub struct Model {
         #[sea_orm(primary_key, auto_increment = false)]
-        pub event: String,
+        pub bucket_start: DateTimeUtc,
         #[sea_orm(primary_key, auto_increment = false)]
-        pub bucket: DateTimeUtc,
-        pub count: i64,
+        pub kind: String,
+        pub value: f64,
     }
     #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
     pub enum Relation {}
