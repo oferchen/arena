@@ -8,10 +8,9 @@ use anyhow::Result;
 use chrono::{Duration, Utc};
 use db::{purchases, runs, scores};
 use models::{LeaderboardWindow, Run, Score};
-use sea_orm::sea_query::TableCreateStatement;
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, Database, DatabaseConnection,
-    EntityTrait, JoinType, QueryFilter, QueryOrder, QuerySelect, RelationTrait, Schema,
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, Database, DatabaseConnection, EntityTrait,
+    JoinType, QueryFilter, QueryOrder, QuerySelect, RelationTrait,
 };
 use serde::{Deserialize, Serialize};
 use tokio::sync::broadcast;
@@ -41,33 +40,6 @@ pub struct LeaderboardSnapshot {
 impl LeaderboardService {
     pub async fn new(database_url: &str, replay_dir: PathBuf) -> Result<Self> {
         let db = Database::connect(database_url).await?;
-        let schema = Schema::new(db.get_database_backend());
-
-        create_table(
-            &db,
-            schema
-                .create_table_from_entity(runs::Entity)
-                .if_not_exists()
-                .to_owned(),
-        )
-        .await?;
-        create_table(
-            &db,
-            schema
-                .create_table_from_entity(scores::Entity)
-                .if_not_exists()
-                .to_owned(),
-        )
-        .await?;
-        create_table(
-            &db,
-            schema
-                .create_table_from_entity(purchases::Entity)
-                .if_not_exists()
-                .to_owned(),
-        )
-        .await?;
-
         tokio::fs::create_dir_all(&replay_dir).await?;
         let (tx, _) = broadcast::channel(16);
         let max = std::env::var("ARENA_LEADERBOARD_MAX")
@@ -193,12 +165,6 @@ impl LeaderboardService {
         // Updating verification status is left as future work.
         false
     }
-}
-
-async fn create_table(db: &DatabaseConnection, stmt: TableCreateStatement) -> Result<()> {
-    let builder = db.get_database_backend();
-    db.execute(builder.build(&stmt)).await?;
-    Ok(())
 }
 
 fn to_io_error<E: std::error::Error + Send + Sync + 'static>(e: E) -> io::Error {

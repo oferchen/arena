@@ -6,6 +6,7 @@ use axum::http::Request;
 use futures_util::{SinkExt, StreamExt};
 use serial_test::serial;
 use std::{collections::HashMap, env};
+use migration::{Migrator, MigratorTrait, sea_orm::Database};
 use tokio_tungstenite::tungstenite::Message;
 use tower::ServiceExt;
 use webrtc::api::APIBuilder;
@@ -19,6 +20,8 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 async fn leaderboard_service() -> ::leaderboard::LeaderboardService {
+    let db = Database::connect("127.0.0.1:9042").await.unwrap();
+    Migrator::up(&db, None).await.unwrap();
     ::leaderboard::LeaderboardService::new("127.0.0.1:9042", PathBuf::from("replays"))
         .await
         .unwrap()
