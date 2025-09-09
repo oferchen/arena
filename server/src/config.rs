@@ -26,10 +26,11 @@ pub struct ConfigResponse {
 
 /// HTTP handler that returns public configuration as JSON.
 pub async fn get_config(Extension(cfg): Extension<ResolvedConfig>) -> Json<ConfigResponse> {
-    let analytics_opt_out = std::env::var("ARENA_ANALYTICS_OPT_OUT").is_ok();
     let cfg = ConfigResponse {
         signal_url: cfg.signaling_ws_url.clone(),
         api_base_url: cfg.public_base_url.clone(),
+        analytics_enabled: cfg.analytics_enabled,
+        analytics_opt_out: cfg.analytics_opt_out,
         feature_flags: cfg.feature_flags.clone(),
         ice_servers: cfg.ice_servers.clone(),
     };
