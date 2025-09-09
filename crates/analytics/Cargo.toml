@@ -13,12 +13,14 @@ tokio = { version = "1", features = ["rt", "macros"] }
 chrono = { version = "0.4", features = ["serde"] }
 sea-orm = { version = "0.12", default-features = false, features = ["sqlx-postgres", "runtime-tokio-rustls", "macros", "with-uuid", "with-chrono", "with-json"] }
 uuid = { version = "1", features = ["serde", "v4"] }
+bevy_ecs = { version = "0.12", optional = true }
 
 [features]
 default = ["posthog", "otlp", "prometheus"]
 posthog = ["reqwest"]
 otlp = ["opentelemetry"]
 prometheus = ["dep:prometheus"]
+bevy-resource = ["bevy_ecs"]
 
 [dev-dependencies]
 httpmock = "0.7"

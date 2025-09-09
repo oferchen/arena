@@ -34,7 +34,7 @@ null_module = { path = "../crates/minigames/null_module" }
 physics = { path = "crates/physics" }
 editor = { path = "../crates/editor" }
 render = { path = "../crates/render" }
-analytics = { path = "../crates/analytics" }
+analytics = { path = "../crates/analytics", features = ["bevy-resource"] }
 purchases = { path = "../crates/purchases" }
 platform-api = { path = "../crates/platform-api" }
 netcode = { path = "../crates/net", package = "net" }
