@@ -485,7 +485,6 @@ async fn shutdown_signal() {
 }
 
 async fn setup(cfg: &ResolvedConfig, smtp: SmtpConfig, analytics: Analytics) -> Result<AppState> {
-    let smtp = smtp.validate()?;
     let email = Arc::new(EmailService::new(smtp.clone()).map_err(|e| {
         log::error!("failed to initialize email service: {e}");
         anyhow!(e)
@@ -543,7 +542,6 @@ async fn run(cli: Cli) -> Result<()> {
         posthog_key.clone(),
         metrics_addr,
     );
-    let smtp = smtp.validate()?;
     let state = Arc::new(setup(&config, smtp, analytics).await?);
 
     let assets_service =
