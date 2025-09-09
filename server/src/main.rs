@@ -453,10 +453,24 @@ async fn guest_handler(State(state): State<Arc<AppState>>) -> impl IntoResponse 
         let _ = db.query(query, (id.clone(),)).await;
     }
     let mut headers = HeaderMap::new();
-    headers.insert(
-        SET_COOKIE,
-        HeaderValue::from_str(&format!("session={}; Path=/; HttpOnly", id)).unwrap(),
+    let same_site = std::env::var("ARENA_COOKIE_SAME_SITE").unwrap_or_else(|_| "Strict".into());
+    let secure = std::env::var("ARENA_COOKIE_SECURE")
+        .map(|v| matches!(v.to_ascii_lowercase().as_str(), "1" | "true" | "yes" | "on"))
+        .unwrap_or(true);
+    let cookie = format!(
+        "session={}; Path=/; HttpOnly;{} SameSite={}",
+        id,
+        if secure { " Secure;" } else { "" },
+        same_site
     );
+    match HeaderValue::from_str(&cookie) {
+        Ok(value) => {
+            headers.insert(SET_COOKIE, value);
+        }
+        Err(e) => {
+            log::error!("failed to create session cookie header: {e}");
+        }
+    }
     (headers, Json(GuestResponse { user_id: id }))
 }
 
