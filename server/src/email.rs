@@ -288,7 +288,7 @@ impl EmailService {
         }
     }
 
-    fn send_mail(&self, to: &str, subject: &str, body: &str) -> Result<(), EmailError> {
+    pub(crate) fn send_mail(&self, to: &str, subject: &str, body: &str) -> Result<(), EmailError> {
         if !Self::allowed(to)? {
             return Err(EmailError::RateLimited);
         }
