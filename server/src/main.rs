@@ -69,6 +69,40 @@ struct Config {
     rtc_ice_servers_json: Option<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IceServerConfig {
+    #[serde(deserialize_with = "deserialize_urls", serialize_with = "serialize_urls")]
+    pub urls: Vec<String>,
+    #[serde(default)]
+    pub username: Option<String>,
+    #[serde(default)]
+    pub credential: Option<String>,
+}
+
+fn deserialize_urls<'de, D>(deserializer: D) -> Result<Vec<String>, D::Error>
+where
+    D: serde::de::Deserializer<'de>,
+{
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum Urls {
+        Single(String),
+        Multiple(Vec<String>),
+    }
+
+    match Urls::deserialize(deserializer)? {
+        Urls::Single(url) => Ok(vec![url]),
+        Urls::Multiple(urls) => Ok(urls),
+    }
+}
+
+fn serialize_urls<S>(urls: &Vec<String>, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: serde::ser::Serializer,
+{
+    urls.serialize(serializer)
+}
+
 #[derive(Debug, Clone)]
 pub struct ResolvedConfig {
     pub bind_addr: SocketAddr,
@@ -76,7 +110,7 @@ pub struct ResolvedConfig {
     pub signaling_ws_url: String,
     pub db_url: String,
     pub csp: Option<String>,
-    pub ice_servers: Vec<String>,
+    pub ice_servers: Vec<IceServerConfig>,
     pub feature_flags: HashMap<String, bool>,
     pub analytics_enabled: bool,
     pub analytics_opt_out: bool,
