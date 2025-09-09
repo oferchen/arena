@@ -25,7 +25,7 @@ use net::server::ServerConnector;
 use payments::EntitlementStore;
 use sea_orm::Database;
 use serde::{Deserialize, Serialize};
-use sqlx::PgPool;
+use sea_orm::{DatabaseConnection, DbBackend, Statement};
 use storage::connect as connect_db;
 use webrtc::peer_connection::sdp::sdp_type::RTCSdpType;
 use webrtc::peer_connection::sdp::session_description::RTCSessionDescription;
@@ -170,7 +170,7 @@ pub(crate) struct AppState {
     leaderboard: ::leaderboard::LeaderboardService,
     catalog: Catalog,
     entitlements: EntitlementStore,
-    db: Option<PgPool>,
+    db: Option<DatabaseConnection>,
 }
 
 async fn ws_handler(State(state): State<Arc<AppState>>, ws: WebSocketUpgrade) -> impl IntoResponse {
@@ -456,8 +456,12 @@ struct GuestResponse {
 async fn guest_handler(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     let id = uuid::Uuid::new_v4().to_string();
     if let Some(db) = &state.db {
-        let query = "INSERT INTO players_by_id (id, guest) VALUES (?, true)";
-        let _ = db.query(query, (id.clone(),)).await;
+        let stmt = Statement::from_sql_and_values(
+            DbBackend::Postgres,
+            "INSERT INTO players_by_id (id, guest) VALUES ($1, true)",
+            vec![id.clone().into()],
+        );
+        let _ = db.execute(stmt).await;
     }
     let mut headers = HeaderMap::new();
     let same_site = std::env::var("ARENA_COOKIE_SAME_SITE").unwrap_or_else(|_| "Strict".into());
