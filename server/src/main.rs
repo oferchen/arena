@@ -163,12 +163,13 @@ pub struct ResolvedConfig {
 
 impl Config {
     fn resolve(self) -> Result<ResolvedConfig> {
-        let ice_servers = if let Some(json) = self.rtc_ice_servers_json {
-            serde_json::from_str(&json)
-                .map_err(|e| anyhow!("invalid ARENA_RTC_ICE_SERVERS_JSON: {e}"))?
-        } else {
-            Vec::new()
-        };
+        let ice_servers = self
+            .rtc_ice_servers_json
+            .ok_or_else(|| anyhow!("invalid ARENA_RTC_ICE_SERVERS_JSON: missing"))
+            .and_then(|json| {
+                serde_json::from_str::<Vec<IceServerConfig>>(&json)
+                    .map_err(|e| anyhow!("invalid ARENA_RTC_ICE_SERVERS_JSON: {e}"))
+            })?;
         let feature_flags = std::env::vars()
             .filter_map(|(k, v)| {
                 k.strip_prefix("ARENA_FEATURE_").map(|name| {
