@@ -24,8 +24,8 @@ use migration::{Migrator, MigratorTrait};
 use net::server::ServerConnector;
 use payments::EntitlementStore;
 use sea_orm::Database;
-use serde::{Deserialize, Serialize};
 use sea_orm::{DatabaseConnection, DbBackend, Statement};
+use serde::{Deserialize, Serialize};
 use storage::connect as connect_db;
 use webrtc::peer_connection::sdp::sdp_type::RTCSdpType;
 use webrtc::peer_connection::sdp::session_description::RTCSessionDescription;
@@ -539,7 +539,12 @@ async fn shutdown_signal() {
     }
 }
 
-async fn setup(cfg: &ResolvedConfig, smtp: SmtpConfig, analytics: Analytics) -> Result<AppState> {
+async fn setup(
+    cfg: &ResolvedConfig,
+    smtp: SmtpConfig,
+    posthog_key: Option<String>,
+    metrics_addr: Option<SocketAddr>,
+) -> Result<AppState> {
     let email = Arc::new(EmailService::new(smtp.clone()).map_err(|e| {
         log::error!("failed to initialize email service: {e}");
         anyhow!(e)
@@ -564,6 +569,12 @@ async fn setup(cfg: &ResolvedConfig, smtp: SmtpConfig, analytics: Analytics) -> 
         Migrator::up(&migration_db, None).await?;
     }
     let db = connect_db(&cfg.db_url, cfg.db_max_conns).await?;
+    let analytics = Analytics::new(
+        cfg.analytics_enabled && !cfg.analytics_opt_out,
+        Some(db.clone()),
+        posthog_key,
+        metrics_addr,
+    );
     let entitlements = EntitlementStore::new(Some(db.clone()));
 
     Ok(AppState {
@@ -590,18 +601,14 @@ async fn run(cli: Cli) -> Result<()> {
     config.analytics_enabled = posthog_key.is_some();
     config.analytics_opt_out = analytics_opt_out;
     log::info!("Using config: {:?}", config);
-    let analytics = Analytics::new(
-        config.analytics_enabled && !config.analytics_opt_out,
-        posthog_key.clone(),
-        metrics_addr,
-    );
-    let state = Arc::new(setup(&config, smtp, analytics).await?);
+    let state = Arc::new(setup(&config, smtp, posthog_key.clone(), metrics_addr).await?);
 
-    let assets_service =
-        get_service(ServeDir::new(&config.assets_dir)).layer(SetResponseHeaderLayer::if_not_present(
+    let assets_service = get_service(ServeDir::new(&config.assets_dir)).layer(
+        SetResponseHeaderLayer::if_not_present(
             CACHE_CONTROL,
             HeaderValue::from_static("public, max-age=31536000, immutable"),
-        ));
+        ),
+    );
 
     let mut app = Router::new()
         .nest("/auth", auth::routes())

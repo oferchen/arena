@@ -11,6 +11,8 @@ mod m20240101_000008_create_leaderboard;
 mod m20240101_000009_create_leaderboard_tables;
 mod m20240101_000010_create_entitlements;
 mod m20240101_000011_create_purchases;
+mod m20240101_000012_create_analytics_events;
+mod m20240101_000013_create_analytics_rollups;
 
 pub struct Migrator;
 
@@ -29,6 +31,8 @@ impl MigratorTrait for Migrator {
             Box::new(m20240101_000009_create_leaderboard_tables::Migration),
             Box::new(m20240101_000010_create_entitlements::Migration),
             Box::new(m20240101_000011_create_purchases::Migration),
+            Box::new(m20240101_000012_create_analytics_events::Migration),
+            Box::new(m20240101_000013_create_analytics_rollups::Migration),
         ]
     }
 }
