@@ -8,6 +8,14 @@ use std::{
     sync::{Arc, Mutex},
 };
 
+use chrono::Utc;
+use sea_orm::{
+    DatabaseConnection, DbBackend, Set, Statement,
+    entity::prelude::*,
+    sea_query::{Alias, Expr, Func, OnConflict, PostgresQueryBuilder, Query},
+};
+use tokio::time::{Duration, interval};
+
 #[cfg(feature = "otlp")]
 use opentelemetry::{KeyValue, global, metrics::Counter};
 #[cfg(feature = "prometheus")]
@@ -60,8 +68,6 @@ pub enum Event {
 }
 
 struct ColumnarStore {
-    names: Vec<&'static str>,
-    data: Vec<Option<String>>,
     events: Vec<Event>,
     max_len: usize,
 }
@@ -69,21 +75,15 @@ struct ColumnarStore {
 impl ColumnarStore {
     fn new(max_len: usize) -> Self {
         Self {
-            names: Vec::new(),
-            data: Vec::new(),
             events: Vec::new(),
             max_len,
         }
     }
 
-    fn push(&mut self, name: &'static str, data: Option<String>, event: Event) {
+    fn push(&mut self, event: Event) {
         if self.events.len() >= self.max_len {
-            self.names.remove(0);
-            self.data.remove(0);
             self.events.remove(0);
         }
-        self.names.push(name);
-        self.data.push(data);
         self.events.push(event);
     }
 
@@ -93,8 +93,6 @@ impl ColumnarStore {
 
     fn take_events(&mut self) -> Vec<Event> {
         let events = self.events.clone();
-        self.names.clear();
-        self.data.clear();
         self.events.clear();
         events
     }
@@ -144,6 +142,7 @@ impl Event {
 pub struct Analytics {
     enabled: bool,
     store: Arc<Mutex<ColumnarStore>>,
+    db: Option<DatabaseConnection>,
     #[cfg(feature = "prometheus")]
     counter: IntCounterVec,
     #[cfg(feature = "posthog")]
@@ -155,6 +154,7 @@ pub struct Analytics {
 impl Analytics {
     pub fn with_max_events(
         enabled: bool,
+        db: Option<DatabaseConnection>,
         posthog_key: Option<String>,
         metrics_addr: Option<SocketAddr>,
         max_events: usize,
@@ -193,20 +193,50 @@ impl Analytics {
         #[cfg(not(feature = "otlp"))]
         let _ = metrics_addr;
 
-        Self {
+        let analytics = Self {
             enabled,
             store,
+            db,
             #[cfg(feature = "prometheus")]
             counter,
             #[cfg(feature = "posthog")]
             posthog,
             #[cfg(feature = "otlp")]
             otel,
+        };
+
+        if analytics.db.is_some() {
+            // periodically flush events to the database
+            {
+                let this = analytics.clone();
+                tokio::spawn(async move {
+                    let mut ticker = interval(Duration::from_secs(5));
+                    loop {
+                        ticker.tick().await;
+                        let _ = this.flush_to_db().await;
+                    }
+                });
+            }
+
+            // periodically roll up events
+            {
+                let this = analytics.clone();
+                tokio::spawn(async move {
+                    let mut ticker = interval(Duration::from_secs(60 * 60));
+                    loop {
+                        ticker.tick().await;
+                        let _ = this.rollup().await;
+                    }
+                });
+            }
         }
+
+        analytics
     }
 
     pub fn new(
         enabled: bool,
+        db: Option<DatabaseConnection>,
         posthog_key: Option<String>,
         metrics_addr: Option<SocketAddr>,
     ) -> Self {
@@ -214,7 +244,7 @@ impl Analytics {
             .ok()
             .and_then(|v| v.parse().ok())
             .unwrap_or(DEFAULT_MAX_EVENTS);
-        Self::with_max_events(enabled, posthog_key, metrics_addr, max_events)
+        Self::with_max_events(enabled, db, posthog_key, metrics_addr, max_events)
     }
 
     pub fn dispatch(&self, event: Event) {
@@ -222,11 +252,7 @@ impl Analytics {
             return;
         }
         let name = event.name();
-        let data = match &event {
-            Event::Error { message } => Some(message.clone()),
-            _ => None,
-        };
-        self.store.lock().unwrap().push(name, data, event.clone());
+        self.store.lock().unwrap().push(event.clone());
 
         #[cfg(feature = "prometheus")]
         self.counter.with_label_values(&[name]).inc();
@@ -252,6 +278,81 @@ impl Analytics {
         }
     }
 
+    async fn flush_to_db(&self) -> Result<(), DbErr> {
+        if !self.enabled {
+            return Ok(());
+        }
+        let events = self.store.lock().unwrap().take_events();
+        if events.is_empty() {
+            return Ok(());
+        }
+        if let Some(db) = &self.db {
+            let mut models = Vec::with_capacity(events.len());
+            for event in events {
+                let data = match &event {
+                    Event::Error { message } => Some(message.clone()),
+                    _ => None,
+                };
+                models.push(events::ActiveModel {
+                    name: Set(event.name().to_string()),
+                    data: Set(data),
+                    created_at: Set(Utc::now()),
+                    ..Default::default()
+                });
+            }
+            events::Entity::insert_many(models).exec(db).await?;
+        }
+        Ok(())
+    }
+
+    async fn rollup(&self) -> Result<(), DbErr> {
+        if !self.enabled {
+            return Ok(());
+        }
+        let db = if let Some(db) = &self.db {
+            db
+        } else {
+            return Ok(());
+        };
+        let now = Utc::now();
+        let from = now - chrono::Duration::hours(1);
+        let select = Query::select()
+            .expr_as(Expr::col(events::Column::Name), Alias::new("event"))
+            .expr_as(
+                Expr::cust("date_trunc('hour', \"created_at\")"),
+                Alias::new("bucket"),
+            )
+            .expr_as(
+                Func::count(Expr::col(events::Column::Id)),
+                Alias::new("count"),
+            )
+            .from(events::Entity)
+            .and_where(Expr::col(events::Column::CreatedAt).gte(from))
+            .and_where(Expr::col(events::Column::CreatedAt).lt(now))
+            .group_by_cols(vec![
+                Expr::col(events::Column::Name),
+                Expr::cust("date_trunc('hour', \"created_at\")"),
+            ])
+            .to_owned();
+        let insert = Query::insert()
+            .into_table(rollups::Entity)
+            .columns([
+                rollups::Column::Event,
+                rollups::Column::Bucket,
+                rollups::Column::Count,
+            ])
+            .select_from(select)
+            .on_conflict(
+                OnConflict::columns([rollups::Column::Event, rollups::Column::Bucket])
+                    .update_column(rollups::Column::Count)
+                    .to_owned(),
+            )
+            .build(PostgresQueryBuilder);
+        db.execute(Statement::from_string(DbBackend::Postgres, insert))
+            .await?;
+        Ok(())
+    }
+
     pub fn events(&self) -> Vec<Event> {
         self.store.lock().unwrap().events()
     }
@@ -274,6 +375,44 @@ impl Analytics {
     }
 }
 
+mod events {
+    use sea_orm::entity::prelude::*;
+
+    #[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
+    #[sea_orm(table_name = "analytics_events")]
+    pub struct Model {
+        #[sea_orm(primary_key)]
+        pub id: i64,
+        pub name: String,
+        pub data: Option<String>,
+        pub created_at: DateTimeUtc,
+    }
+
+    #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
+    pub enum Relation {}
+
+    impl ActiveModelBehavior for ActiveModel {}
+}
+
+mod rollups {
+    use sea_orm::entity::prelude::*;
+
+    #[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
+    #[sea_orm(table_name = "analytics_rollups", primary_key = (event, bucket))]
+    pub struct Model {
+        #[sea_orm(primary_key, auto_increment = false)]
+        pub event: String,
+        #[sea_orm(primary_key, auto_increment = false)]
+        pub bucket: DateTimeUtc,
+        pub count: i64,
+    }
+
+    #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
+    pub enum Relation {}
+
+    impl ActiveModelBehavior for ActiveModel {}
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -294,7 +433,7 @@ mod tests {
     #[cfg(feature = "prometheus")]
     #[test]
     fn store_and_prometheus() {
-        let analytics = Analytics::new(true, None, None);
+        let analytics = Analytics::new(true, None, None, None);
         analytics.dispatch(Event::ShotFired);
         assert_eq!(analytics.events(), vec![Event::ShotFired]);
         assert_eq!(analytics.counter_value("shot_fired"), 1);
@@ -303,7 +442,7 @@ mod tests {
     #[cfg(not(feature = "prometheus"))]
     #[test]
     fn store() {
-        let analytics = Analytics::new(true, None, None);
+        let analytics = Analytics::new(true, None, None, None);
         analytics.dispatch(Event::ShotFired);
         assert_eq!(analytics.events(), vec![Event::ShotFired]);
     }
@@ -311,7 +450,7 @@ mod tests {
     #[test]
     fn ring_buffer_limit() {
         set_var(MAX_EVENTS_ENV_VAR, "2");
-        let analytics = Analytics::new(true, None, None);
+        let analytics = Analytics::new(true, None, None, None);
         analytics.dispatch(Event::ShotFired);
         analytics.dispatch(Event::TargetHit);
         analytics.dispatch(Event::Death);
@@ -321,7 +460,7 @@ mod tests {
 
     #[test]
     fn flush_clears_events() {
-        let analytics = Analytics::with_max_events(true, None, None, 2);
+        let analytics = Analytics::with_max_events(true, None, None, None, 2);
         analytics.dispatch(Event::ShotFired);
         let flushed = analytics.flush();
         assert_eq!(flushed, vec![Event::ShotFired]);
@@ -342,7 +481,7 @@ mod tests {
 
         set_var("POSTHOG_ENDPOINT", server.url("/capture/"));
 
-        let analytics = Analytics::new(true, Some("test_key".into()), None);
+        let analytics = Analytics::new(true, None, Some("test_key".into()), None);
         analytics.dispatch(Event::ShotFired);
 
         tokio::time::sleep(Duration::from_millis(50)).await;
@@ -352,7 +491,7 @@ mod tests {
     #[cfg(feature = "otlp")]
     #[test]
     fn otlp_counter() {
-        let analytics = Analytics::new(true, None, Some("127.0.0.1:0".parse().unwrap()));
+        let analytics = Analytics::new(true, None, None, Some("127.0.0.1:0".parse().unwrap()));
         analytics.dispatch(Event::ShotFired);
         assert_eq!(analytics.otlp_count(), 1);
     }

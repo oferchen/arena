@@ -1,12 +1,13 @@
 # Analytics
 
-Arena can record gameplay events for later analysis.
+Arena records gameplay events in the database for later analysis. Events can
+optionally be forwarded to PostHog or exported via OpenTelemetry metrics.
 
 ## Configuration
 
 | Env var                   | CLI flag              | Description                                    | Default |
 | ------------------------- | --------------------- | ---------------------------------------------- | ------- |
-| `ARENA_POSTHOG_KEY`       | `--posthog-key`       | PostHog API key (enables analytics)            | -       |
+| `ARENA_POSTHOG_KEY`       | `--posthog-key`       | PostHog API key (optional sink)                | -       |
 | `ARENA_ANALYTICS_OPT_OUT` | `--analytics-opt-out` | Disable analytics regardless of other settings | `false` |
 | `ARENA_METRICS_ADDR`      | `--metrics-addr`      | OTLP metrics export address                    | -       |
 
@@ -20,7 +21,9 @@ ARENA_METRICS_ADDR=127.0.0.1:4317 \
 cargo run -p server
 ```
 
-Events are retained in memory and optionally forwarded to PostHog or exported via OpenTelemetry metrics.
+Events are written to the `analytics_events` table. A background task
+periodically aggregates them into `analytics_rollups` and, if configured,
+forwards events to PostHog or emits OTLP metrics.
 
 ## Integration
 
@@ -29,7 +32,8 @@ Create an `Analytics` instance and dispatch events where appropriate:
 ```rust
 use analytics::{Analytics, Event};
 
-let analytics = Analytics::new(true, None, None);
+let db: sea_orm::DatabaseConnection = /* obtain from your app */;
+let analytics = Analytics::new(true, Some(db), None, None);
 analytics.dispatch(Event::PlayerJumped);
 ```
 
