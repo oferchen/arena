@@ -37,6 +37,7 @@ mod players;
 mod room;
 mod shard;
 mod entities;
+mod jobs;
 #[cfg(test)]
 mod test_logger;
 use prometheus::{Encoder, TextEncoder};
@@ -608,6 +609,10 @@ async fn run(cli: Cli) -> Result<()> {
     config.analytics_opt_out = analytics_opt_out;
     log::info!("Using config: {:?}", config);
     let state = Arc::new(setup(&config, smtp, posthog_key.clone(), metrics_addr).await?);
+
+    if let Some(db) = state.db.clone() {
+        tokio::spawn(jobs::run(db));
+    }
 
     let assets_service = get_service(ServeDir::new(&config.assets_dir)).layer(
         SetResponseHeaderLayer::if_not_present(
