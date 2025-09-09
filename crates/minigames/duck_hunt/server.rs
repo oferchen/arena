@@ -10,6 +10,9 @@ use serde::{Deserialize, Serialize};
 use std::time::Duration;
 use uuid::Uuid;
 
+#[cfg(test)]
+use migration::{Migrator, MigratorTrait, sea_orm::Database};
+
 pub mod net {
     use super::DuckState;
     use net::message::{ServerMessage, Snapshot};
@@ -299,6 +302,8 @@ mod tests {
     #[tokio::test]
     async fn leaderboard_records_hit() {
         let tmp = tempfile::tempdir().unwrap();
+        let db = Database::connect("127.0.0.1:9042").await.unwrap();
+        Migrator::up(&db, None).await.unwrap();
         let service = LeaderboardService::new("127.0.0.1:9042", tmp.path().into())
             .await
             .unwrap();
@@ -340,6 +345,8 @@ mod tests {
     #[tokio::test]
     async fn dispatches_analytics_events() {
         let tmp = tempfile::tempdir().unwrap();
+        let db = Database::connect("127.0.0.1:9042").await.unwrap();
+        Migrator::up(&db, None).await.unwrap();
         let service = LeaderboardService::new("127.0.0.1:9042", tmp.path().into())
             .await
             .unwrap();

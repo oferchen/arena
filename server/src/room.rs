@@ -366,8 +366,11 @@ mod tests {
     use std::path::PathBuf;
     use std::sync::atomic::Ordering;
     use tokio::sync::mpsc;
+    use migration::{Migrator, MigratorTrait, sea_orm::Database};
 
     async fn test_room() -> Room {
+        let db = Database::connect("127.0.0.1:9042").await.unwrap();
+        Migrator::up(&db, None).await.unwrap();
         let leaderboard =
             ::leaderboard::LeaderboardService::new("127.0.0.1:9042", PathBuf::from("replays"))
                 .await

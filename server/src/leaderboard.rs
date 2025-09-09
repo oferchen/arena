@@ -230,6 +230,7 @@ mod tests {
     use axum::extract::{Path, State};
     use leaderboard::models::LeaderboardWindow;
     use std::path::PathBuf;
+    use migration::{Migrator, MigratorTrait, sea_orm::Database};
 
     fn smtp_cfg() -> SmtpConfig {
         SmtpConfig {
@@ -240,15 +241,20 @@ mod tests {
         }
     }
 
+    async fn leaderboard_service() -> ::leaderboard::LeaderboardService {
+        let db = Database::connect("127.0.0.1:9042").await.unwrap();
+        Migrator::up(&db, None).await.unwrap();
+        ::leaderboard::LeaderboardService::new("127.0.0.1:9042", PathBuf::from("replays"))
+            .await
+            .unwrap()
+    }
+
     #[tokio::test]
     #[ignore]
     async fn post_run_rejects_malformed_base64() {
         let cfg = smtp_cfg();
         let email = Arc::new(EmailService::new(cfg.clone()).unwrap());
-        let leaderboard =
-            ::leaderboard::LeaderboardService::new("127.0.0.1:9042", PathBuf::from("replays"))
-                .await
-                .unwrap();
+        let leaderboard = leaderboard_service().await;
         let rooms = room::RoomManager::new(leaderboard.clone(), "local".into(), "localhost".into());
         let state = Arc::new(AppState {
             email,
@@ -286,10 +292,7 @@ mod tests {
     async fn post_run_accepts_valid_payload() {
         let cfg = smtp_cfg();
         let email = Arc::new(EmailService::new(cfg.clone()).unwrap());
-        let leaderboard =
-            ::leaderboard::LeaderboardService::new("127.0.0.1:9042", PathBuf::from("replays"))
-                .await
-                .unwrap();
+        let leaderboard = leaderboard_service().await;
         let rooms = room::RoomManager::new(leaderboard.clone(), "local".into(), "localhost".into());
         let state = Arc::new(AppState {
             email,
@@ -325,10 +328,7 @@ mod tests {
     async fn post_run_rejects_oversized_payload() {
         let cfg = smtp_cfg();
         let email = Arc::new(EmailService::new(cfg.clone()).unwrap());
-        let leaderboard =
-            ::leaderboard::LeaderboardService::new("127.0.0.1:9042", PathBuf::from("replays"))
-                .await
-                .unwrap();
+        let leaderboard = leaderboard_service().await;
         let rooms = room::RoomManager::new(leaderboard.clone(), "local".into(), "localhost".into());
         let state = Arc::new(AppState {
             email,
@@ -365,10 +365,7 @@ mod tests {
     async fn post_run_rejects_invalid_score() {
         let cfg = smtp_cfg();
         let email = Arc::new(EmailService::new(cfg.clone()).unwrap());
-        let leaderboard =
-            ::leaderboard::LeaderboardService::new("127.0.0.1:9042", PathBuf::from("replays"))
-                .await
-                .unwrap();
+        let leaderboard = leaderboard_service().await;
         let rooms = room::RoomManager::new(leaderboard.clone(), "local".into(), "localhost".into());
         let state = Arc::new(AppState {
             email,
@@ -406,10 +403,7 @@ mod tests {
     async fn verify_endpoint_marks_score_verified() {
         let cfg = smtp_cfg();
         let email = Arc::new(EmailService::new(cfg.clone()).unwrap());
-        let leaderboard =
-            ::leaderboard::LeaderboardService::new("127.0.0.1:9042", PathBuf::from("replays"))
-                .await
-                .unwrap();
+        let leaderboard = leaderboard_service().await;
         let rooms = room::RoomManager::new(leaderboard.clone(), "local".into(), "localhost".into());
         let state = Arc::new(AppState {
             email,

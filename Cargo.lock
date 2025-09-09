@@ -2482,6 +2482,7 @@ dependencies = [
  "chrono",
  "glam",
  "leaderboard",
+ "migration",
  "net",
  "platform-api",
  "postcard",

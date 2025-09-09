@@ -582,6 +582,11 @@ async fn setup(
     smtp: SmtpConfig,
     posthog_key: Option<String>,
 ) -> Result<AppState> {
+    if cfg.migrate_on_start {
+        let migration_db = Database::connect(&cfg.db_url).await?;
+        Migrator::up(&migration_db, None).await?;
+    }
+
     let email = Arc::new(EmailService::new(smtp.clone()).map_err(|e| {
         tracing::error!("failed to initialize email service: {e}");
         anyhow!(e)
@@ -601,10 +606,6 @@ async fn setup(
         id: "basic".to_string(),
         price_cents: 1000,
     }]);
-    if cfg.migrate_on_start {
-        let migration_db = Database::connect(&cfg.db_url).await?;
-        Migrator::up(&migration_db, None).await?;
-    }
     let db = connect_db(&cfg.db_url, cfg.db_max_conns).await?;
     let analytics = Analytics::new(
         cfg.analytics_enabled && !cfg.analytics_opt_out,

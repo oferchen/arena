@@ -60,11 +60,14 @@ mod tests {
     use super::*;
     use crate::room;
     use std::path::PathBuf;
+    use migration::{Migrator, MigratorTrait, sea_orm::Database};
 
     #[tokio::test]
     #[ignore]
     async fn chooses_least_loaded_shard() {
         let registry = Arc::new(MemoryShardRegistry::new());
+        let db = Database::connect("127.0.0.1:9042").await.unwrap();
+        Migrator::up(&db, None).await.unwrap();
         let leaderboard =
             ::leaderboard::LeaderboardService::new("127.0.0.1:9042", PathBuf::from("replays"))
                 .await
