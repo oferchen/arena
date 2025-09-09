@@ -26,7 +26,6 @@ pub struct ConfigResponse {
     /// Feature flags exposed to the client
     pub feature_flags: HashMap<String, bool>,
     /// ICE servers used for establishing peer connections
-    #[serde(default)]
     pub ice_servers: Vec<IceServerConfig>,
     /// Whether COOP/COEP headers are enabled
     #[serde(default)]

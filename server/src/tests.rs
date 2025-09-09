@@ -99,9 +99,13 @@ fn env_used_when_no_cli() {
 fn missing_bind_addr_errors() {
     unsafe {
         env::remove_var("ARENA_BIND_ADDR");
+        env::set_var("ARENA_RTC_ICE_SERVERS_JSON", "[]");
     }
     let cli = Cli::try_parse_from(["prog"]).unwrap();
     assert!(cli.config.clone().resolve().is_err());
+    unsafe {
+        env::remove_var("ARENA_RTC_ICE_SERVERS_JSON");
+    }
 }
 
 #[test]
@@ -143,6 +147,7 @@ async fn config_json_respects_cli_overrides() {
         env::set_var("ARENA_STATIC_DIR", "static");
         env::set_var("ARENA_ASSETS_DIR", "assets");
         env::set_var("ARENA_ANALYTICS_OPT_OUT", "false");
+        env::set_var("ARENA_RTC_ICE_SERVERS_JSON", "[]");
     }
     let cli = Cli::try_parse_from([
         "prog",
@@ -177,6 +182,7 @@ async fn config_json_respects_cli_overrides() {
         env::remove_var("ARENA_STATIC_DIR");
         env::remove_var("ARENA_ASSETS_DIR");
         env::remove_var("ARENA_ANALYTICS_OPT_OUT");
+        env::remove_var("ARENA_RTC_ICE_SERVERS_JSON");
     }
 }
 
