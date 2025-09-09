@@ -9,6 +9,8 @@ mod m20240101_000006_create_sessions;
 mod m20240101_000007_create_rate_limits;
 mod m20240101_000008_create_leaderboard;
 mod m20240101_000009_create_leaderboard_tables;
+mod m20240101_000010_create_entitlements;
+mod m20240101_000011_create_purchases;
 
 pub struct Migrator;
 
@@ -25,6 +27,8 @@ impl MigratorTrait for Migrator {
             Box::new(m20240101_000007_create_rate_limits::Migration),
             Box::new(m20240101_000008_create_leaderboard::Migration),
             Box::new(m20240101_000009_create_leaderboard_tables::Migration),
+            Box::new(m20240101_000010_create_entitlements::Migration),
+            Box::new(m20240101_000011_create_purchases::Migration),
         ]
     }
 }
