@@ -20,8 +20,10 @@ use axum::{
 };
 use clap::Parser;
 use email_address::EmailAddress;
+use migration::{Migrator, MigratorTrait};
 use net::server::ServerConnector;
 use payments::EntitlementStore;
+use sea_orm::Database;
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use storage::connect as connect_db;
@@ -523,6 +525,8 @@ async fn setup(cfg: &ResolvedConfig, smtp: SmtpConfig, analytics: Analytics) -> 
         id: "basic".to_string(),
         price_cents: 1000,
     }]);
+    let migration_db = Database::connect(&cfg.db_url).await?;
+    Migrator::up(&migration_db, None).await?;
     let db = connect_db(&cfg.db_url).await?;
     let entitlements = EntitlementStore::new(Some(db.clone()));
 
