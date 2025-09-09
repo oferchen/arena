@@ -1,23 +1,22 @@
 use std::{collections::HashMap, net::SocketAddr, path::PathBuf, sync::Arc};
 
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 
 use crate::email::{EmailService, SmtpConfig, StartTls};
 use ::payments::{Catalog, EntitlementList, Sku, UserId};
 use analytics::{Analytics, Event};
 use axum::{
-    Extension, Router,
+    Extension, Extension, Router, Router,
     extract::{
-        ws::{Message, WebSocket, WebSocketUpgrade},
         Json, Path, Query, State,
+        ws::{Message, WebSocket, WebSocketUpgrade},
     },
     http::{
-        header::{CACHE_CONTROL, SET_COOKIE},
         HeaderMap, HeaderName, HeaderValue, StatusCode,
+        header::{CACHE_CONTROL, SET_COOKIE},
     },
     response::IntoResponse,
     routing::{get, get_service, post},
-    Extension, Router,
 };
 use clap::Parser;
 use email_address::EmailAddress;
@@ -79,6 +78,8 @@ pub struct ResolvedConfig {
     pub csp: Option<String>,
     pub ice_servers: Vec<String>,
     pub feature_flags: HashMap<String, bool>,
+    pub analytics_enabled: bool,
+    pub analytics_opt_out: bool,
 }
 
 impl Config {
@@ -113,6 +114,8 @@ impl Config {
             csp: self.csp,
             ice_servers,
             feature_flags,
+            analytics_enabled: false,
+            analytics_opt_out: false,
         })
     }
 }
@@ -486,9 +489,15 @@ async fn run(cli: Cli) -> Result<()> {
         metrics_addr,
         analytics_opt_out,
     } = cli;
-    let config = config.resolve()?;
+    let mut config = config.resolve()?;
+    config.analytics_enabled = posthog_key.is_some();
+    config.analytics_opt_out = analytics_opt_out;
     log::info!("Using config: {:?}", config);
-    let analytics = Analytics::new(!analytics_opt_out, posthog_key.clone(), metrics_addr);
+    let analytics = Analytics::new(
+        config.analytics_enabled && !config.analytics_opt_out,
+        posthog_key.clone(),
+        metrics_addr,
+    );
     let smtp = smtp.validate()?;
     let state = Arc::new(setup(&config, smtp, analytics).await?);
 

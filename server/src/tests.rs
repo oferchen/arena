@@ -1,15 +1,15 @@
 use super::*;
 use analytics::{Analytics, Event};
 use axum::body::Body;
-use axum::extract::{Json, Query, State};
+use axum::extract::{Extension, Json, Query, State};
 use axum::http::Request;
 use futures_util::{SinkExt, StreamExt};
 use serial_test::serial;
-use std::env;
+use std::{collections::HashMap, env};
 use tokio_tungstenite::tungstenite::Message;
 use tower::ServiceExt;
-use webrtc::api::media_engine::MediaEngine;
 use webrtc::api::APIBuilder;
+use webrtc::api::media_engine::MediaEngine;
 use webrtc::peer_connection::configuration::RTCConfiguration;
 
 use crate::payments::EntitlementStore;
@@ -48,6 +48,10 @@ async fn setup_succeeds_without_env_vars() {
         signaling_ws_url: "ws://127.0.0.1".into(),
         db_url: "127.0.0.1:9042".into(),
         csp: None,
+        ice_servers: Vec::new(),
+        feature_flags: HashMap::new(),
+        analytics_enabled: false,
+        analytics_opt_out: false,
     };
     assert!(setup(&cfg, smtp_cfg(), analytics).await.is_ok());
 }
@@ -118,6 +122,32 @@ fn invalid_starttls_env_value_errors() {
         env::remove_var("ARENA_SMTP_HOST");
         env::remove_var("ARENA_SMTP_FROM");
         env::remove_var("ARENA_SMTP_STARTTLS");
+    }
+}
+
+#[tokio::test]
+async fn config_json_respects_cli_overrides() {
+    unsafe {
+        env::set_var("ARENA_BIND_ADDR", "127.0.0.1:3000");
+        env::set_var("ARENA_PUBLIC_BASE_URL", "http://env");
+        env::set_var("ARENA_SIGNALING_WS_URL", "ws://env");
+        env::set_var("ARENA_DB_URL", "envdb");
+        env::set_var("ARENA_ANALYTICS_OPT_OUT", "false");
+    }
+    let cli =
+        Cli::try_parse_from(["prog", "--posthog-key", "cli_key", "--analytics-opt-out"]).unwrap();
+    let mut cfg = cli.config.resolve().unwrap();
+    cfg.analytics_enabled = cli.posthog_key.is_some();
+    cfg.analytics_opt_out = cli.analytics_opt_out;
+    let Json(resp) = config::get_config(Extension(cfg)).await;
+    assert!(resp.analytics_enabled);
+    assert!(resp.analytics_opt_out);
+    unsafe {
+        env::remove_var("ARENA_BIND_ADDR");
+        env::remove_var("ARENA_PUBLIC_BASE_URL");
+        env::remove_var("ARENA_SIGNALING_WS_URL");
+        env::remove_var("ARENA_DB_URL");
+        env::remove_var("ARENA_ANALYTICS_OPT_OUT");
     }
 }
 
