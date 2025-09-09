@@ -2,7 +2,7 @@ use axum::{Json, extract::Extension};
 use serde::Serialize;
 use std::collections::HashMap;
 
-use crate::ResolvedConfig;
+use crate::{IceServerConfig, ResolvedConfig};
 
 /// Public configuration returned to clients.
 #[derive(Serialize)]
@@ -21,7 +21,7 @@ pub struct ConfigResponse {
     pub feature_flags: HashMap<String, bool>,
     /// ICE servers used for establishing peer connections
     #[serde(default)]
-    pub ice_servers: Vec<String>,
+    pub ice_servers: Vec<IceServerConfig>,
 }
 
 /// HTTP handler that returns public configuration as JSON.
