@@ -650,7 +650,7 @@ async fn run(cli: Cli) -> Result<()> {
     let state = Arc::new(setup(&config, smtp, posthog_key.clone()).await?);
 
     if let Some(db) = state.db.clone() {
-        tokio::spawn(jobs::run(db));
+        tokio::spawn(jobs::run(db, state.email.clone()));
     }
 
     let assets_service = get_service(ServeDir::new(&config.assets_dir)).layer(

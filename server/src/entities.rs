@@ -177,6 +177,8 @@ pub mod mail_outbox {
         pub subject: String,
         pub body: String,
         pub created_at: DateTimeUtc,
+        pub sent_at: Option<DateTimeUtc>,
+        pub error: Option<String>,
     }
     #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
     pub enum Relation {}
