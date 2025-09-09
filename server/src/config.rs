@@ -17,6 +17,12 @@ pub struct ConfigResponse {
     /// Whether analytics collection is opted out
     #[serde(default)]
     pub analytics_opt_out: bool,
+    /// Whether analytics events are stored locally
+    #[serde(default)]
+    pub analytics_local: bool,
+    /// PostHog endpoint (no key)
+    #[serde(default)]
+    pub posthog_url: Option<String>,
     /// Feature flags exposed to the client
     pub feature_flags: HashMap<String, bool>,
     /// ICE servers used for establishing peer connections
@@ -37,6 +43,8 @@ pub async fn get_config(Extension(cfg): Extension<ResolvedConfig>) -> Json<Confi
         api_base_url: cfg.public_base_url.clone(),
         analytics_enabled: cfg.analytics_enabled,
         analytics_opt_out: cfg.analytics_opt_out,
+        analytics_local: cfg.analytics_local,
+        posthog_url: cfg.posthog_url.clone(),
         feature_flags: cfg.feature_flags.clone(),
         ice_servers: cfg.ice_servers.clone(),
         enable_coop_coep: cfg.enable_coop_coep,

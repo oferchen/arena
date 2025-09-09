@@ -56,8 +56,11 @@ async fn setup_succeeds_without_env_vars() {
         feature_flags: HashMap::new(),
         analytics_enabled: false,
         analytics_opt_out: false,
+        analytics_local: false,
+        posthog_url: None,
+        analytics_otlp_endpoint: None,
     };
-    assert!(setup(&cfg, smtp_cfg(), None, None).await.is_ok());
+    assert!(setup(&cfg, smtp_cfg(), None).await.is_ok());
 }
 
 #[test]
@@ -141,14 +144,30 @@ async fn config_json_respects_cli_overrides() {
         env::set_var("ARENA_ASSETS_DIR", "assets");
         env::set_var("ARENA_ANALYTICS_OPT_OUT", "false");
     }
-    let cli =
-        Cli::try_parse_from(["prog", "--posthog-key", "cli_key", "--analytics-opt-out"]).unwrap();
+    let cli = Cli::try_parse_from([
+        "prog",
+        "--posthog-key",
+        "cli_key",
+        "--posthog-url",
+        "http://ph",
+        "--analytics-opt-out",
+        "--analytics-local",
+        "--analytics-otlp-endpoint",
+        "127.0.0.1:4317",
+    ])
+    .unwrap();
     let mut cfg = cli.config.resolve().unwrap();
-    cfg.analytics_enabled = cli.posthog_key.is_some();
+    cfg.analytics_enabled =
+        cli.analytics_local || cli.posthog_key.is_some() || cli.analytics_otlp_endpoint.is_some();
     cfg.analytics_opt_out = cli.analytics_opt_out;
+    cfg.analytics_local = cli.analytics_local;
+    cfg.posthog_url = cli.posthog_url.clone();
+    cfg.analytics_otlp_endpoint = cli.analytics_otlp_endpoint;
     let Json(resp) = config::get_config(Extension(cfg)).await;
     assert!(resp.analytics_enabled);
     assert!(resp.analytics_opt_out);
+    assert!(resp.analytics_local);
+    assert_eq!(resp.posthog_url.as_deref(), Some("http://ph"));
     unsafe {
         env::remove_var("ARENA_BIND_ADDR");
         env::remove_var("ARENA_PUBLIC_BASE_URL");

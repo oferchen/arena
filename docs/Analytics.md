@@ -5,19 +5,23 @@ optionally be forwarded to PostHog or exported via OpenTelemetry metrics.
 
 ## Configuration
 
-| Env var                   | CLI flag              | Description                                    | Default |
-| ------------------------- | --------------------- | ---------------------------------------------- | ------- |
-| `ARENA_POSTHOG_KEY`       | `--posthog-key`       | PostHog API key (optional sink)                | -       |
-| `ARENA_ANALYTICS_OPT_OUT` | `--analytics-opt-out` | Disable analytics regardless of other settings | `false` |
-| `ARENA_METRICS_ADDR`      | `--metrics-addr`      | OTLP metrics export address                    | -       |
+| Env var                         | CLI flag                    | Description                                    | Default |
+| ------------------------------- | --------------------------- | ---------------------------------------------- | ------- |
+| `ARENA_ANALYTICS_LOCAL`         | `--analytics-local`         | Store analytics events locally                 | `false` |
+| `ARENA_POSTHOG_KEY`             | `--posthog-key`             | PostHog API key (optional sink)                | -       |
+| `ARENA_POSTHOG_URL`             | `--posthog-url`             | PostHog endpoint URL                           | -       |
+| `ARENA_ANALYTICS_OPT_OUT`       | `--analytics-opt-out`       | Disable analytics regardless of other settings | `false` |
+| `ARENA_ANALYTICS_OTLP_ENDPOINT` | `--analytics-otlp-endpoint` | OTLP metrics export address                    | -       |
 
 ## Usage
 
 Provide a PostHog key and run the server:
 
 ```bash
+ARENA_ANALYTICS_LOCAL=true \
 ARENA_POSTHOG_KEY=phc_yourkey \
-ARENA_METRICS_ADDR=127.0.0.1:4317 \
+ARENA_POSTHOG_URL=https://app.posthog.com/capture/ \
+ARENA_ANALYTICS_OTLP_ENDPOINT=127.0.0.1:4317 \
 cargo run -p server
 ```
 

@@ -22,16 +22,19 @@ persistence.
 
 ## Analytics
 
-| Env var                   | CLI flag              | Description                                    | Default |
-| ------------------------- | --------------------- | ---------------------------------------------- | ------- |
-| `ARENA_ANALYTICS_OPT_OUT` | `--analytics-opt-out` | Disable analytics regardless of other settings | `false` |
-| `ARENA_POSTHOG_KEY`       | `--posthog-key`       | PostHog API key (enables analytics)            | -       |
+| Env var                         | CLI flag                    | Description                                    | Default |
+| ------------------------------- | --------------------------- | ---------------------------------------------- | ------- |
+| `ARENA_ANALYTICS_LOCAL`         | `--analytics-local`         | Store analytics events locally                 | `false` |
+| `ARENA_POSTHOG_KEY`             | `--posthog-key`             | PostHog API key (enables analytics)            | -       |
+| `ARENA_POSTHOG_URL`             | `--posthog-url`             | PostHog endpoint URL                           | -       |
+| `ARENA_ANALYTICS_OPT_OUT`       | `--analytics-opt-out`       | Disable analytics regardless of other settings | `false` |
+| `ARENA_ANALYTICS_OTLP_ENDPOINT` | `--analytics-otlp-endpoint` | OTLP metrics export address                    | -       |
 
-## Metrics
+## Logging
 
-| Env var              | CLI flag         | Description                 | Default |
-| -------------------- | ---------------- | --------------------------- | ------- |
-| `ARENA_METRICS_ADDR` | `--metrics-addr` | OTLP metrics export address | -       |
+| Env var           | CLI flag      | Description              | Default |
+| ----------------- | ------------- | ------------------------ | ------- |
+| `ARENA_LOG_LEVEL` | `--log-level` | Log level for env_logger | -       |
 
 ## Email
 
