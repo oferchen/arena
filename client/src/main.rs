@@ -23,7 +23,7 @@ static ALLOC: wee_alloc::WeeAlloc = wee_alloc::WeeAlloc::INIT;
 #[cfg(not(target_arch = "wasm32"))]
 fn main() {
     let config = future::block_on(RuntimeConfig::load());
-    let enabled = std::env::var("ARENA_ANALYTICS_OPT_OUT").is_err();
+    let enabled = config.analytics_enabled && !config.analytics_opt_out;
     let analytics = Analytics::new(enabled, None, None);
     analytics.dispatch(Event::SessionStart);
     analytics.dispatch(Event::LevelStart { level: 1 });
@@ -59,7 +59,7 @@ use wasm_bindgen::prelude::*;
 #[wasm_bindgen(start)]
 pub async fn main() -> Result<(), JsValue> {
     let config = RuntimeConfig::load().await;
-    let enabled = std::env::var("ARENA_ANALYTICS_OPT_OUT").is_err();
+    let enabled = config.analytics_enabled && !config.analytics_opt_out;
     let analytics = Analytics::new(enabled, None, None);
     analytics.dispatch(Event::SessionStart);
     analytics.dispatch(Event::LevelStart { level: 1 });
