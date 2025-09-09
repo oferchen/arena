@@ -12,15 +12,30 @@ impl MigrationTrait for Migration {
                 Table::create()
                     .table(Players::Table)
                     .if_not_exists()
-                    .col(ColumnDef::new(Players::Id).uuid().not_null().primary_key())
+                    .col(
+                        ColumnDef::new(Players::Id)
+                            .string()
+                            .not_null()
+                            .primary_key(),
+                    )
                     .col(ColumnDef::new(Players::Handle).string().not_null())
-                    .col(ColumnDef::new(Players::Region).string().not_null())
+                    .col(ColumnDef::new(Players::Region).string().null())
                     .col(
                         ColumnDef::new(Players::CreatedAt)
                             .timestamp_with_time_zone()
                             .not_null()
                             .default(Expr::cust("NOW()")),
                     )
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_players_handle")
+                    .table(Players::Table)
+                    .col(Players::Handle)
+                    .unique()
                     .to_owned(),
             )
             .await?;
@@ -36,12 +51,24 @@ impl MigrationTrait for Migration {
                             .not_null()
                             .primary_key(),
                     )
-                    .col(ColumnDef::new(LoginTokens::Player).string().not_null())
+                    .col(ColumnDef::new(LoginTokens::PlayerId).string().not_null())
                     .col(
                         ColumnDef::new(LoginTokens::CreatedAt)
                             .timestamp_with_time_zone()
                             .not_null()
                             .default(Expr::cust("NOW()")),
+                    )
+                    .col(
+                        ColumnDef::new(LoginTokens::ExpiresAt)
+                            .timestamp_with_time_zone()
+                            .not_null(),
+                    )
+                    .foreign_key(
+                        ForeignKey::create()
+                            .name("fk_login_tokens_player")
+                            .from(LoginTokens::Table, LoginTokens::PlayerId)
+                            .to(Players::Table, Players::Id)
+                            .on_delete(ForeignKeyAction::Cascade),
                     )
                     .to_owned(),
             )
@@ -69,7 +96,7 @@ impl MigrationTrait for Migration {
                     .if_not_exists()
                     .col(ColumnDef::new(Runs::Id).uuid().not_null().primary_key())
                     .col(ColumnDef::new(Runs::Leaderboard).uuid().not_null())
-                    .col(ColumnDef::new(Runs::Player).uuid().not_null())
+                    .col(ColumnDef::new(Runs::PlayerId).string().not_null())
                     .col(ColumnDef::new(Runs::ReplayPath).string().not_null())
                     .col(
                         ColumnDef::new(Runs::CreatedAt)
@@ -96,6 +123,31 @@ impl MigrationTrait for Migration {
                             .to(Leaderboards::Table, Leaderboards::Id)
                             .on_delete(ForeignKeyAction::Cascade),
                     )
+                    .foreign_key(
+                        ForeignKey::create()
+                            .name("fk_runs_player")
+                            .from(Runs::Table, Runs::PlayerId)
+                            .to(Players::Table, Players::Id)
+                            .on_delete(ForeignKeyAction::Cascade),
+                    )
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_runs_leaderboard")
+                    .table(Runs::Table)
+                    .col(Runs::Leaderboard)
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_runs_player")
+                    .table(Runs::Table)
+                    .col(Runs::PlayerId)
                     .to_owned(),
             )
             .await?;
@@ -108,7 +160,7 @@ impl MigrationTrait for Migration {
                     .col(ColumnDef::new(Scores::Id).uuid().not_null().primary_key())
                     .col(ColumnDef::new(Scores::Run).uuid().not_null())
                     .col(ColumnDef::new(Scores::Leaderboard).uuid().not_null())
-                    .col(ColumnDef::new(Scores::Player).uuid().not_null())
+                    .col(ColumnDef::new(Scores::PlayerId).string().not_null())
                     .col(ColumnDef::new(Scores::Points).integer().not_null())
                     .col(
                         ColumnDef::new(Scores::CreatedAt)
@@ -129,6 +181,31 @@ impl MigrationTrait for Migration {
                             .to(Runs::Table, Runs::Id)
                             .on_delete(ForeignKeyAction::Cascade),
                     )
+                    .foreign_key(
+                        ForeignKey::create()
+                            .name("fk_scores_player")
+                            .from(Scores::Table, Scores::PlayerId)
+                            .to(Players::Table, Players::Id)
+                            .on_delete(ForeignKeyAction::Cascade),
+                    )
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_scores_leaderboard")
+                    .table(Scores::Table)
+                    .col(Scores::Leaderboard)
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_scores_player")
+                    .table(Scores::Table)
+                    .col(Scores::PlayerId)
                     .to_owned(),
             )
             .await?;
@@ -138,7 +215,7 @@ impl MigrationTrait for Migration {
                 Table::create()
                     .table(Entitlements::Table)
                     .if_not_exists()
-                    .col(ColumnDef::new(Entitlements::Player).uuid().not_null())
+                    .col(ColumnDef::new(Entitlements::PlayerId).string().not_null())
                     .col(ColumnDef::new(Entitlements::Sku).string().not_null())
                     .col(
                         ColumnDef::new(Entitlements::GrantedAt)
@@ -148,9 +225,25 @@ impl MigrationTrait for Migration {
                     )
                     .primary_key(
                         Index::create()
-                            .col(Entitlements::Player)
+                            .col(Entitlements::PlayerId)
                             .col(Entitlements::Sku),
                     )
+                    .foreign_key(
+                        ForeignKey::create()
+                            .name("fk_entitlements_player")
+                            .from(Entitlements::Table, Entitlements::PlayerId)
+                            .to(Players::Table, Players::Id)
+                            .on_delete(ForeignKeyAction::Cascade),
+                    )
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_entitlements_player")
+                    .table(Entitlements::Table)
+                    .col(Entitlements::PlayerId)
                     .to_owned(),
             )
             .await?;
@@ -166,7 +259,7 @@ impl MigrationTrait for Migration {
                             .not_null()
                             .primary_key(),
                     )
-                    .col(ColumnDef::new(Purchases::Player).uuid().not_null())
+                    .col(ColumnDef::new(Purchases::PlayerId).string().not_null())
                     .col(ColumnDef::new(Purchases::Sku).string().not_null())
                     .col(
                         ColumnDef::new(Purchases::CreatedAt)
@@ -174,6 +267,22 @@ impl MigrationTrait for Migration {
                             .not_null()
                             .default(Expr::cust("NOW()")),
                     )
+                    .foreign_key(
+                        ForeignKey::create()
+                            .name("fk_purchases_player")
+                            .from(Purchases::Table, Purchases::PlayerId)
+                            .to(Players::Table, Players::Id)
+                            .on_delete(ForeignKeyAction::Cascade),
+                    )
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_purchases_player")
+                    .table(Purchases::Table)
+                    .col(Purchases::PlayerId)
                     .to_owned(),
             )
             .await?;
@@ -201,7 +310,7 @@ impl MigrationTrait for Migration {
                             .not_null()
                             .primary_key(),
                     )
-                    .col(ColumnDef::new(AnalyticsEvents::PlayerId).uuid().null())
+                    .col(ColumnDef::new(AnalyticsEvents::PlayerId).string().null())
                     .col(ColumnDef::new(AnalyticsEvents::SessionId).uuid().null())
                     .col(ColumnDef::new(AnalyticsEvents::Kind).string().not_null())
                     .col(
@@ -255,6 +364,12 @@ impl MigrationTrait for Migration {
                             .not_null()
                             .default(Expr::cust("NOW()")),
                     )
+                    .col(
+                        ColumnDef::new(MailOutbox::SentAt)
+                            .timestamp_with_time_zone()
+                            .null(),
+                    )
+                    .col(ColumnDef::new(MailOutbox::Error).string().null())
                     .to_owned(),
             )
             .await?;
@@ -306,6 +421,15 @@ impl MigrationTrait for Migration {
                     .to_owned(),
             )
             .await?;
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_jobs_run_at")
+                    .table(Jobs::Table)
+                    .col(Jobs::RunAt)
+                    .to_owned(),
+            )
+            .await?;
         // nodes
         manager
             .create_table(
@@ -315,11 +439,26 @@ impl MigrationTrait for Migration {
                     .col(ColumnDef::new(Nodes::Id).uuid().not_null().primary_key())
                     .col(ColumnDef::new(Nodes::Region).string().not_null())
                     .col(
-                        ColumnDef::new(Nodes::CreatedAt)
+                        ColumnDef::new(Nodes::LastSeen)
                             .timestamp_with_time_zone()
                             .not_null()
                             .default(Expr::cust("NOW()")),
                     )
+                    .col(
+                        ColumnDef::new(Nodes::Info)
+                            .json_binary()
+                            .not_null()
+                            .default(Expr::cust("'{}'::jsonb")),
+                    )
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_nodes_last_seen")
+                    .table(Nodes::Table)
+                    .col(Nodes::LastSeen)
                     .to_owned(),
             )
             .await?;
@@ -382,8 +521,9 @@ enum Players {
 #[derive(Iden)]
 enum LoginTokens {
     Token,
-    Player,
+    PlayerId,
     CreatedAt,
+    ExpiresAt,
     Table,
 }
 
@@ -397,7 +537,7 @@ enum Leaderboards {
 enum Runs {
     Id,
     Leaderboard,
-    Player,
+    PlayerId,
     ReplayPath,
     CreatedAt,
     Flagged,
@@ -410,7 +550,7 @@ enum Scores {
     Id,
     Run,
     Leaderboard,
-    Player,
+    PlayerId,
     Points,
     CreatedAt,
     Verified,
@@ -419,7 +559,7 @@ enum Scores {
 
 #[derive(Iden)]
 enum Entitlements {
-    Player,
+    PlayerId,
     Sku,
     GrantedAt,
     Table,
@@ -428,7 +568,7 @@ enum Entitlements {
 #[derive(Iden)]
 enum Purchases {
     Id,
-    Player,
+    PlayerId,
     Sku,
     CreatedAt,
     Table,
@@ -467,6 +607,8 @@ enum MailOutbox {
     Subject,
     Body,
     CreatedAt,
+    SentAt,
+    Error,
     Table,
 }
 
@@ -487,6 +629,7 @@ enum Jobs {
 enum Nodes {
     Id,
     Region,
-    CreatedAt,
+    LastSeen,
+    Info,
     Table,
 }

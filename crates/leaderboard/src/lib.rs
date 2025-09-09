@@ -10,19 +10,8 @@ use db::{purchases, runs, scores};
 use models::{LeaderboardWindow, Run, Score};
 use sea_orm::sea_query::TableCreateStatement;
 use sea_orm::{
-    ActiveModelTrait,
-    ActiveValue::Set,
-    ColumnTrait,
-    ConnectionTrait,
-    Database,
-    DatabaseConnection,
-    EntityTrait,
-    JoinType,
-    QueryFilter,
-    QueryOrder,
-    QuerySelect,
-    RelationTrait,
-    Schema,
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, Database, DatabaseConnection,
+    EntityTrait, JoinType, QueryFilter, QueryOrder, QuerySelect, RelationTrait, Schema,
 };
 use serde::{Deserialize, Serialize};
 use tokio::sync::broadcast;
@@ -110,7 +99,7 @@ impl LeaderboardService {
         let run_model = runs::ActiveModel {
             id: Set(run.id),
             leaderboard: Set(leaderboard),
-            player_id: Set(run.player_id),
+            player_id: Set(run.player_id.to_string()),
             replay_path: Set(run.replay_path.clone()),
             created_at: Set(run.created_at),
             flagged: Set(run.flagged),
@@ -122,7 +111,7 @@ impl LeaderboardService {
             id: Set(score.id),
             run: Set(run.id),
             leaderboard: Set(leaderboard),
-            player_id: Set(score.player_id),
+            player_id: Set(score.player_id.to_string()),
             points: Set(score.points),
             created_at: Set(score.created_at),
             verified: Set(score.verified),
@@ -140,11 +129,7 @@ impl LeaderboardService {
         Ok(())
     }
 
-    pub async fn get_scores(
-        &self,
-        leaderboard: Uuid,
-        window: LeaderboardWindow,
-    ) -> Vec<Score> {
+    pub async fn get_scores(&self, leaderboard: Uuid, window: LeaderboardWindow) -> Vec<Score> {
         let now = Utc::now();
         let mut query = scores::Entity::find()
             .filter(scores::Column::Leaderboard.eq(leaderboard))
@@ -171,7 +156,7 @@ impl LeaderboardService {
             .map(|s| Score {
                 id: s.id,
                 run: s.run,
-                player_id: s.player_id,
+                player_id: Uuid::parse_str(&s.player_id).unwrap_or_else(|_| Uuid::nil()),
                 points: s.points,
                 verified: s.verified,
                 created_at: s.created_at,
@@ -184,7 +169,7 @@ impl LeaderboardService {
         let id = Uuid::new_v4();
         let purchase = purchases::ActiveModel {
             id: Set(id),
-            user_id: Set(user_id),
+            player_id: Set(user_id.to_string()),
             sku: Set(sku.to_string()),
             created_at: Set(Utc::now()),
         };

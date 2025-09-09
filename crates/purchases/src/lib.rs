@@ -1,15 +1,11 @@
 use chrono::Utc;
-use serde::{Deserialize, Serialize};
-pub use uuid::Uuid as UserId;
 use sea_orm::{
-    entity::prelude::*,
-    sea_query::OnConflict,
-    ActiveValue::Set,
-    DatabaseConnection,
-    QueryFilter,
-    TransactionTrait,
-    TransactionError,
+    ActiveValue::Set, DatabaseConnection, QueryFilter, TransactionError, TransactionTrait,
+    entity::prelude::*, sea_query::OnConflict,
 };
+use serde::{Deserialize, Serialize};
+use uuid::Uuid;
+pub use uuid::Uuid as UserId;
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Sku {
@@ -36,7 +32,6 @@ impl Catalog {
     }
 }
 
-
 #[derive(Serialize, Deserialize)]
 pub struct EntitlementList {
     pub entitlements: Vec<String>,
@@ -50,19 +45,21 @@ pub async fn create_purchase(
     db: &DatabaseConnection,
     user_id: UserId,
     sku_id: &str,
-) -> Result<i64, DbErr> {
+) -> Result<Uuid, DbErr> {
     let sku = sku_id.to_string();
+    let id = Uuid::new_v4();
     db.transaction(move |txn| {
         let sku = sku.clone();
+        let id = id;
         Box::pin(async move {
             let purchase = db::purchases::ActiveModel {
-                user_id: Set(user_id),
-                sku_id: Set(sku),
-                purchased_at: Set(Utc::now()),
-                ..Default::default()
+                id: Set(id),
+                player_id: Set(user_id.to_string()),
+                sku: Set(sku),
+                created_at: Set(Utc::now()),
             };
-            let res = db::purchases::Entity::insert(purchase).exec(txn).await?;
-            Ok(res.last_insert_id)
+            db::purchases::Entity::insert(purchase).exec(txn).await?;
+            Ok(id)
         })
     })
     .await
@@ -81,15 +78,15 @@ pub async fn grant_entitlement(
         let sku = sku.clone();
         Box::pin(async move {
             let ent = db::entitlements::ActiveModel {
-                user_id: Set(user_id),
-                sku_id: Set(sku),
+                player_id: Set(user_id.to_string()),
+                sku: Set(sku),
                 granted_at: Set(Utc::now()),
             };
             db::entitlements::Entity::insert(ent)
                 .on_conflict(
                     OnConflict::columns([
-                        db::entitlements::Column::UserId,
-                        db::entitlements::Column::SkuId,
+                        db::entitlements::Column::PlayerId,
+                        db::entitlements::Column::Sku,
                     ])
                     .do_nothing()
                     .to_owned(),
@@ -109,15 +106,11 @@ pub async fn list_entitlements(
     db: &DatabaseConnection,
     user_id: &str,
 ) -> Result<Vec<String>, DbErr> {
-    if let Ok(id) = UserId::parse_str(user_id) {
-        let rows = db::entitlements::Entity::find()
-            .filter(db::entitlements::Column::UserId.eq(id))
-            .all(db)
-            .await?;
-        Ok(rows.into_iter().map(|e| e.sku_id).collect())
-    } else {
-        Ok(Vec::new())
-    }
+    let rows = db::entitlements::Entity::find()
+        .filter(db::entitlements::Column::PlayerId.eq(user_id))
+        .all(db)
+        .await?;
+    Ok(rows.into_iter().map(|e| e.sku).collect())
 }
 
 mod db {
@@ -129,11 +122,11 @@ mod db {
         #[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
         #[sea_orm(table_name = "purchases")]
         pub struct Model {
-            #[sea_orm(primary_key)]
-            pub id: i64,
-            pub user_id: Uuid,
-            pub sku_id: String,
-            pub purchased_at: DateTimeUtc,
+            #[sea_orm(primary_key, auto_increment = false)]
+            pub id: Uuid,
+            pub player_id: String,
+            pub sku: String,
+            pub created_at: DateTimeUtc,
         }
 
         #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
@@ -149,9 +142,9 @@ mod db {
         #[sea_orm(table_name = "entitlements")]
         pub struct Model {
             #[sea_orm(primary_key, auto_increment = false)]
-            pub user_id: Uuid,
+            pub player_id: String,
             #[sea_orm(primary_key, auto_increment = false)]
-            pub sku_id: String,
+            pub sku: String,
             pub granted_at: DateTimeUtc,
         }
 
