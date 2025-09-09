@@ -4,36 +4,34 @@ Arena can record gameplay events for later analysis.
 
 ## Configuration
 
-| Env var                    | CLI flag               | Description                     | Default |
-| -------------------------- | ---------------------- | ------------------------------- | ------- |
-| `ARENA_ANALYTICS_ENDPOINT` | `--analytics-endpoint` | HTTP endpoint to receive events | -       |
-| `ARENA_ANALYTICS_BATCH`    | `--analytics-batch`    | Number of events per upload     | `20`    |
-| `ARENA_ANALYTICS_ENABLED`  | `--analytics`          | Enable analytics collection     | `false` |
-| `ARENA_POSTHOG_KEY`        | `--posthog-key`        | PostHog API key                 | -       |
+| Env var                   | CLI flag              | Description                                    | Default |
+| ------------------------- | --------------------- | ---------------------------------------------- | ------- |
+| `ARENA_POSTHOG_KEY`       | `--posthog-key`       | PostHog API key (enables analytics)            | -       |
+| `ARENA_ANALYTICS_OPT_OUT` | `--analytics-opt-out` | Disable analytics regardless of other settings | `false` |
+| `ARENA_METRICS_ADDR`      | `--metrics-addr`      | OTLP metrics export address                    | -       |
 
 ## Usage
 
-Enable analytics and run the server:
+Provide a PostHog key and run the server:
 
 ```bash
-ARENA_ANALYTICS_ENABLED=true \
-ARENA_ANALYTICS_ENDPOINT=https://example.com/events \
+ARENA_POSTHOG_KEY=phc_yourkey \
+ARENA_METRICS_ADDR=127.0.0.1:4317 \
 cargo run -p server
 ```
 
-Events are queued and sent in batches to the configured endpoint.
+Events are retained in memory and optionally forwarded to PostHog or exported via OpenTelemetry metrics.
 
 ## Integration
 
-Import the `analytics` crate and call `track_event` where appropriate:
+Create an `Analytics` instance and dispatch events where appropriate:
 
 ```rust
-use analytics::track_event;
+use analytics::{Analytics, Event};
 
-track_event("player_jump", &["height", "2.3"]);
+let analytics = Analytics::new(true, None, None);
+analytics.dispatch(Event::PlayerJumped);
 ```
-
-Attach `AnalyticsPlugin` to the server to automatically forward events.
 
 ## Events
 
