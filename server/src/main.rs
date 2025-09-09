@@ -23,8 +23,7 @@ use email_address::EmailAddress;
 use migration::{Migrator, MigratorTrait};
 use net::server::ServerConnector;
 use payments::EntitlementStore;
-use sea_orm::Database;
-use sea_orm::{DatabaseConnection, DbBackend, Statement};
+use sea_orm::{ActiveModelTrait, ActiveValue::Set, Database, DatabaseConnection};
 use serde::{Deserialize, Serialize};
 use storage::connect as connect_db;
 use webrtc::peer_connection::sdp::sdp_type::RTCSdpType;
@@ -36,6 +35,7 @@ mod email;
 mod leaderboard;
 mod otp_store;
 mod payments;
+mod players;
 mod room;
 mod shard;
 #[cfg(test)]
@@ -486,12 +486,11 @@ struct GuestResponse {
 async fn guest_handler(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     let id = uuid::Uuid::new_v4().to_string();
     if let Some(db) = &state.db {
-        let stmt = Statement::from_sql_and_values(
-            DbBackend::Postgres,
-            "INSERT INTO players_by_id (id, guest) VALUES ($1, true)",
-            vec![id.clone().into()],
-        );
-        let _ = db.execute(stmt).await;
+        let active = players::ActiveModel {
+            id: Set(id.clone()),
+            guest: Set(true),
+        };
+        let _ = active.insert(db).await;
     }
     let mut headers = HeaderMap::new();
     let same_site = std::env::var("ARENA_COOKIE_SAME_SITE").unwrap_or_else(|_| "Strict".into());
