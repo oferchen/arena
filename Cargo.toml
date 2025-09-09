@@ -14,7 +14,7 @@ members = [
     "crates/analytics",
     "crates/leaderboard",
     "crates/render",
-    "crates/payments",
+    "crates/purchases",
     "crates/storage",
     "tests",
 ]

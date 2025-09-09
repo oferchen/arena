@@ -35,7 +35,7 @@ physics = { path = "crates/physics" }
 editor = { path = "../crates/editor" }
 render = { path = "../crates/render" }
 analytics = { path = "../crates/analytics" }
-payments = { path = "../crates/payments" }
+purchases = { path = "../crates/purchases" }
 platform-api = { path = "../crates/platform-api" }
 netcode = { path = "../crates/net", package = "net" }
 bevy_rapier3d = { version = "0.24", default-features = false, features = ["dim3"] }

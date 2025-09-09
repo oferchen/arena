@@ -1,4 +1,4 @@
-use payments::{EntitlementList, UserId};
+use purchases::{EntitlementList, UserId};
 use serde::Serialize;
 
 #[cfg(not(target_arch = "wasm32"))]
