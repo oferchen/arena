@@ -12,7 +12,7 @@ pub enum LeaderboardWindow {
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Run {
     pub id: Uuid,
-    pub leaderboard_id: Uuid,
+    pub leaderboard: Uuid,
     pub player_id: Uuid,
     pub replay_path: String,
     pub created_at: DateTime<Utc>,
@@ -23,7 +23,7 @@ pub struct Run {
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Score {
     pub id: Uuid,
-    pub run_id: Uuid,
+    pub run: Uuid,
     pub player_id: Uuid,
     pub points: i32,
     pub verified: bool,

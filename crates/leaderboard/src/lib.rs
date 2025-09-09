@@ -109,7 +109,7 @@ impl LeaderboardService {
 
         let run_model = runs::ActiveModel {
             id: Set(run.id),
-            leaderboard_id: Set(leaderboard),
+            leaderboard: Set(leaderboard),
             player_id: Set(run.player_id),
             replay_path: Set(run.replay_path.clone()),
             created_at: Set(run.created_at),
@@ -120,8 +120,8 @@ impl LeaderboardService {
 
         let score_model = scores::ActiveModel {
             id: Set(score.id),
-            run_id: Set(run.id),
-            leaderboard_id: Set(leaderboard),
+            run: Set(run.id),
+            leaderboard: Set(leaderboard),
             player_id: Set(score.player_id),
             points: Set(score.points),
             created_at: Set(score.created_at),
@@ -147,7 +147,7 @@ impl LeaderboardService {
     ) -> Vec<Score> {
         let now = Utc::now();
         let mut query = scores::Entity::find()
-            .filter(scores::Column::LeaderboardId.eq(leaderboard))
+            .filter(scores::Column::Leaderboard.eq(leaderboard))
             .join(JoinType::InnerJoin, scores::Relation::Runs.def())
             .filter(runs::Column::Flagged.eq(false))
             .order_by_desc(scores::Column::Points)
@@ -170,7 +170,7 @@ impl LeaderboardService {
             .into_iter()
             .map(|s| Score {
                 id: s.id,
-                run_id: s.run_id,
+                run: s.run,
                 player_id: s.player_id,
                 points: s.points,
                 verified: s.verified,

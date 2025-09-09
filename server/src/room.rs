@@ -68,7 +68,7 @@ struct Room {
 
 impl Room {
     fn new(leaderboard: LeaderboardService) -> Self {
-        let analytics = Analytics::new(false, None, None);
+        let analytics = Analytics::new(false, None, None, None);
         let mut server = DuckServer {
             latency: StdDuration::from_secs(0),
             ducks: Vec::new(),
@@ -253,7 +253,7 @@ impl Room {
             let score_id = Uuid::new_v4();
             let run = Run {
                 id: run_id,
-                leaderboard_id,
+                leaderboard: leaderboard_id,
                 player_id: *player_id,
                 replay_path: String::new(),
                 created_at: Utc::now(),
@@ -262,7 +262,7 @@ impl Room {
             };
             let score = Score {
                 id: score_id,
-                run_id,
+                run: run_id,
                 player_id: *player_id,
                 points: *points as i32,
                 verified: false,

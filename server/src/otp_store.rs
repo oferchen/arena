@@ -1,5 +1,5 @@
 use chrono::{DateTime, Utc};
-use sea_orm::{QueryFilter, entity::prelude::*};
+use sea_orm::{QueryFilter, entity::prelude::*, ActiveValue::Set};
 
 pub async fn insert_otp(
     db: &DatabaseConnection,
@@ -10,7 +10,7 @@ pub async fn insert_otp(
     let active = email_otps::ActiveModel {
         email_hash: Set(email_hash.to_owned()),
         code: Set(code.to_owned()),
-        expires_at: Set(expires_at),
+        expires_at: Set(expires_at.into()),
     };
     let _ = email_otps::Entity::insert(active).exec(db).await;
 }

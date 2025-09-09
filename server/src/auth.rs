@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use axum::{
     Router,
-    extract::State,
+    extract::{FromRef, State},
     http::{HeaderMap, HeaderValue, StatusCode, header::SET_COOKIE},
     response::IntoResponse,
     routing::post,
@@ -106,7 +106,11 @@ async fn verify_handler(
         .into_response()
 }
 
-pub fn routes() -> Router<std::sync::Arc<AppState>> {
+pub fn routes<S>() -> Router<S>
+where
+    S: Clone + Send + Sync + 'static,
+    std::sync::Arc<AppState>: FromRef<S>,
+{
     Router::new()
         .route("/request", post(request_handler))
         .route("/verify", post(verify_handler))

@@ -16,7 +16,7 @@ use ::leaderboard::{
     LeaderboardService,
     models::{LeaderboardWindow, Run, Score},
 };
-use analytics::Event;
+use analytics::Event as AnalyticsEvent;
 
 use crate::AppState;
 
@@ -75,13 +75,13 @@ async fn post_run(
     };
     let verified = verify_score(&replay_bytes);
     if verified != Some(payload.points) {
-        state.analytics.dispatch(Event::RunVerificationFailed);
+        state.analytics.dispatch(AnalyticsEvent::RunVerificationFailed);
         return StatusCode::BAD_REQUEST;
     }
 
     let run = Run {
         id: run_id,
-        leaderboard_id: id,
+        leaderboard: id,
         player_id: payload.player_id,
         replay_path: String::new(),
         created_at: Utc::now(),
@@ -90,7 +90,7 @@ async fn post_run(
     };
     let score = Score {
         id: score_id,
-        run_id,
+        run: run_id,
         player_id: payload.player_id,
         points: payload.points,
         verified: false,
@@ -105,7 +105,7 @@ async fn post_run(
     {
         return StatusCode::INTERNAL_SERVER_ERROR;
     }
-    state.analytics.dispatch(Event::LeaderboardSubmit);
+    state.analytics.dispatch(AnalyticsEvent::LeaderboardSubmit);
     StatusCode::CREATED
 }
 
@@ -254,7 +254,7 @@ mod tests {
             email,
             rooms,
             smtp: cfg,
-            analytics: Analytics::new(true, None, None),
+            analytics: Analytics::new(true, None, None, None),
             leaderboard: leaderboard.clone(),
             catalog: Catalog::new(vec![Sku {
                 id: "basic".into(),
@@ -295,7 +295,7 @@ mod tests {
             email,
             rooms,
             smtp: cfg,
-            analytics: Analytics::new(true, None, None),
+            analytics: Analytics::new(true, None, None, None),
             leaderboard: leaderboard.clone(),
             catalog: Catalog::new(vec![]),
             db: None,
@@ -317,7 +317,7 @@ mod tests {
             .await;
         assert_eq!(scores.len(), 1);
         assert_eq!(scores[0].points, 42);
-        assert_eq!(state.analytics.events(), vec![Event::LeaderboardSubmit]);
+    assert_eq!(state.analytics.events(), vec![AnalyticsEvent::LeaderboardSubmit]);
     }
 
     #[tokio::test]
@@ -334,7 +334,7 @@ mod tests {
             email,
             rooms,
             smtp: cfg,
-            analytics: Analytics::new(true, None, None),
+            analytics: Analytics::new(true, None, None, None),
             leaderboard: leaderboard.clone(),
             catalog: Catalog::new(vec![]),
             db: None,
@@ -374,7 +374,7 @@ mod tests {
             email,
             rooms,
             smtp: cfg,
-            analytics: Analytics::new(true, None, None),
+            analytics: Analytics::new(true, None, None, None),
             leaderboard: leaderboard.clone(),
             catalog: Catalog::new(vec![]),
             db: None,
@@ -415,7 +415,7 @@ mod tests {
             email,
             rooms,
             smtp: cfg,
-            analytics: Analytics::new(true, None, None),
+            analytics: Analytics::new(true, None, None, None),
             leaderboard: leaderboard.clone(),
             catalog: Catalog::new(vec![]),
             db: None,
@@ -436,7 +436,7 @@ mod tests {
             .get_scores(leaderboard_id, LeaderboardWindow::AllTime)
             .await;
         assert_eq!(scores.len(), 1);
-        let run_id = scores[0].run_id;
+    let run_id = scores[0].run;
         assert!(!scores[0].verified);
 
         let status = post_verify(Path((leaderboard_id, run_id)), State(state.clone())).await;
