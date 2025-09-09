@@ -1,27 +1,27 @@
 use std::{collections::HashMap, net::SocketAddr, path::PathBuf, sync::Arc};
 
-use anyhow::{Result, anyhow};
+use anyhow::{anyhow, Result};
 
 use crate::email::{EmailService, SmtpConfig, StartTls};
-use purchases::{Catalog, EntitlementList, Sku, UserId};
 use analytics::{Analytics, Event};
 use axum::{
-    Extension, Router,
     extract::{
-        Json, Path, Query, State,
         ws::{Message, WebSocket, WebSocketUpgrade},
+        Json, Path, Query, State,
     },
     http::{
-        HeaderMap, HeaderName, HeaderValue, StatusCode,
         header::{CACHE_CONTROL, SET_COOKIE},
+        HeaderMap, HeaderName, HeaderValue, StatusCode,
     },
     response::IntoResponse,
     routing::{get, get_service, post},
+    Extension, Router,
 };
 use clap::Parser;
 use email_address::EmailAddress;
 use migration::{Migrator, MigratorTrait};
 use net::server::ServerConnector;
+use purchases::{Catalog, EntitlementList, Sku, UserId};
 use sea_orm::{ActiveModelTrait, ActiveValue::Set, Database, DatabaseConnection};
 use serde::{Deserialize, Serialize};
 use storage::connect as connect_db;
@@ -31,17 +31,20 @@ use webrtc::peer_connection::sdp::session_description::RTCSessionDescription;
 mod auth;
 mod config;
 mod email;
+mod entities;
+mod jobs;
 mod leaderboard;
 mod otp_store;
 mod players;
 mod room;
 mod shard;
-mod entities;
-mod jobs;
 #[cfg(test)]
 mod test_logger;
 use prometheus::{Encoder, TextEncoder};
 use tower_http::{services::ServeDir, set_header::SetResponseHeaderLayer};
+
+/// Default maximum number of database connections.
+const DEFAULT_DB_MAX_CONNS: u32 = 20;
 
 #[derive(Parser, Debug)]
 struct Cli {
@@ -55,7 +58,10 @@ struct Cli {
     posthog_url: Option<String>,
     #[arg(long, env = "ARENA_ANALYTICS_LOCAL", default_value_t = false)]
     analytics_local: bool,
-    #[arg(long = "analytics-otlp-endpoint", env = "ARENA_ANALYTICS_OTLP_ENDPOINT")]
+    #[arg(
+        long = "analytics-otlp-endpoint",
+        env = "ARENA_ANALYTICS_OTLP_ENDPOINT"
+    )]
     analytics_otlp_endpoint: Option<SocketAddr>,
     #[arg(long, env = "ARENA_ANALYTICS_OPT_OUT", default_value_t = false)]
     analytics_opt_out: bool,
@@ -73,6 +79,7 @@ struct Config {
     signaling_ws_url: Option<String>,
     #[arg(long, env = "ARENA_DB_URL")]
     db_url: Option<String>,
+    /// Maximum number of database connections (default 20).
     #[arg(long, env = "ARENA_DB_MAX_CONNS")]
     db_max_conns: Option<u32>,
     #[arg(long, env = "ARENA_MIGRATE_ON_START", default_value_t = false)]
@@ -136,6 +143,7 @@ pub struct ResolvedConfig {
     pub public_base_url: String,
     pub signaling_ws_url: String,
     pub db_url: String,
+    /// Maximum number of database connections. Defaults to 20.
     pub db_max_conns: u32,
     pub migrate_on_start: bool,
     pub enable_coop_coep: bool,
@@ -182,9 +190,7 @@ impl Config {
                 .signaling_ws_url
                 .ok_or_else(|| anyhow!("ARENA_SIGNALING_WS_URL not set"))?,
             db_url: self.db_url.ok_or_else(|| anyhow!("ARENA_DB_URL not set"))?,
-            db_max_conns: self
-                .db_max_conns
-                .ok_or_else(|| anyhow!("ARENA_DB_MAX_CONNS not set"))?,
+            db_max_conns: self.db_max_conns.unwrap_or(DEFAULT_DB_MAX_CONNS),
             migrate_on_start: self.migrate_on_start,
             enable_coop_coep: self.enable_coop_coep,
             static_dir: self
@@ -193,9 +199,7 @@ impl Config {
             assets_dir: self
                 .assets_dir
                 .ok_or_else(|| anyhow!("ARENA_ASSETS_DIR not set"))?,
-            replays_dir: self
-                .replays_dir
-                .unwrap_or_else(|| PathBuf::from("replays")),
+            replays_dir: self.replays_dir.unwrap_or_else(|| PathBuf::from("replays")),
             enable_sw: self.enable_sw,
             csp: self.csp,
             ice_servers,
@@ -540,7 +544,12 @@ async fn guest_handler(State(state): State<Arc<AppState>>) -> impl IntoResponse 
             log::error!("failed to create session cookie header: {e}");
         }
     }
-    (headers, Json(GuestResponse { user_id: id.to_string() }))
+    (
+        headers,
+        Json(GuestResponse {
+            user_id: id.to_string(),
+        }),
+    )
 }
 
 async fn shutdown_signal() {
@@ -577,10 +586,9 @@ async fn setup(
         anyhow!(e)
     })?);
 
-    let leaderboard =
-        ::leaderboard::LeaderboardService::new(&cfg.db_url, cfg.replays_dir.clone())
-            .await
-            .map_err(|e| anyhow!(e))?;
+    let leaderboard = ::leaderboard::LeaderboardService::new(&cfg.db_url, cfg.replays_dir.clone())
+        .await
+        .map_err(|e| anyhow!(e))?;
     let registry = Arc::new(shard::MemoryShardRegistry::new());
     let rooms = room::RoomManager::with_registry(
         leaderboard.clone(),
