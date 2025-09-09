@@ -6,11 +6,11 @@ top standings in Redis for fast reads. Scores are tracked in three windows:
 
 ## Configuration
 
-| Env var                 | CLI flag            | Description                              | Default              |
-| ----------------------- | ------------------- | ---------------------------------------- | -------------------- |
-| `ARENA_DB_URL`          | `--db-url`          | Scylla database URL                      | -                    |
-| `ARENA_REDIS_URL`       | `--redis-url`       | Redis URL for the top‑N cache            | `redis://127.0.0.1/` |
-| `ARENA_LEADERBOARD_MAX` | `--leaderboard-max` | Maximum entries mirrored per leaderboard | `100`                |
+| Env var                 | CLI flag            | Description                                  | Default |
+| ----------------------- | ------------------- | -------------------------------------------- | ------- |
+| `ARENA_DB_URL`          | `--db-url`          | Scylla database URL                          | -       |
+| `ARENA_REDIS_URL`       | `--redis-url`       | Redis URL for the top‑N cache **(required)** | -       |
+| `ARENA_LEADERBOARD_MAX` | `--leaderboard-max` | Maximum entries mirrored per leaderboard     | `100`   |
 
 Each score submission writes a run and windowed score to Scylla.
 The highest `ARENA_LEADERBOARD_MAX` scores for each window are maintained
