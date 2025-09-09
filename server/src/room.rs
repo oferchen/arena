@@ -159,13 +159,13 @@ impl Room {
         // Build a snapshot of the world containing player scores.
         #[cfg(test)]
         if FORCE_SERIALIZATION_ERROR.load(Ordering::Relaxed) {
-            log::error!("failed to serialize scores snapshot: forced error");
+            tracing::error!("failed to serialize scores snapshot: forced error");
             return;
         }
         let data = match postcard::to_allocvec(&self.scores) {
             Ok(data) => data,
             Err(err) => {
-                log::error!("failed to serialize scores snapshot: {err}");
+                tracing::error!("failed to serialize scores snapshot: {err}");
                 return;
             }
         };
@@ -211,11 +211,11 @@ impl Room {
                 match err {
                     TrySendError::Full(msg) => {
                         SNAPSHOT_CHANNEL_FULL.inc();
-                        log::warn!("snapshot channel full; falling back to send");
+                        tracing::warn!("snapshot channel full; falling back to send");
                         let _ = conn.snapshot_tx.send(msg).await;
                     }
                     TrySendError::Closed(_) => {
-                        log::warn!("snapshot channel closed");
+                        tracing::warn!("snapshot channel closed");
                         closed.push(i);
                     }
                 }
@@ -359,8 +359,8 @@ impl RoomManager {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_logger::{INIT, LOGGER};
-    use log::LevelFilter;
+    use crate::test_logger::{init, INIT, LOGGER};
+    use tracing::level_filters::LevelFilter;
     use net::message::apply_delta;
     use serial_test::serial;
     use std::path::PathBuf;
@@ -569,10 +569,7 @@ mod tests {
     #[ignore]
     #[serial]
     async fn serialization_error_logged_and_skips_snapshot() {
-        INIT.call_once(|| {
-            log::set_logger(&LOGGER).unwrap();
-            log::set_max_level(LevelFilter::Error);
-        });
+        INIT.call_once(|| init(LevelFilter::ERROR));
 
         LOGGER.messages.lock().unwrap().clear();
         FORCE_SERIALIZATION_ERROR.store(true, Ordering::Relaxed);
@@ -605,10 +602,7 @@ mod tests {
     #[ignore]
     #[serial]
     async fn logs_warning_when_channel_full() {
-        INIT.call_once(|| {
-            log::set_logger(&LOGGER).unwrap();
-        });
-        log::set_max_level(LevelFilter::Warn);
+        INIT.call_once(|| init(LevelFilter::WARN));
 
         LOGGER.messages.lock().unwrap().clear();
 

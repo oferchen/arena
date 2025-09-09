@@ -34,17 +34,17 @@ pub async fn run(db: DatabaseConnection, email: Arc<EmailService>) {
     loop {
         interval.tick().await;
         if let Err(e) = heartbeat(&db, node_id, &region).await {
-            log::error!("heartbeat failed: {e}");
+            tracing::error!("heartbeat failed: {e}");
             continue;
         }
         match is_leader(&db, node_id).await {
             Ok(true) => {
                 if let Err(e) = claim_and_run(&db, email.clone()).await {
-                    log::error!("job runner error: {e}");
+                    tracing::error!("job runner error: {e}");
                 }
             }
             Ok(false) => {}
-            Err(e) => log::error!("leader check failed: {e}"),
+            Err(e) => tracing::error!("leader check failed: {e}"),
         }
     }
 }
@@ -107,7 +107,7 @@ async fn claim_and_run(db: &DatabaseConnection, email: Arc<EmailService>) -> Res
             }
             Err(e) => {
                 let job_id = active.id.clone().unwrap();
-                log::error!("job {} failed: {e}", job_id);
+                tracing::error!("job {} failed: {e}", job_id);
                 let attempts = match active.attempts.clone() {
                     Set(v) => v,
                     _ => 0,
@@ -156,7 +156,7 @@ async fn handle(
         }
         "fail" => anyhow::bail!("intentional failure"),
         _ => {
-            log::info!("ran job {}", job.id);
+            tracing::info!("ran job {}", job.id);
             Ok(())
         }
     }

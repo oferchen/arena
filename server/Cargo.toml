@@ -13,8 +13,8 @@ net = { path = "../crates/net", features = ["webrtc"] }
 serde = { version = "1", features = ["derive"] }
 webrtc = "0.11"
 anyhow = "1"
-log = "0.4"
-env_logger = "0.11"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 clap = { version = "4", features = ["derive", "env"] }
 duck_hunt_server = { path = "../crates/minigames/duck_hunt" }
 glam = "0.24"
