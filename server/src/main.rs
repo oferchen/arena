@@ -1,22 +1,22 @@
 use std::{collections::HashMap, net::SocketAddr, path::PathBuf, sync::Arc};
 
-use anyhow::{Result, anyhow};
+use anyhow::{anyhow, Result};
 
 use crate::email::{EmailService, SmtpConfig, StartTls};
 use ::payments::{Catalog, EntitlementList, Sku, UserId};
 use analytics::{Analytics, Event};
 use axum::{
-    Extension, Router,
     extract::{
-        Json, Path, Query, State,
         ws::{Message, WebSocket, WebSocketUpgrade},
+        Json, Path, Query, State,
     },
     http::{
-        HeaderMap, HeaderName, HeaderValue, StatusCode,
         header::{CACHE_CONTROL, SET_COOKIE},
+        HeaderMap, HeaderName, HeaderValue, StatusCode,
     },
     response::IntoResponse,
     routing::{get, get_service, post},
+    Extension, Router,
 };
 use clap::Parser;
 use email_address::EmailAddress;
@@ -392,8 +392,19 @@ async fn metrics_handler() -> impl IntoResponse {
     let encoder = TextEncoder::new();
     let metric_families = prometheus::gather();
     let mut buffer = Vec::new();
-    encoder.encode(&metric_families, &mut buffer).unwrap();
-    String::from_utf8(buffer).unwrap()
+    match encoder.encode(&metric_families, &mut buffer) {
+        Ok(_) => match String::from_utf8(buffer) {
+            Ok(s) => s.into_response(),
+            Err(e) => {
+                log::error!("failed to convert metrics to UTF-8: {e}");
+                String::new().into_response()
+            }
+        },
+        Err(e) => {
+            log::error!("failed to encode metrics: {e}");
+            StatusCode::INTERNAL_SERVER_ERROR.into_response()
+        }
+    }
 }
 
 #[derive(Serialize)]
