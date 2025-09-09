@@ -51,7 +51,15 @@ impl RuntimeConfig {
             }
         };
 
-        let text = match JsFuture::from(resp.text().unwrap()).await {
+        let text_promise = match resp.text() {
+            Ok(promise) => promise,
+            Err(e) => {
+                web_sys::console::error_1(&e);
+                return Self::default();
+            }
+        };
+
+        let text = match JsFuture::from(text_promise).await {
             Ok(v) => v.as_string().unwrap_or_default(),
             Err(e) => {
                 web_sys::console::error_1(&e);
