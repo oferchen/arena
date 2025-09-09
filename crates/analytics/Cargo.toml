@@ -11,7 +11,8 @@ serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1" }
 tokio = { version = "1", features = ["rt", "macros"] }
 chrono = { version = "0.4", features = ["serde"] }
-sea-orm = { version = "0.12", features = ["sqlx-postgres", "runtime-tokio-rustls", "macros"] }
+sea-orm = { version = "0.12", default-features = false, features = ["sqlx-postgres", "runtime-tokio-rustls", "macros", "with-uuid", "with-chrono", "with-json"] }
+uuid = { version = "1", features = ["serde", "v4"] }
 
 [features]
 default = ["posthog", "otlp", "prometheus"]

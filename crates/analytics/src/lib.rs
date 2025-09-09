@@ -14,7 +14,8 @@ use sea_orm::{
     entity::prelude::*,
     sea_query::{Alias, Expr, Func, OnConflict, PostgresQueryBuilder, Query, SimpleExpr},
 };
-use serde_json::json;
+use serde_json::{json, Value as JsonValue};
+use uuid::Uuid;
 use tokio::time::{Duration, interval};
 
 #[cfg(feature = "otlp")]
@@ -29,6 +30,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 const DEFAULT_MAX_EVENTS: usize = 10_000;
 const MAX_EVENTS_ENV_VAR: &str = "ARENA_ANALYTICS_MAX_EVENTS";
+
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 pub enum Event {
@@ -392,7 +394,8 @@ impl Analytics {
 }
 
 mod events {
-    use sea_orm::{JsonValue, entity::prelude::*};
+    use sea_orm::entity::prelude::*;
+    use super::{JsonValue, Uuid};
 
     #[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
     #[sea_orm(table_name = "analytics_events")]

@@ -1,4 +1,8 @@
 use sea_orm::entity::prelude::*;
+use uuid::Uuid;
+use chrono::{DateTime, Utc};
+
+type DateTimeUtc = DateTime<Utc>;
 
 pub mod runs {
     use super::*;

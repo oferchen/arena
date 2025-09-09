@@ -1,4 +1,9 @@
-use sea_orm::{JsonValue, entity::prelude::*};
+use sea_orm::entity::prelude::*;
+use serde_json::Value as JsonValue;
+use uuid::Uuid;
+use chrono::{DateTime, Utc};
+
+type DateTimeUtc = DateTime<Utc>;
 
 pub mod login_tokens {
     use super::*;

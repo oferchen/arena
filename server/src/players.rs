@@ -1,4 +1,7 @@
 use sea_orm::entity::prelude::*;
+use chrono::{DateTime, Utc};
+
+type DateTimeUtc = DateTime<Utc>;
 
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
 #[sea_orm(table_name = "players")]
