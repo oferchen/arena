@@ -305,10 +305,16 @@ impl MigrationTrait for Migration {
                     .table(AnalyticsEvents::Table)
                     .if_not_exists()
                     .col(
+                        ColumnDef::new(AnalyticsEvents::Id)
+                            .big_integer()
+                            .not_null()
+                            .auto_increment()
+                            .primary_key(),
+                    )
+                    .col(
                         ColumnDef::new(AnalyticsEvents::Ts)
                             .timestamp_with_time_zone()
-                            .not_null()
-                            .primary_key(),
+                            .not_null(),
                     )
                     .col(ColumnDef::new(AnalyticsEvents::PlayerId).string().null())
                     .col(ColumnDef::new(AnalyticsEvents::SessionId).uuid().null())
@@ -584,6 +590,7 @@ enum Levels {
 
 #[derive(Iden)]
 enum AnalyticsEvents {
+    Id,
     Ts,
     PlayerId,
     SessionId,
