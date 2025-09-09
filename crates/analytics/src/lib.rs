@@ -319,7 +319,9 @@ impl Analytics {
         let select = Query::select()
             .expr_as(Expr::col(events::Column::Name), Alias::new("event"))
             .expr_as(
-                Expr::cust("date_trunc('hour', \"created_at\")"),
+                Func::cust(Alias::new("date_trunc"))
+                    .arg("hour")
+                    .arg(Expr::col(events::Column::CreatedAt)),
                 Alias::new("bucket"),
             )
             .expr_as(
@@ -329,9 +331,12 @@ impl Analytics {
             .from(events::Entity)
             .and_where(Expr::col(events::Column::CreatedAt).gte(from))
             .and_where(Expr::col(events::Column::CreatedAt).lt(now))
-            .group_by_cols(vec![
+            .add_group_by([
                 Expr::col(events::Column::Name),
-                Expr::cust("date_trunc('hour', \"created_at\")"),
+                Func::cust(Alias::new("date_trunc"))
+                    .arg("hour")
+                    .arg(Expr::col(events::Column::CreatedAt))
+                    .into(),
             ])
             .to_owned();
         let insert = Query::insert()
@@ -342,14 +347,19 @@ impl Analytics {
                 rollups::Column::Count,
             ])
             .select_from(select)
+            .unwrap()
             .on_conflict(
                 OnConflict::columns([rollups::Column::Event, rollups::Column::Bucket])
                     .update_column(rollups::Column::Count)
                     .to_owned(),
             )
             .build(PostgresQueryBuilder);
-        db.execute(Statement::from_string(DbBackend::Postgres, insert))
-            .await?;
+        db.execute(Statement::from_sql_and_values(
+            DbBackend::Postgres,
+            insert.0,
+            insert.1,
+        ))
+        .await?;
         Ok(())
     }
 
