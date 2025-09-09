@@ -9,7 +9,7 @@ use axum::{
     Json, Router,
 };
 use chrono::Utc;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use ::leaderboard::{
@@ -166,13 +166,55 @@ async fn handle_ws(
     }
 }
 
+#[derive(Serialize, Deserialize)]
+enum Event {
+    Hit,
+    Miss,
+}
+
+#[derive(Serialize, Deserialize)]
+struct Replay {
+    events: Vec<Event>,
+}
+
 fn verify_score(replay: &[u8]) -> Option<i32> {
-    if replay.len() < 4 {
-        return None;
+    let replay: Replay = postcard::from_bytes(replay).ok()?;
+    let mut points = 0;
+    for event in replay.events {
+        if let Event::Hit = event {
+            points += 1;
+        }
     }
-    let mut bytes = [0u8; 4];
-    bytes.copy_from_slice(&replay[..4]);
-    Some(i32::from_le_bytes(bytes))
+    Some(points)
+}
+
+#[cfg(test)]
+mod verify_score_tests {
+    use super::*;
+
+    #[test]
+    fn valid_replay_scores() {
+        let replay = Replay {
+            events: vec![Event::Hit, Event::Miss, Event::Hit],
+        };
+        let bytes = postcard::to_allocvec(&replay).unwrap();
+        assert_eq!(verify_score(&bytes), Some(2));
+    }
+
+    #[test]
+    fn tampered_replay_detected() {
+        let replay = Replay {
+            events: vec![Event::Hit],
+        };
+        let bytes = postcard::to_allocvec(&replay).unwrap();
+        assert_ne!(verify_score(&bytes), Some(2));
+    }
+
+    #[test]
+    fn malformed_replay_rejected() {
+        let bytes = vec![0u8; 3];
+        assert_eq!(verify_score(&bytes), None);
+    }
 }
 
 #[cfg(test)]
