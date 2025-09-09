@@ -49,20 +49,33 @@ async fn request_handler(
         Some(db) => db,
         None => return StatusCode::INTERNAL_SERVER_ERROR,
     };
-    if let Some((_, expires_at)) = otp_store::fetch_otp(db, &email_hash).await {
-        let now = Utc::now();
-        if now < expires_at {
-            let created_at = expires_at - ChronoDuration::from_std(OTP_TTL).unwrap();
-            if now < created_at + ChronoDuration::from_std(REQUEST_COOLDOWN).unwrap() {
-                return StatusCode::TOO_MANY_REQUESTS;
+    match otp_store::fetch_otp(db, &email_hash).await {
+        Ok(Some((_, expires_at))) => {
+            let now = Utc::now();
+            if now < expires_at {
+                let created_at = expires_at - ChronoDuration::from_std(OTP_TTL).unwrap();
+                if now < created_at + ChronoDuration::from_std(REQUEST_COOLDOWN).unwrap() {
+                    return StatusCode::TOO_MANY_REQUESTS;
+                }
+            }
+            if let Err(e) = otp_store::delete_otp(db, &email_hash).await {
+                tracing::error!("failed to delete OTP: {e}");
+                return StatusCode::INTERNAL_SERVER_ERROR;
             }
         }
-        let _ = otp_store::delete_otp(db, &email_hash).await;
+        Ok(None) => {}
+        Err(e) => {
+            tracing::error!("failed to fetch OTP: {e}");
+            return StatusCode::INTERNAL_SERVER_ERROR;
+        }
     }
     let code = rand::thread_rng().sample(Uniform::new(0, 1_000_000));
     let code_str = format!("{:06}", code);
     let expires_at = Utc::now() + ChronoDuration::from_std(OTP_TTL).unwrap();
-    let _ = otp_store::insert_otp(db, &email_hash, &code_str, expires_at).await;
+    if let Err(e) = otp_store::insert_otp(db, &email_hash, &code_str, expires_at).await {
+        tracing::error!("failed to insert OTP: {e}");
+        return StatusCode::INTERNAL_SERVER_ERROR;
+    }
     let _ = state.email.send_otp_code(&body.email, &code_str);
     StatusCode::OK
 }
@@ -84,14 +97,36 @@ async fn verify_handler(
                 .into_response();
         }
     };
-    if let Some((code, expires_at)) = otp_store::fetch_otp(db, &email_hash).await {
-        if code == body.code && Utc::now() <= expires_at {
-            let _ = otp_store::delete_otp(db, &email_hash).await;
-            let token = Uuid::new_v4().to_string();
-            let mut headers = HeaderMap::new();
-            let cookie = format!("session={}; Path=/; Secure; HttpOnly; SameSite=Lax", token);
-            headers.insert(SET_COOKIE, HeaderValue::from_str(&cookie).unwrap());
-            return (headers, Json(VerifyResponse { token })).into_response();
+    match otp_store::fetch_otp(db, &email_hash).await {
+        Ok(Some((code, expires_at))) => {
+            if code == body.code && Utc::now() <= expires_at {
+                if let Err(e) = otp_store::delete_otp(db, &email_hash).await {
+                    tracing::error!("failed to delete OTP: {e}");
+                    return (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        Json(VerifyResponse {
+                            token: String::new(),
+                        }),
+                    )
+                        .into_response();
+                }
+                let token = Uuid::new_v4().to_string();
+                let mut headers = HeaderMap::new();
+                let cookie = format!("session={}; Path=/; Secure; HttpOnly; SameSite=Lax", token);
+                headers.insert(SET_COOKIE, HeaderValue::from_str(&cookie).unwrap());
+                return (headers, Json(VerifyResponse { token })).into_response();
+            }
+        }
+        Ok(None) => {}
+        Err(e) => {
+            tracing::error!("failed to fetch OTP: {e}");
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(VerifyResponse {
+                    token: String::new(),
+                }),
+            )
+                .into_response();
         }
     }
     (
