@@ -40,6 +40,10 @@ pub struct LeaderboardSnapshot {
 impl LeaderboardService {
     pub async fn new(database_url: &str, replay_dir: PathBuf) -> Result<Self> {
         let db = Database::connect(database_url).await?;
+        Self::with_db(db, replay_dir).await
+    }
+
+    pub async fn with_db(db: DatabaseConnection, replay_dir: PathBuf) -> Result<Self> {
         tokio::fs::create_dir_all(&replay_dir).await?;
         let (tx, _) = broadcast::channel(16);
         let max = std::env::var("ARENA_LEADERBOARD_MAX")

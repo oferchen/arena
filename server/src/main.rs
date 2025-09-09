@@ -232,7 +232,7 @@ pub(crate) struct AppState {
     analytics: Analytics,
     leaderboard: ::leaderboard::LeaderboardService,
     catalog: Catalog,
-    db: Option<DatabaseConnection>,
+    db: DatabaseConnection,
     email_salt: String,
 }
 
@@ -479,26 +479,18 @@ async fn store_claim_handler(
         None => return StatusCode::UNAUTHORIZED,
     };
 
-    if let Some(db) = &state.db {
-        let _ = purchases::grant_entitlement(db, user, &req.sku).await;
-        state.analytics.dispatch(Event::EntitlementGranted);
-        StatusCode::OK
-    } else {
-        StatusCode::INTERNAL_SERVER_ERROR
-    }
+    let _ = purchases::grant_entitlement(&state.db, user, &req.sku).await;
+    state.analytics.dispatch(Event::EntitlementGranted);
+    StatusCode::OK
 }
 
 async fn entitlements_handler(
     State(state): State<Arc<AppState>>,
     Path(user): Path<String>,
 ) -> Json<EntitlementList> {
-    let entitlements = if let Some(db) = &state.db {
-        purchases::list_entitlements(db, &user)
-            .await
-            .unwrap_or_default()
-    } else {
-        Vec::new()
-    };
+    let entitlements = purchases::list_entitlements(&state.db, &user)
+        .await
+        .unwrap_or_default();
     Json(EntitlementList { entitlements })
 }
 
@@ -528,15 +520,13 @@ struct GuestResponse {
 
 async fn guest_handler(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     let id = uuid::Uuid::new_v4();
-    if let Some(db) = &state.db {
-        let active = players::ActiveModel {
-            id: Set(id.to_string()),
-            handle: Set(String::new()),
-            region: Set(None),
-            created_at: Set(chrono::Utc::now()),
-        };
-        let _ = active.insert(db).await;
-    }
+    let active = players::ActiveModel {
+        id: Set(id.to_string()),
+        handle: Set(String::new()),
+        region: Set(None),
+        created_at: Set(chrono::Utc::now()),
+    };
+    let _ = active.insert(&state.db).await;
     let mut headers = HeaderMap::new();
     let same_site = std::env::var("ARENA_COOKIE_SAME_SITE").unwrap_or_else(|_| "Strict".into());
     let secure = std::env::var("ARENA_COOKIE_SECURE")
@@ -631,7 +621,7 @@ async fn setup(
         analytics,
         leaderboard,
         catalog,
-        db: Some(db),
+        db,
         email_salt: cfg.email_salt.clone(),
     })
 }
@@ -667,9 +657,7 @@ async fn run(cli: Cli) -> Result<()> {
     tracing::info!("Using config: {:?}", config);
     let state = Arc::new(setup(&config, smtp, posthog_key.clone()).await?);
 
-    if let Some(db) = state.db.clone() {
-        tokio::spawn(jobs::run(db, state.email.clone()));
-    }
+    tokio::spawn(jobs::run(state.db.clone(), state.email.clone()));
 
     let assets_service = get_service(ServeDir::new(&config.assets_dir)).layer(
         SetResponseHeaderLayer::if_not_present(
