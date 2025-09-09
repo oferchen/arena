@@ -2,19 +2,20 @@ use std::sync::Arc;
 
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::{
-    Json, Router,
     extract::{Path, Query, State},
     http::StatusCode,
     response::IntoResponse,
     routing::{get, post},
+    Json, Router,
 };
+use base64::{engine::general_purpose, Engine as _};
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use ::leaderboard::{
-    LeaderboardService,
     models::{LeaderboardWindow, Run, Score},
+    LeaderboardService,
 };
 use analytics::Event as AnalyticsEvent;
 
@@ -64,7 +65,7 @@ async fn post_run(
     if payload.replay.len() > MAX_REPLAY_SIZE_BASE64 {
         return StatusCode::PAYLOAD_TOO_LARGE;
     }
-    let replay_bytes = match base64::decode(payload.replay) {
+    let replay_bytes = match general_purpose::STANDARD.decode(payload.replay) {
         Ok(bytes) => {
             if bytes.len() > MAX_REPLAY_SIZE {
                 return StatusCode::PAYLOAD_TOO_LARGE;
@@ -75,7 +76,9 @@ async fn post_run(
     };
     let verified = verify_score(&replay_bytes);
     if verified != Some(payload.points) {
-        state.analytics.dispatch(AnalyticsEvent::RunVerificationFailed);
+        state
+            .analytics
+            .dispatch(AnalyticsEvent::RunVerificationFailed);
         return StatusCode::BAD_REQUEST;
     }
 
@@ -224,13 +227,13 @@ mod tests {
         email::{EmailService, SmtpConfig},
         room,
     };
-    use purchases::{Catalog, Sku};
     use analytics::Analytics;
-    use axum::Json;
     use axum::extract::{Path, State};
+    use axum::Json;
     use leaderboard::models::LeaderboardWindow;
+    use migration::{sea_orm::Database, Migrator, MigratorTrait};
+    use purchases::{Catalog, Sku};
     use std::path::PathBuf;
-    use migration::{Migrator, MigratorTrait, sea_orm::Database};
 
     fn smtp_cfg() -> SmtpConfig {
         SmtpConfig {
@@ -278,13 +281,11 @@ mod tests {
 
         let status = post_run(Path(leaderboard_id), State(state.clone()), Json(payload)).await;
         assert_eq!(status, StatusCode::BAD_REQUEST);
-        assert!(
-            state
-                .leaderboard
-                .get_scores(leaderboard_id, LeaderboardWindow::AllTime)
-                .await
-                .is_empty()
-        );
+        assert!(state
+            .leaderboard
+            .get_scores(leaderboard_id, LeaderboardWindow::AllTime)
+            .await
+            .is_empty());
     }
 
     #[tokio::test]
@@ -305,7 +306,7 @@ mod tests {
         });
 
         let leaderboard_id = Uuid::new_v4();
-        let replay = base64::encode(42i32.to_le_bytes());
+        let replay = general_purpose::STANDARD.encode(42i32.to_le_bytes());
         let payload = SubmitRun {
             player_id: Uuid::new_v4(),
             points: 42,
@@ -320,7 +321,10 @@ mod tests {
             .await;
         assert_eq!(scores.len(), 1);
         assert_eq!(scores[0].points, 42);
-    assert_eq!(state.analytics.events(), vec![AnalyticsEvent::LeaderboardSubmit]);
+        assert_eq!(
+            state.analytics.events(),
+            vec![AnalyticsEvent::LeaderboardSubmit]
+        );
     }
 
     #[tokio::test]
@@ -342,7 +346,7 @@ mod tests {
 
         let leaderboard_id = Uuid::new_v4();
         let bytes = vec![0u8; super::MAX_REPLAY_SIZE + 1];
-        let replay = base64::encode(bytes);
+        let replay = general_purpose::STANDARD.encode(bytes);
         let payload = SubmitRun {
             player_id: Uuid::new_v4(),
             points: 42,
@@ -351,13 +355,11 @@ mod tests {
 
         let status = post_run(Path(leaderboard_id), State(state.clone()), Json(payload)).await;
         assert_eq!(status, StatusCode::PAYLOAD_TOO_LARGE);
-        assert!(
-            state
-                .leaderboard
-                .get_scores(leaderboard_id, LeaderboardWindow::AllTime)
-                .await
-                .is_empty()
-        );
+        assert!(state
+            .leaderboard
+            .get_scores(leaderboard_id, LeaderboardWindow::AllTime)
+            .await
+            .is_empty());
     }
 
     #[tokio::test]
@@ -380,7 +382,7 @@ mod tests {
         let leaderboard_id = Uuid::new_v4();
         let mut bytes = 41i32.to_le_bytes().to_vec();
         bytes.extend_from_slice(b"rest");
-        let replay = base64::encode(bytes);
+        let replay = general_purpose::STANDARD.encode(bytes);
         let payload = SubmitRun {
             player_id: Uuid::new_v4(),
             points: 42,
@@ -389,13 +391,11 @@ mod tests {
 
         let status = post_run(Path(leaderboard_id), State(state.clone()), Json(payload)).await;
         assert_eq!(status, StatusCode::BAD_REQUEST);
-        assert!(
-            state
-                .leaderboard
-                .get_scores(leaderboard_id, LeaderboardWindow::AllTime)
-                .await
-                .is_empty()
-        );
+        assert!(state
+            .leaderboard
+            .get_scores(leaderboard_id, LeaderboardWindow::AllTime)
+            .await
+            .is_empty());
     }
 
     #[tokio::test]
@@ -417,7 +417,7 @@ mod tests {
 
         let leaderboard_id = Uuid::new_v4();
         let player = Uuid::new_v4();
-        let replay = base64::encode(10i32.to_le_bytes());
+        let replay = general_purpose::STANDARD.encode(10i32.to_le_bytes());
         let payload = SubmitRun {
             player_id: player,
             points: 10,
@@ -430,7 +430,7 @@ mod tests {
             .get_scores(leaderboard_id, LeaderboardWindow::AllTime)
             .await;
         assert_eq!(scores.len(), 1);
-    let run_id = scores[0].run;
+        let run_id = scores[0].run;
         assert!(!scores[0].verified);
 
         let status = post_verify(Path((leaderboard_id, run_id)), State(state.clone())).await;
