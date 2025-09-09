@@ -55,33 +55,6 @@ impl ShardRegistry for MemoryShardRegistry {
     }
 }
 
-#[cfg(feature = "redis")]
-pub struct RedisShardRegistry {
-    client: redis::Client,
-}
-
-#[cfg(feature = "redis")]
-impl RedisShardRegistry {
-    pub fn new(client: redis::Client) -> Self {
-        Self { client }
-    }
-}
-
-#[cfg(feature = "redis")]
-impl ShardRegistry for RedisShardRegistry {
-    fn register(&self, _shard: ShardInfo) {
-        unimplemented!()
-    }
-
-    fn heartbeat(&self, _shard_id: &str, _load: usize) {
-        unimplemented!()
-    }
-
-    fn least_loaded(&self) -> Option<ShardInfo> {
-        unimplemented!()
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -91,14 +64,11 @@ mod tests {
     #[tokio::test]
     #[ignore]
     async fn chooses_least_loaded_shard() {
-        std::env::set_var("ARENA_REDIS_URL", "redis://127.0.0.1/");
         let registry = Arc::new(MemoryShardRegistry::new());
-        let leaderboard = ::leaderboard::LeaderboardService::new(
-            "127.0.0.1:9042",
-            PathBuf::from("replays"),
-        )
-        .await
-        .unwrap();
+        let leaderboard =
+            ::leaderboard::LeaderboardService::new("127.0.0.1:9042", PathBuf::from("replays"))
+                .await
+                .unwrap();
         let _s1 = room::RoomManager::with_registry(
             leaderboard.clone(),
             registry.clone(),

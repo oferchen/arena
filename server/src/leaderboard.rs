@@ -2,19 +2,19 @@ use std::sync::Arc;
 
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::{
+    Json, Router,
     extract::{Path, Query, State},
     http::StatusCode,
     response::IntoResponse,
     routing::{get, post},
-    Json, Router,
 };
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use ::leaderboard::{
-    models::{LeaderboardWindow, Run, Score},
     LeaderboardService,
+    models::{LeaderboardWindow, Run, Score},
 };
 use analytics::Event;
 
@@ -227,8 +227,8 @@ mod tests {
     };
     use ::payments::{Catalog, Sku};
     use analytics::Analytics;
-    use axum::extract::{Path, State};
     use axum::Json;
+    use axum::extract::{Path, State};
     use leaderboard::models::LeaderboardWindow;
     use std::path::PathBuf;
 
@@ -244,7 +244,6 @@ mod tests {
     #[tokio::test]
     #[ignore]
     async fn post_run_rejects_malformed_base64() {
-        std::env::set_var("ARENA_REDIS_URL", "redis://127.0.0.1/");
         let cfg = smtp_cfg();
         let email = Arc::new(EmailService::new(cfg.clone()).unwrap());
         let leaderboard =
@@ -275,17 +274,18 @@ mod tests {
 
         let status = post_run(Path(leaderboard_id), State(state.clone()), Json(payload)).await;
         assert_eq!(status, StatusCode::BAD_REQUEST);
-        assert!(state
-            .leaderboard
-            .get_scores(leaderboard_id, LeaderboardWindow::AllTime)
-            .await
-            .is_empty());
+        assert!(
+            state
+                .leaderboard
+                .get_scores(leaderboard_id, LeaderboardWindow::AllTime)
+                .await
+                .is_empty()
+        );
     }
 
     #[tokio::test]
     #[ignore]
     async fn post_run_accepts_valid_payload() {
-        std::env::set_var("ARENA_REDIS_URL", "redis://127.0.0.1/");
         let cfg = smtp_cfg();
         let email = Arc::new(EmailService::new(cfg.clone()).unwrap());
         let leaderboard =
@@ -326,7 +326,6 @@ mod tests {
     #[tokio::test]
     #[ignore]
     async fn post_run_rejects_oversized_payload() {
-        std::env::set_var("ARENA_REDIS_URL", "redis://127.0.0.1/");
         let cfg = smtp_cfg();
         let email = Arc::new(EmailService::new(cfg.clone()).unwrap());
         let leaderboard =
@@ -356,17 +355,18 @@ mod tests {
 
         let status = post_run(Path(leaderboard_id), State(state.clone()), Json(payload)).await;
         assert_eq!(status, StatusCode::PAYLOAD_TOO_LARGE);
-        assert!(state
-            .leaderboard
-            .get_scores(leaderboard_id, LeaderboardWindow::AllTime)
-            .await
-            .is_empty());
+        assert!(
+            state
+                .leaderboard
+                .get_scores(leaderboard_id, LeaderboardWindow::AllTime)
+                .await
+                .is_empty()
+        );
     }
 
     #[tokio::test]
     #[ignore]
     async fn post_run_rejects_invalid_score() {
-        std::env::set_var("ARENA_REDIS_URL", "redis://127.0.0.1/");
         let cfg = smtp_cfg();
         let email = Arc::new(EmailService::new(cfg.clone()).unwrap());
         let leaderboard =
@@ -397,17 +397,18 @@ mod tests {
 
         let status = post_run(Path(leaderboard_id), State(state.clone()), Json(payload)).await;
         assert_eq!(status, StatusCode::BAD_REQUEST);
-        assert!(state
-            .leaderboard
-            .get_scores(leaderboard_id, LeaderboardWindow::AllTime)
-            .await
-            .is_empty());
+        assert!(
+            state
+                .leaderboard
+                .get_scores(leaderboard_id, LeaderboardWindow::AllTime)
+                .await
+                .is_empty()
+        );
     }
 
     #[tokio::test]
     #[ignore]
     async fn verify_endpoint_marks_score_verified() {
-        std::env::set_var("ARENA_REDIS_URL", "redis://127.0.0.1/");
         let cfg = smtp_cfg();
         let email = Arc::new(EmailService::new(cfg.clone()).unwrap());
         let leaderboard =

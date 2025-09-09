@@ -20,7 +20,6 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 async fn leaderboard_service() -> ::leaderboard::LeaderboardService {
-    std::env::set_var("ARENA_REDIS_URL", "redis://127.0.0.1/");
     ::leaderboard::LeaderboardService::new("127.0.0.1:9042", PathBuf::from("replays"))
         .await
         .unwrap()

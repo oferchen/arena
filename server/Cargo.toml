@@ -38,12 +38,6 @@ sea-orm = { version = "0.12", features=["sqlx-postgres","runtime-tokio-rustls","
 storage = { path = "../crates/storage" }
 migration = { path = "migration" }
 
-redis = { version = "0.24", optional = true, default-features = false, features = ["tokio-comp"] }
-
-[features]
-redis = ["dep:redis"]
-
-
 [dev-dependencies]
 tokio-tungstenite = "0.21"
 futures-util = "0.3"

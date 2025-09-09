@@ -1,20 +1,18 @@
 # Leaderboards
 
-Arena's leaderboard service persists results in Scylla and mirrors the
-top standings in Redis for fast reads. Scores are tracked in three windows:
-**daily**, **weekly**, and **all_time**.
+Arena's leaderboard service persists results in Scylla. Scores are tracked in
+three windows: **daily**, **weekly**, and **all_time**.
 
 ## Configuration
 
-| Env var                 | CLI flag            | Description                                  | Default |
-| ----------------------- | ------------------- | -------------------------------------------- | ------- |
-| `ARENA_DB_URL`          | `--db-url`          | Scylla database URL                          | -       |
-| `ARENA_REDIS_URL`       | `--redis-url`       | Redis URL for the top‑N cache **(required)** | -       |
-| `ARENA_LEADERBOARD_MAX` | `--leaderboard-max` | Maximum entries mirrored per leaderboard     | `100`   |
+| Env var                 | CLI flag            | Description                              | Default |
+| ----------------------- | ------------------- | ---------------------------------------- | ------- |
+| `ARENA_DB_URL`          | `--db-url`          | Scylla database URL                      | -       |
+| `ARENA_LEADERBOARD_MAX` | `--leaderboard-max` | Maximum entries mirrored per leaderboard | `100`   |
 
-Each score submission writes a run and windowed score to Scylla.
-The highest `ARENA_LEADERBOARD_MAX` scores for each window are maintained
-in Redis sorted sets for quick retrieval.
+Each score submission writes a run and windowed score to Scylla. The highest
+`ARENA_LEADERBOARD_MAX` scores for each window are maintained for quick
+retrieval.
 
 ## Usage
 

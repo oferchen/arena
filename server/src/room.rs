@@ -287,11 +287,7 @@ pub struct RoomManager {
 }
 
 impl RoomManager {
-    pub fn new(
-        leaderboard: LeaderboardService,
-        shard_id: String,
-        addr: String,
-    ) -> Self {
+    pub fn new(leaderboard: LeaderboardService, shard_id: String, addr: String) -> Self {
         let registry = Arc::new(crate::shard::MemoryShardRegistry::new());
         Self::with_registry(leaderboard, registry, shard_id, addr)
     }
@@ -372,7 +368,6 @@ mod tests {
     use tokio::sync::mpsc;
 
     async fn test_room() -> Room {
-        std::env::set_var("ARENA_REDIS_URL", "redis://127.0.0.1/");
         let leaderboard =
             ::leaderboard::LeaderboardService::new("127.0.0.1:9042", PathBuf::from("replays"))
                 .await
