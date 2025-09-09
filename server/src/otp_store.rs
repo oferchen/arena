@@ -1,5 +1,5 @@
 use chrono::{DateTime, Utc};
-use sea_orm::{DatabaseConnection, DbBackend, Statement, TryGetable};
+use sea_orm::{QueryFilter, entity::prelude::*};
 
 pub async fn insert_otp(
     db: &DatabaseConnection,
@@ -7,40 +7,49 @@ pub async fn insert_otp(
     code: &str,
     expires_at: DateTime<Utc>,
 ) {
-    let stmt = Statement::from_sql_and_values(
-        DbBackend::Postgres,
-        "INSERT INTO email_otps (email_hash, code, expires_at) VALUES ($1, $2, $3)",
-        vec![email_hash.into(), code.into(), expires_at.into()],
-    );
-    let _ = db.execute(stmt).await;
+    let active = email_otps::ActiveModel {
+        email_hash: Set(email_hash.to_owned()),
+        code: Set(code.to_owned()),
+        expires_at: Set(expires_at),
+    };
+    let _ = email_otps::Entity::insert(active).exec(db).await;
 }
 
 pub async fn fetch_otp(
     db: &DatabaseConnection,
     email_hash: &str,
 ) -> Option<(String, DateTime<Utc>)> {
-    let stmt = Statement::from_sql_and_values(
-        DbBackend::Postgres,
-        "SELECT code, expires_at FROM email_otps WHERE email_hash = $1",
-        vec![email_hash.into()],
-    );
-    if let Ok(Some(row)) = db.query_one(stmt).await {
-        if let (Ok(code), Ok(expires_at)) = (
-            row.try_get::<String>("code"),
-            row.try_get::<DateTime<Utc>>("expires_at"),
-        ) {
-            return Some((code, expires_at));
-        }
+    if let Ok(Some(row)) = email_otps::Entity::find()
+        .filter(email_otps::Column::EmailHash.eq(email_hash))
+        .one(db)
+        .await
+    {
+        return Some((row.code, row.expires_at.into()));
     }
     None
 }
 
 pub async fn delete_otp(db: &DatabaseConnection, email_hash: &str) {
-    let stmt = Statement::from_sql_and_values(
-        DbBackend::Postgres,
-        "DELETE FROM email_otps WHERE email_hash = $1",
-        vec![email_hash.into()],
-    );
-    let _ = db.execute(stmt).await;
+    let _ = email_otps::Entity::delete_many()
+        .filter(email_otps::Column::EmailHash.eq(email_hash))
+        .exec(db)
+        .await;
 }
 
+mod email_otps {
+    use sea_orm::entity::prelude::*;
+
+    #[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
+    #[sea_orm(table_name = "email_otps")]
+    pub struct Model {
+        #[sea_orm(primary_key, auto_increment = false)]
+        pub email_hash: String,
+        pub code: String,
+        pub expires_at: DateTimeWithTimeZone,
+    }
+
+    #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
+    pub enum Relation {}
+
+    impl ActiveModelBehavior for ActiveModel {}
+}
