@@ -6,6 +6,7 @@ use sea_orm::{
     ActiveValue::Set, ColumnTrait, DatabaseConnection, DbErr, EntityTrait, QueryFilter, QueryOrder,
     QuerySelect, TransactionTrait,
 };
+use serde_json::json;
 use uuid::Uuid;
 
 use crate::entities::{jobs, nodes};
@@ -42,12 +43,13 @@ async fn heartbeat(db: &DatabaseConnection, id: Uuid, region: &str) -> Result<()
     let model = nodes::ActiveModel {
         id: Set(id),
         region: Set(region.to_owned()),
-        created_at: Set(Utc::now()),
+        last_seen: Set(Utc::now()),
+        info: Set(json!({})),
     };
     nodes::Entity::insert(model)
         .on_conflict(
             OnConflict::column(nodes::Column::Id)
-                .update_columns([nodes::Column::Region, nodes::Column::CreatedAt])
+                .update_columns([nodes::Column::Region, nodes::Column::LastSeen, nodes::Column::Info])
                 .to_owned(),
         )
         .exec(db)
@@ -58,7 +60,7 @@ async fn heartbeat(db: &DatabaseConnection, id: Uuid, region: &str) -> Result<()
 async fn is_leader(db: &DatabaseConnection, id: Uuid) -> Result<bool, DbErr> {
     let cutoff = Utc::now() - LEADER_TIMEOUT;
     let leader = nodes::Entity::find()
-        .filter(nodes::Column::CreatedAt.gt(cutoff))
+        .filter(nodes::Column::LastSeen.gt(cutoff))
         .order_by_asc(nodes::Column::Id)
         .one(db)
         .await?;
