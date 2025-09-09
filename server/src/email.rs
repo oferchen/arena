@@ -199,7 +199,7 @@ impl EmailService {
         let tls_params = TlsParameters::builder(config.host.clone())
             .build()
             .map_err(|e| {
-                log::error!("failed to build TLS parameters: {e:?}");
+                tracing::error!("failed to build TLS parameters: {e:?}");
                 EmailError::Smtp(e.to_string())
             })?;
 
@@ -260,7 +260,7 @@ impl EmailService {
                         EMAIL_FAILED.inc();
                         EMAIL_LAST_ERROR.reset();
                         EMAIL_LAST_ERROR.with_label_values(&[&e]).set(1);
-                        log::error!("dead-letter to {:?}: {e}", msg.envelope().to());
+                        tracing::error!("dead-letter to {:?}: {e}", msg.envelope().to());
                     }
                 }
             }
@@ -284,7 +284,7 @@ impl EmailService {
     pub fn queue_mail(&self, email: Message) {
         EMAIL_QUEUED.inc();
         if self.sender.send(email).is_err() {
-            log::warn!("email queue disconnected");
+            tracing::warn!("email queue disconnected");
         }
     }
 
@@ -370,7 +370,7 @@ where
         match send().await {
             Ok(_) => return Ok(()),
             Err(e) => {
-                log::warn!(
+                tracing::warn!(
                     "failed to send email: {e}; retrying in {}ms",
                     delay.as_millis()
                 );
@@ -380,7 +380,7 @@ where
             }
         }
     }
-    log::warn!("giving up after {MAX_RETRIES} attempts");
+    tracing::warn!("giving up after {MAX_RETRIES} attempts");
     Err(last_err.expect("no error recorded"))
 }
 

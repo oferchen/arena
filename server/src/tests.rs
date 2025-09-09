@@ -12,9 +12,9 @@ use webrtc::api::APIBuilder;
 use webrtc::api::media_engine::MediaEngine;
 use webrtc::peer_connection::configuration::RTCConfiguration;
 
-use crate::test_logger::{INIT, LOGGER};
+use crate::test_logger::{init, INIT, LOGGER};
 use purchases::{Catalog, Sku};
-use log::LevelFilter;
+use tracing::level_filters::LevelFilter;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -242,10 +242,7 @@ async fn websocket_signaling_completes_handshake() {
 #[tokio::test]
 #[serial]
 async fn websocket_signaling_invalid_sdp_logs_and_closes() {
-    INIT.call_once(|| {
-        log::set_logger(&LOGGER).unwrap();
-    });
-    log::set_max_level(LevelFilter::Warn);
+    INIT.call_once(|| init(LevelFilter::WARN));
     LOGGER.messages.lock().unwrap().clear();
 
     let cfg = smtp_cfg();
@@ -294,10 +291,7 @@ async fn websocket_signaling_invalid_sdp_logs_and_closes() {
 #[tokio::test]
 #[serial]
 async fn websocket_signaling_unexpected_binary_logs_and_closes() {
-    INIT.call_once(|| {
-        log::set_logger(&LOGGER).unwrap();
-    });
-    log::set_max_level(LevelFilter::Warn);
+    INIT.call_once(|| init(LevelFilter::WARN));
     LOGGER.messages.lock().unwrap().clear();
 
     let cfg = smtp_cfg();
@@ -346,10 +340,7 @@ async fn websocket_signaling_unexpected_binary_logs_and_closes() {
 #[tokio::test]
 #[serial]
 async fn websocket_logs_unexpected_messages_and_closes() {
-    INIT.call_once(|| {
-        log::set_logger(&LOGGER).unwrap();
-    });
-    log::set_max_level(LevelFilter::Warn);
+    INIT.call_once(|| init(LevelFilter::WARN));
     LOGGER.messages.lock().unwrap().clear();
 
     let cfg = smtp_cfg();

@@ -256,7 +256,7 @@ async fn handle_signal_socket(state: Arc<AppState>, mut socket: WebSocket) {
                     offer.sdp_type = RTCSdpType::Offer;
                     offer.sdp = sdp;
                     if let Err(e) = connector.pc.set_remote_description(offer).await {
-                        log::warn!("invalid SDP offer: {e}");
+                        tracing::warn!("invalid SDP offer: {e}");
                         let _ = socket
                             .send(Message::Text(
                                 json!({ "error": "invalid SDP offer" }).to_string(),
@@ -279,7 +279,7 @@ async fn handle_signal_socket(state: Arc<AppState>, mut socket: WebSocket) {
                                 .await
                                 .is_err()
                             {
-                                log::warn!("failed to set local description");
+                                tracing::warn!("failed to set local description");
                                 let _ = socket
                                     .send(Message::Close(Some(CloseFrame {
                                         code: 1011,
@@ -293,7 +293,7 @@ async fn handle_signal_socket(state: Arc<AppState>, mut socket: WebSocket) {
                             state.rooms.add_peer(connector).await;
                         }
                         Err(e) => {
-                            log::warn!("failed to create answer: {e}");
+                            tracing::warn!("failed to create answer: {e}");
                             let _ = socket
                                 .send(Message::Close(Some(CloseFrame {
                                     code: 1011,
@@ -305,7 +305,7 @@ async fn handle_signal_socket(state: Arc<AppState>, mut socket: WebSocket) {
                     }
                 }
                 Err(e) => {
-                    log::warn!("failed to create peer connection: {e}");
+                    tracing::warn!("failed to create peer connection: {e}");
                     let _ = socket
                         .send(Message::Close(Some(CloseFrame {
                             code: 1011,
@@ -316,7 +316,7 @@ async fn handle_signal_socket(state: Arc<AppState>, mut socket: WebSocket) {
                 }
             },
             Ok(_) => {
-                log::warn!("expected SDP offer");
+                tracing::warn!("expected SDP offer");
                 let _ = socket
                     .send(Message::Text(
                         json!({ "error": "invalid SDP offer" }).to_string(),
@@ -331,7 +331,7 @@ async fn handle_signal_socket(state: Arc<AppState>, mut socket: WebSocket) {
                 return;
             }
             Err(e) => {
-                log::warn!("websocket error: {e}");
+                tracing::warn!("websocket error: {e}");
                 return;
             }
         }
@@ -350,17 +350,17 @@ async fn handle_socket(mut socket: WebSocket) {
             Ok(Message::Pong(_)) => {}
             Ok(Message::Close(_)) => break,
             Ok(Message::Text(text)) => {
-                log::warn!("unexpected text message: {text}");
+                tracing::warn!("unexpected text message: {text}");
                 let _ = socket.close().await;
                 break;
             }
             Ok(Message::Binary(_)) => {
-                log::warn!("unexpected binary message");
+                tracing::warn!("unexpected binary message");
                 let _ = socket.close().await;
                 break;
             }
             Err(e) => {
-                log::warn!("websocket error: {e}");
+                tracing::warn!("websocket error: {e}");
                 break;
             }
         }
@@ -418,7 +418,7 @@ async fn mail_test_handler(
         .or_else(|| body.map(|b| b.0.to))
         .unwrap_or_else(|| state.email.from_address().to_string());
     let queued = if !EmailAddress::is_valid(&to) {
-        log::warn!("invalid test email address: {to}");
+        tracing::warn!("invalid test email address: {to}");
         false
     } else {
         match state.email.send_test(&to) {
@@ -427,7 +427,7 @@ async fn mail_test_handler(
                 true
             }
             Err(e) => {
-                log::warn!("failed to queue test email to {to}: {e}");
+                tracing::warn!("failed to queue test email to {to}: {e}");
                 false
             }
         }
@@ -499,12 +499,12 @@ async fn metrics_handler() -> impl IntoResponse {
         Ok(_) => match String::from_utf8(buffer) {
             Ok(s) => s.into_response(),
             Err(e) => {
-                log::error!("failed to convert metrics to UTF-8: {e}");
+                tracing::error!("failed to convert metrics to UTF-8: {e}");
                 String::new().into_response()
             }
         },
         Err(e) => {
-            log::error!("failed to encode metrics: {e}");
+            tracing::error!("failed to encode metrics: {e}");
             StatusCode::INTERNAL_SERVER_ERROR.into_response()
         }
     }
@@ -542,7 +542,7 @@ async fn guest_handler(State(state): State<Arc<AppState>>) -> impl IntoResponse 
             headers.insert(SET_COOKIE, value);
         }
         Err(e) => {
-            log::error!("failed to create session cookie header: {e}");
+            tracing::error!("failed to create session cookie header: {e}");
         }
     }
     (
@@ -583,7 +583,7 @@ async fn setup(
     posthog_key: Option<String>,
 ) -> Result<AppState> {
     let email = Arc::new(EmailService::new(smtp.clone()).map_err(|e| {
-        log::error!("failed to initialize email service: {e}");
+        tracing::error!("failed to initialize email service: {e}");
         anyhow!(e)
     })?);
 
@@ -647,7 +647,7 @@ async fn run(cli: Cli) -> Result<()> {
     if let Some(addr) = config.analytics_otlp_endpoint {
         std::env::set_var("OTEL_EXPORTER_OTLP_ENDPOINT", format!("http://{}", addr));
     }
-    log::info!("Using config: {:?}", config);
+    tracing::info!("Using config: {:?}", config);
     let state = Arc::new(setup(&config, smtp, posthog_key.clone()).await?);
 
     if let Some(db) = state.db.clone() {
@@ -712,12 +712,12 @@ async fn run(cli: Cli) -> Result<()> {
             let listener = match tokio::net::TcpListener::bind(addr).await {
                 Ok(l) => l,
                 Err(e) => {
-                    log::error!("failed to bind metrics address: {e}");
+                    tracing::error!("failed to bind metrics address: {e}");
                     return;
                 }
             };
             if let Err(e) = axum::serve(listener, metrics_app).await {
-                log::error!("metrics server error: {e}");
+                tracing::error!("metrics server error: {e}");
             }
         });
     }
@@ -725,7 +725,7 @@ async fn run(cli: Cli) -> Result<()> {
     let listener = tokio::net::TcpListener::bind(config.bind_addr)
         .await
         .map_err(|e| {
-            log::error!("failed to bind to address: {e}");
+            tracing::error!("failed to bind to address: {e}");
             e
         })?;
 
@@ -733,7 +733,7 @@ async fn run(cli: Cli) -> Result<()> {
         .with_graceful_shutdown(shutdown_signal())
         .await;
     res.map_err(|e| {
-        log::error!("server error: {e}");
+        tracing::error!("server error: {e}");
         e
     })?;
 
@@ -748,9 +748,18 @@ async fn main() {
             std::env::set_var("RUST_LOG", level);
         }
     }
-    env_logger::init();
+    if std::env::var("ARENA_JSON_LOGS").is_ok() {
+        tracing_subscriber::fmt()
+            .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+            .json()
+            .init();
+    } else {
+        tracing_subscriber::fmt()
+            .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+            .init();
+    }
     if let Err(e) = run(cli).await {
-        log::error!("{e}");
+        tracing::error!("{e}");
         std::process::exit(1);
     }
 }
