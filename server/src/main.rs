@@ -51,10 +51,16 @@ struct Cli {
     config: Config,
     #[arg(long, env = "ARENA_POSTHOG_KEY")]
     posthog_key: Option<String>,
-    #[arg(long = "metrics-addr", env = "ARENA_METRICS_ADDR")]
-    metrics_addr: Option<SocketAddr>,
+    #[arg(long, env = "ARENA_POSTHOG_URL")]
+    posthog_url: Option<String>,
+    #[arg(long, env = "ARENA_ANALYTICS_LOCAL", default_value_t = false)]
+    analytics_local: bool,
+    #[arg(long = "analytics-otlp-endpoint", env = "ARENA_ANALYTICS_OTLP_ENDPOINT")]
+    analytics_otlp_endpoint: Option<SocketAddr>,
     #[arg(long, env = "ARENA_ANALYTICS_OPT_OUT", default_value_t = false)]
     analytics_opt_out: bool,
+    #[arg(long, env = "ARENA_LOG_LEVEL")]
+    log_level: Option<String>,
 }
 
 #[derive(Parser, Debug, Clone)]
@@ -142,6 +148,9 @@ pub struct ResolvedConfig {
     pub feature_flags: HashMap<String, bool>,
     pub analytics_enabled: bool,
     pub analytics_opt_out: bool,
+    pub analytics_local: bool,
+    pub posthog_url: Option<String>,
+    pub analytics_otlp_endpoint: Option<SocketAddr>,
 }
 
 impl Config {
@@ -193,6 +202,9 @@ impl Config {
             feature_flags,
             analytics_enabled: false,
             analytics_opt_out: false,
+            analytics_local: false,
+            posthog_url: None,
+            analytics_otlp_endpoint: None,
         })
     }
 }
@@ -559,7 +571,6 @@ async fn setup(
     cfg: &ResolvedConfig,
     smtp: SmtpConfig,
     posthog_key: Option<String>,
-    metrics_addr: Option<SocketAddr>,
 ) -> Result<AppState> {
     let email = Arc::new(EmailService::new(smtp.clone()).map_err(|e| {
         log::error!("failed to initialize email service: {e}");
@@ -590,7 +601,7 @@ async fn setup(
         cfg.analytics_enabled && !cfg.analytics_opt_out,
         Some(db.clone()),
         posthog_key,
-        metrics_addr,
+        cfg.analytics_otlp_endpoint,
     );
     Ok(AppState {
         email,
@@ -608,14 +619,27 @@ async fn run(cli: Cli) -> Result<()> {
         smtp,
         config,
         posthog_key,
-        metrics_addr,
+        posthog_url,
+        analytics_local,
+        analytics_otlp_endpoint,
         analytics_opt_out,
+        log_level: _,
     } = cli;
+    if let Some(url) = &posthog_url {
+        std::env::set_var("POSTHOG_ENDPOINT", url);
+    }
     let mut config = config.resolve()?;
-    config.analytics_enabled = posthog_key.is_some();
+    config.analytics_enabled =
+        analytics_local || posthog_key.is_some() || analytics_otlp_endpoint.is_some();
     config.analytics_opt_out = analytics_opt_out;
+    config.analytics_local = analytics_local;
+    config.posthog_url = posthog_url;
+    config.analytics_otlp_endpoint = analytics_otlp_endpoint;
+    if let Some(addr) = config.analytics_otlp_endpoint {
+        std::env::set_var("OTEL_EXPORTER_OTLP_ENDPOINT", format!("http://{}", addr));
+    }
     log::info!("Using config: {:?}", config);
-    let state = Arc::new(setup(&config, smtp, posthog_key.clone(), metrics_addr).await?);
+    let state = Arc::new(setup(&config, smtp, posthog_key.clone()).await?);
 
     if let Some(db) = state.db.clone() {
         tokio::spawn(jobs::run(db));
@@ -673,7 +697,7 @@ async fn run(cli: Cli) -> Result<()> {
         .layer(Extension(config.clone()))
         .with_state(state.clone());
 
-    if let Some(addr) = metrics_addr {
+    if let Some(addr) = config.analytics_otlp_endpoint {
         let metrics_app = Router::new().route("/metrics", get(metrics_handler));
         tokio::spawn(async move {
             let listener = match tokio::net::TcpListener::bind(addr).await {
@@ -709,8 +733,13 @@ async fn run(cli: Cli) -> Result<()> {
 
 #[tokio::main]
 async fn main() {
-    env_logger::init();
     let cli = Cli::parse();
+    if std::env::var("RUST_LOG").is_err() {
+        if let Some(level) = &cli.log_level {
+            std::env::set_var("RUST_LOG", level);
+        }
+    }
+    env_logger::init();
     if let Err(e) = run(cli).await {
         log::error!("{e}");
         std::process::exit(1);
