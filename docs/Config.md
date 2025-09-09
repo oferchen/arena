@@ -48,9 +48,10 @@ persistence.
 
 ## Leaderboards
 
-| Env var                 | CLI flag            | Description                              | Default |
-| ----------------------- | ------------------- | ---------------------------------------- | ------- |
-| `ARENA_LEADERBOARD_MAX` | `--leaderboard-max` | Maximum entries mirrored per leaderboard | `100`   |
+| Env var                 | CLI flag            | Description                              | Default   |
+| ----------------------- | ------------------- | ---------------------------------------- | --------- |
+| `ARENA_LEADERBOARD_MAX` | `--leaderboard-max` | Maximum entries mirrored per leaderboard | `100`     |
+| `ARENA_REPLAYS_DIR`     | `--replays-dir`     | Directory where match replays are stored | `replays` |
 
 ## Editor
 
