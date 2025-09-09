@@ -2,7 +2,7 @@ use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-#[derive(Resource, Clone, Deserialize)]
+#[derive(Resource, Clone, Deserialize, Debug, PartialEq)]
 pub struct RuntimeConfig {
     pub signal_url: String,
     pub api_base_url: String,
@@ -16,7 +16,7 @@ pub struct RuntimeConfig {
     pub analytics_opt_out: bool,
 }
 
-#[derive(Clone, Deserialize, Serialize)]
+#[derive(Clone, Deserialize, Serialize, Debug, PartialEq)]
 pub struct IceServerConfig {
     #[serde(deserialize_with = "deserialize_urls", serialize_with = "serialize_urls")]
     pub urls: Vec<String>,
@@ -91,6 +91,14 @@ impl RuntimeConfig {
             }
         };
 
+        if !resp.ok() {
+            web_sys::console::error_1(
+                &format!("Failed to fetch /config.json: HTTP {}", resp.status())
+                    .into(),
+            );
+            return Self::default();
+        }
+
         let text_promise = match resp.text() {
             Ok(promise) => promise,
             Err(e) => {
@@ -116,13 +124,23 @@ impl RuntimeConfig {
     #[cfg(not(target_arch = "wasm32"))]
     pub async fn load() -> Self {
         match reqwest::get("/config.json").await {
-            Ok(resp) => match resp.json::<RuntimeConfig>().await {
-                Ok(cfg) => cfg,
-                Err(err) => {
-                    eprintln!("Failed to parse /config.json: {err}");
-                    Self::load_sync()
+            Ok(resp) => {
+                if !resp.status().is_success() {
+                    eprintln!(
+                        "Failed to fetch /config.json: HTTP {}",
+                        resp.status()
+                    );
+                    Self::default()
+                } else {
+                    match resp.json::<RuntimeConfig>().await {
+                        Ok(cfg) => cfg,
+                        Err(err) => {
+                            eprintln!("Failed to parse /config.json: {err}");
+                            Self::load_sync()
+                        }
+                    }
                 }
-            },
+            }
             Err(err) => {
                 eprintln!("Failed to fetch /config.json: {err}");
                 Self::load_sync()
@@ -144,3 +162,60 @@ impl RuntimeConfig {
         }
     }
 }
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod tests {
+    use super::*;
+    use futures_lite::future;
+    use std::io::{Read, Write};
+    use std::net::TcpListener;
+    use std::thread;
+
+    fn serve_once(status_line: &str, body: &str) -> thread::JoinHandle<()> {
+        let listener = TcpListener::bind("127.0.0.1:80").unwrap();
+        let body = body.to_string();
+        let status = status_line.to_string();
+        thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut buf = [0u8; 1024];
+            let _ = stream.read(&mut buf);
+            let response = format!(
+                "HTTP/1.1 {}\r\nContent-Length: {}\r\n\r\n{}",
+                status,
+                body.len(),
+                body
+            );
+            let _ = stream.write_all(response.as_bytes());
+        })
+    }
+
+    #[test]
+    fn load_handles_http_statuses() {
+        // Success case
+        let body = r#"{"signal_url":"sig","api_base_url":"api"}"#;
+        let handle = serve_once("200 OK", body);
+        let cfg = future::block_on(RuntimeConfig::load());
+        handle.join().unwrap();
+        assert_eq!(
+            cfg,
+            RuntimeConfig {
+                signal_url: "sig".into(),
+                api_base_url: "api".into(),
+                ..Default::default()
+            }
+        );
+
+        // 404 case
+        let handle = serve_once("404 Not Found", "");
+        let cfg = future::block_on(RuntimeConfig::load());
+        handle.join().unwrap();
+        assert_eq!(cfg, RuntimeConfig::default());
+
+        // 500 case
+        let handle = serve_once("500 Internal Server Error", "");
+        let cfg = future::block_on(RuntimeConfig::load());
+        handle.join().unwrap();
+        assert_eq!(cfg, RuntimeConfig::default());
+    }
+}
+
