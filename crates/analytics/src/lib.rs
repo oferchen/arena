@@ -14,10 +14,12 @@ use sea_orm::{
     entity::prelude::*,
     sea_query::{Alias, Expr, Func, OnConflict, PostgresQueryBuilder, Query, SimpleExpr},
 };
-use serde_json::{json, Value as JsonValue};
-use uuid::Uuid;
+use serde_json::{Value as JsonValue, json};
 use tokio::time::{Duration, interval};
+use uuid::Uuid;
 
+#[cfg(feature = "bevy-resource")]
+use bevy_ecs::system::Resource;
 #[cfg(feature = "otlp")]
 use opentelemetry::{KeyValue, global, metrics::Counter};
 #[cfg(feature = "prometheus")]
@@ -30,7 +32,6 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 const DEFAULT_MAX_EVENTS: usize = 10_000;
 const MAX_EVENTS_ENV_VAR: &str = "ARENA_ANALYTICS_MAX_EVENTS";
-
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 pub enum Event {
@@ -141,6 +142,7 @@ impl Event {
     }
 }
 
+#[cfg_attr(feature = "bevy-resource", derive(Resource))]
 #[derive(Clone)]
 pub struct Analytics {
     enabled: bool,
@@ -395,8 +397,8 @@ impl Analytics {
 }
 
 mod events {
-    use sea_orm::entity::prelude::*;
     use super::{JsonValue, Uuid};
+    use sea_orm::entity::prelude::*;
 
     #[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
     #[sea_orm(table_name = "analytics_events")]
