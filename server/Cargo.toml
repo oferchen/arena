@@ -36,6 +36,8 @@ hex = "0.4"
 rand = "0.8"
 sea-orm = { version = "0.12", features=["sqlx-postgres","runtime-tokio-rustls","macros"] }
 storage = { path = "../crates/storage" }
+sea-orm = { version = "0.12", features = ["sqlx-postgres", "runtime-tokio-rustls"] }
+migration = { path = "migration" }
 
 redis = { version = "0.24", optional = true, default-features = false, features = ["tokio-comp"] }
 
