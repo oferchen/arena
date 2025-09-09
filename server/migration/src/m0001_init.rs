@@ -30,7 +30,12 @@ impl MigrationTrait for Migration {
                 Table::create()
                     .table(LoginTokens::Table)
                     .if_not_exists()
-                    .col(ColumnDef::new(LoginTokens::Token).string().not_null().primary_key())
+                    .col(
+                        ColumnDef::new(LoginTokens::Token)
+                            .string()
+                            .not_null()
+                            .primary_key(),
+                    )
                     .col(ColumnDef::new(LoginTokens::Player).string().not_null())
                     .col(
                         ColumnDef::new(LoginTokens::CreatedAt)
@@ -47,7 +52,12 @@ impl MigrationTrait for Migration {
                 Table::create()
                     .table(Leaderboards::Table)
                     .if_not_exists()
-                    .col(ColumnDef::new(Leaderboards::Id).uuid().not_null().primary_key())
+                    .col(
+                        ColumnDef::new(Leaderboards::Id)
+                            .uuid()
+                            .not_null()
+                            .primary_key(),
+                    )
                     .to_owned(),
             )
             .await?;
@@ -73,7 +83,12 @@ impl MigrationTrait for Migration {
                             .not_null()
                             .default(false),
                     )
-                    .col(ColumnDef::new(Runs::ReplayIndex).big_integer().not_null().default(0))
+                    .col(
+                        ColumnDef::new(Runs::ReplayIndex)
+                            .big_integer()
+                            .not_null()
+                            .default(0),
+                    )
                     .foreign_key(
                         ForeignKey::create()
                             .name("fk_runs_leaderboard")
@@ -145,7 +160,12 @@ impl MigrationTrait for Migration {
                 Table::create()
                     .table(Purchases::Table)
                     .if_not_exists()
-                    .col(ColumnDef::new(Purchases::Id).uuid().not_null().primary_key())
+                    .col(
+                        ColumnDef::new(Purchases::Id)
+                            .uuid()
+                            .not_null()
+                            .primary_key(),
+                    )
                     .col(ColumnDef::new(Purchases::Player).uuid().not_null())
                     .col(ColumnDef::new(Purchases::Sku).string().not_null())
                     .col(
@@ -254,6 +274,18 @@ impl MigrationTrait for Migration {
                     .col(ColumnDef::new(Jobs::Kind).string().not_null())
                     .col(ColumnDef::new(Jobs::Payload).text().not_null())
                     .col(
+                        ColumnDef::new(Jobs::Status)
+                            .string()
+                            .not_null()
+                            .default("pending"),
+                    )
+                    .col(
+                        ColumnDef::new(Jobs::Attempts)
+                            .integer()
+                            .not_null()
+                            .default(0),
+                    )
+                    .col(
                         ColumnDef::new(Jobs::RunAt)
                             .timestamp_with_time_zone()
                             .not_null()
@@ -261,6 +293,12 @@ impl MigrationTrait for Migration {
                     )
                     .col(
                         ColumnDef::new(Jobs::CreatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null()
+                            .default(Expr::cust("NOW()")),
+                    )
+                    .col(
+                        ColumnDef::new(Jobs::UpdatedAt)
                             .timestamp_with_time_zone()
                             .not_null()
                             .default(Expr::cust("NOW()")),
@@ -289,59 +327,166 @@ impl MigrationTrait for Migration {
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        manager.drop_table(Table::drop().table(Nodes::Table).to_owned()).await?;
-        manager.drop_table(Table::drop().table(Jobs::Table).to_owned()).await?;
-        manager.drop_table(Table::drop().table(MailOutbox::Table).to_owned()).await?;
-        manager.drop_table(Table::drop().table(AnalyticsRollups::Table).to_owned()).await?;
-        manager.drop_table(Table::drop().table(AnalyticsEvents::Table).to_owned()).await?;
-        manager.drop_table(Table::drop().table(Levels::Table).to_owned()).await?;
-        manager.drop_table(Table::drop().table(Purchases::Table).to_owned()).await?;
-        manager.drop_table(Table::drop().table(Entitlements::Table).to_owned()).await?;
-        manager.drop_table(Table::drop().table(Scores::Table).to_owned()).await?;
-        manager.drop_table(Table::drop().table(Runs::Table).to_owned()).await?;
-        manager.drop_table(Table::drop().table(Leaderboards::Table).to_owned()).await?;
-        manager.drop_table(Table::drop().table(LoginTokens::Table).to_owned()).await?;
-        manager.drop_table(Table::drop().table(Players::Table).to_owned()).await?;
+        manager
+            .drop_table(Table::drop().table(Nodes::Table).to_owned())
+            .await?;
+        manager
+            .drop_table(Table::drop().table(Jobs::Table).to_owned())
+            .await?;
+        manager
+            .drop_table(Table::drop().table(MailOutbox::Table).to_owned())
+            .await?;
+        manager
+            .drop_table(Table::drop().table(AnalyticsRollups::Table).to_owned())
+            .await?;
+        manager
+            .drop_table(Table::drop().table(AnalyticsEvents::Table).to_owned())
+            .await?;
+        manager
+            .drop_table(Table::drop().table(Levels::Table).to_owned())
+            .await?;
+        manager
+            .drop_table(Table::drop().table(Purchases::Table).to_owned())
+            .await?;
+        manager
+            .drop_table(Table::drop().table(Entitlements::Table).to_owned())
+            .await?;
+        manager
+            .drop_table(Table::drop().table(Scores::Table).to_owned())
+            .await?;
+        manager
+            .drop_table(Table::drop().table(Runs::Table).to_owned())
+            .await?;
+        manager
+            .drop_table(Table::drop().table(Leaderboards::Table).to_owned())
+            .await?;
+        manager
+            .drop_table(Table::drop().table(LoginTokens::Table).to_owned())
+            .await?;
+        manager
+            .drop_table(Table::drop().table(Players::Table).to_owned())
+            .await?;
         Ok(())
     }
 }
 
 #[derive(Iden)]
-enum Players { Id, Handle, Region, CreatedAt, Table }
+enum Players {
+    Id,
+    Handle,
+    Region,
+    CreatedAt,
+    Table,
+}
 
 #[derive(Iden)]
-enum LoginTokens { Token, Player, CreatedAt, Table }
+enum LoginTokens {
+    Token,
+    Player,
+    CreatedAt,
+    Table,
+}
 
 #[derive(Iden)]
-enum Leaderboards { Id, Table }
+enum Leaderboards {
+    Id,
+    Table,
+}
 
 #[derive(Iden)]
-enum Runs { Id, Leaderboard, Player, ReplayPath, CreatedAt, Flagged, ReplayIndex, Table }
+enum Runs {
+    Id,
+    Leaderboard,
+    Player,
+    ReplayPath,
+    CreatedAt,
+    Flagged,
+    ReplayIndex,
+    Table,
+}
 
 #[derive(Iden)]
-enum Scores { Id, Run, Leaderboard, Player, Points, CreatedAt, Verified, Table }
+enum Scores {
+    Id,
+    Run,
+    Leaderboard,
+    Player,
+    Points,
+    CreatedAt,
+    Verified,
+    Table,
+}
 
 #[derive(Iden)]
-enum Entitlements { Player, Sku, GrantedAt, Table }
+enum Entitlements {
+    Player,
+    Sku,
+    GrantedAt,
+    Table,
+}
 
 #[derive(Iden)]
-enum Purchases { Id, Player, Sku, CreatedAt, Table }
+enum Purchases {
+    Id,
+    Player,
+    Sku,
+    CreatedAt,
+    Table,
+}
 
 #[derive(Iden)]
-enum Levels { Id, Name, Data, Table }
+enum Levels {
+    Id,
+    Name,
+    Data,
+    Table,
+}
 
 #[derive(Iden)]
-enum AnalyticsEvents { Ts, PlayerId, SessionId, Kind, PayloadJson, Table }
+enum AnalyticsEvents {
+    Ts,
+    PlayerId,
+    SessionId,
+    Kind,
+    PayloadJson,
+    Table,
+}
 
 #[derive(Iden)]
-enum AnalyticsRollups { BucketStart, Kind, Value, Table }
+enum AnalyticsRollups {
+    BucketStart,
+    Kind,
+    Value,
+    Table,
+}
 
 #[derive(Iden)]
-enum MailOutbox { Id, Recipient, Subject, Body, CreatedAt, Table }
+enum MailOutbox {
+    Id,
+    Recipient,
+    Subject,
+    Body,
+    CreatedAt,
+    Table,
+}
 
 #[derive(Iden)]
-enum Jobs { Id, Kind, Payload, RunAt, CreatedAt, Table }
+enum Jobs {
+    Id,
+    Kind,
+    Payload,
+    Status,
+    Attempts,
+    RunAt,
+    CreatedAt,
+    UpdatedAt,
+    Table,
+}
 
 #[derive(Iden)]
-enum Nodes { Id, Region, CreatedAt, Table }
-
+enum Nodes {
+    Id,
+    Region,
+    CreatedAt,
+    Table,
+}

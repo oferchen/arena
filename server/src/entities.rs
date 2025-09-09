@@ -1,4 +1,4 @@
-use sea_orm::{entity::prelude::*, JsonValue};
+use sea_orm::{JsonValue, entity::prelude::*};
 
 pub mod login_tokens {
     use super::*;
@@ -48,7 +48,9 @@ pub mod runs {
         Scores,
     }
     impl Related<super::scores::Entity> for Entity {
-        fn to() -> RelationDef { Relation::Scores.def() }
+        fn to() -> RelationDef {
+            Relation::Scores.def()
+        }
     }
     impl ActiveModelBehavior for ActiveModel {}
 }
@@ -69,11 +71,17 @@ pub mod scores {
     }
     #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
     pub enum Relation {
-        #[sea_orm(belongs_to = "super::runs::Entity", from = "Column::Run", to = "runs::Column::Id")]
+        #[sea_orm(
+            belongs_to = "super::runs::Entity",
+            from = "Column::Run",
+            to = "runs::Column::Id"
+        )]
         Runs,
     }
     impl Related<super::runs::Entity> for Entity {
-        fn to() -> RelationDef { Relation::Runs.def() }
+        fn to() -> RelationDef {
+            Relation::Runs.def()
+        }
     }
     impl ActiveModelBehavior for ActiveModel {}
 }
@@ -177,6 +185,18 @@ pub mod mail_outbox {
 
 pub mod jobs {
     use super::*;
+    #[derive(Debug, Clone, PartialEq, Eq, EnumIter, DeriveActiveEnum)]
+    #[sea_orm(rs_type = "String", db_type = "Text")]
+    pub enum JobStatus {
+        #[sea_orm(string_value = "pending")]
+        Pending,
+        #[sea_orm(string_value = "running")]
+        Running,
+        #[sea_orm(string_value = "done")]
+        Done,
+        #[sea_orm(string_value = "failed")]
+        Failed,
+    }
     #[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
     #[sea_orm(table_name = "jobs")]
     pub struct Model {
@@ -184,8 +204,11 @@ pub mod jobs {
         pub id: i64,
         pub kind: String,
         pub payload: String,
+        pub status: JobStatus,
+        pub attempts: i32,
         pub run_at: DateTimeUtc,
         pub created_at: DateTimeUtc,
+        pub updated_at: DateTimeUtc,
     }
     #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
     pub enum Relation {}
@@ -206,4 +229,3 @@ pub mod nodes {
     pub enum Relation {}
     impl ActiveModelBehavior for ActiveModel {}
 }
-
