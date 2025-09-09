@@ -3,16 +3,16 @@ use std::sync::RwLock;
 
 use ::payments::{Entitlement, UserId};
 use chrono::Utc;
-use sqlx::PgPool;
+use sea_orm::{DatabaseConnection, DbBackend, Statement, TryGetable};
 
 #[derive(Clone, Default)]
 pub struct EntitlementStore {
-    db: Option<PgPool>,
+    db: Option<DatabaseConnection>,
     inner: Arc<RwLock<Vec<Entitlement>>>,
 }
 
 impl EntitlementStore {
-    pub fn new(db: Option<PgPool>) -> Self {
+    pub fn new(db: Option<DatabaseConnection>) -> Self {
         Self {
             db,
             inner: Arc::new(RwLock::new(Vec::new())),
@@ -26,13 +26,12 @@ impl EntitlementStore {
 
     pub async fn grant(&self, user_id: UserId, sku_id: String) {
         if let Some(db) = &self.db {
-            let query = "INSERT INTO entitlements_by_user (user_id, sku_id, granted_at) VALUES ($1, $2, $3)";
-            let _ = sqlx::query(query)
-                .bind(user_id)
-                .bind(&sku_id)
-                .bind(Utc::now())
-                .execute(db)
-                .await;
+            let stmt = Statement::from_sql_and_values(
+                DbBackend::Postgres,
+                "INSERT INTO entitlements_by_user (user_id, sku_id, granted_at) VALUES ($1, $2, NOW())",
+                vec![user_id.to_string().into(), sku_id.clone().into()],
+            );
+            let _ = db.execute(stmt).await;
         }
         let mut inner = match self.inner.write() {
             Ok(inner) => inner,
@@ -54,13 +53,16 @@ impl EntitlementStore {
     pub async fn list(&self, user_id: &str) -> Vec<String> {
         if let Some(db) = &self.db {
             if let Ok(id) = UserId::parse_str(user_id) {
-                let query = "SELECT sku_id FROM entitlements_by_user WHERE user_id = $1";
-                if let Ok(rows) = sqlx::query_scalar::<_, String>(query)
-                    .bind(id)
-                    .fetch_all(db)
-                    .await
-                {
-                    return rows;
+                let stmt = Statement::from_sql_and_values(
+                    DbBackend::Postgres,
+                    "SELECT sku_id FROM entitlements_by_user WHERE user_id = $1",
+                    vec![id.to_string().into()],
+                );
+                if let Ok(rows) = db.query_all(stmt).await {
+                    return rows
+                        .into_iter()
+                        .filter_map(|row| row.try_get::<String>("sku_id").ok())
+                        .collect();
                 }
             }
         }

@@ -1,10 +1,8 @@
 use anyhow::Result;
-use sqlx::{PgPool, postgres::PgPoolOptions};
+use sea_orm::{Database, DatabaseConnection};
 
-pub async fn connect(db_url: &str) -> Result<PgPool> {
-    let pool = PgPoolOptions::new()
-        .max_connections(5)
-        .connect(db_url)
-        .await?;
-    Ok(pool)
+/// Connect to the database and return a SeaORM [`DatabaseConnection`].
+pub async fn connect(db_url: &str) -> Result<DatabaseConnection> {
+    let db = Database::connect(db_url).await?;
+    Ok(db)
 }
