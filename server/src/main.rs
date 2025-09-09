@@ -36,6 +36,7 @@ mod otp_store;
 mod players;
 mod room;
 mod shard;
+mod entities;
 #[cfg(test)]
 mod test_logger;
 use prometheus::{Encoder, TextEncoder};
@@ -491,11 +492,13 @@ struct GuestResponse {
 }
 
 async fn guest_handler(State(state): State<Arc<AppState>>) -> impl IntoResponse {
-    let id = uuid::Uuid::new_v4().to_string();
+    let id = uuid::Uuid::new_v4();
     if let Some(db) = &state.db {
         let active = players::ActiveModel {
-            id: Set(id.clone()),
-            guest: Set(true),
+            id: Set(id),
+            handle: Set(String::new()),
+            region: Set(String::new()),
+            created_at: Set(chrono::Utc::now()),
         };
         let _ = active.insert(db).await;
     }
@@ -518,7 +521,7 @@ async fn guest_handler(State(state): State<Arc<AppState>>) -> impl IntoResponse 
             log::error!("failed to create session cookie header: {e}");
         }
     }
-    (headers, Json(GuestResponse { user_id: id }))
+    (headers, Json(GuestResponse { user_id: id.to_string() }))
 }
 
 async fn shutdown_signal() {

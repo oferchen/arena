@@ -186,7 +186,7 @@ pub async fn handle_shot(
         let run_id = Uuid::new_v4();
         let run = Run {
             id: run_id,
-            leaderboard_id,
+            leaderboard: leaderboard_id,
             player_id,
             replay_path: String::new(),
             created_at: Utc::now(),
@@ -195,7 +195,7 @@ pub async fn handle_shot(
         };
         let score = Score {
             id: Uuid::new_v4(),
-            run_id,
+            run: run_id,
             player_id,
             points: 1,
             verified: true,
@@ -333,7 +333,7 @@ mod tests {
             .await;
         assert_eq!(scores.len(), 1);
         assert_eq!(scores[0].points, 1);
-        let stored = service.get_replay(scores[0].run_id).await.unwrap();
+        let stored = service.get_replay(scores[0].run).await.unwrap();
         assert_eq!(stored, replay);
     }
 

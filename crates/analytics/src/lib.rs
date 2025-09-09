@@ -12,7 +12,7 @@ use chrono::Utc;
 use sea_orm::{
     DatabaseConnection, DbBackend, Set, Statement,
     entity::prelude::*,
-    sea_query::{Alias, Expr, Func, OnConflict, PostgresQueryBuilder, Query},
+    sea_query::{Alias, Expr, Func, OnConflict, PostgresQueryBuilder, Query, SimpleExpr},
 };
 use tokio::time::{Duration, interval};
 
@@ -332,11 +332,12 @@ impl Analytics {
             .and_where(Expr::col(events::Column::CreatedAt).gte(from))
             .and_where(Expr::col(events::Column::CreatedAt).lt(now))
             .add_group_by([
-                Expr::col(events::Column::Name),
-                Func::cust(Alias::new("date_trunc"))
-                    .arg("hour")
-                    .arg(Expr::col(events::Column::CreatedAt))
-                    .into(),
+                SimpleExpr::from(Expr::col(events::Column::Name)),
+                Into::<SimpleExpr>::into(
+                    Func::cust(Alias::new("date_trunc"))
+                        .arg("hour")
+                        .arg(Expr::col(events::Column::CreatedAt)),
+                ),
             ])
             .to_owned();
         let insert = Query::insert()
@@ -408,7 +409,7 @@ mod rollups {
     use sea_orm::entity::prelude::*;
 
     #[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
-    #[sea_orm(table_name = "analytics_rollups", primary_key = (event, bucket))]
+    #[sea_orm(table_name = "analytics_rollups")]
     pub struct Model {
         #[sea_orm(primary_key, auto_increment = false)]
         pub event: String,

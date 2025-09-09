@@ -8,7 +8,7 @@ pub mod runs {
     pub struct Model {
         #[sea_orm(primary_key)]
         pub id: Uuid,
-        pub leaderboard_id: Uuid,
+        pub leaderboard: Uuid,
         pub player_id: Uuid,
         pub replay_path: String,
         pub created_at: DateTimeUtc,
@@ -39,8 +39,8 @@ pub mod scores {
     pub struct Model {
         #[sea_orm(primary_key)]
         pub id: Uuid,
-        pub run_id: Uuid,
-        pub leaderboard_id: Uuid,
+        pub run: Uuid,
+        pub leaderboard: Uuid,
         pub player_id: Uuid,
         pub points: i32,
         pub created_at: DateTimeUtc,
@@ -49,7 +49,7 @@ pub mod scores {
 
     #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
     pub enum Relation {
-        #[sea_orm(belongs_to = "super::runs::Entity", from = "Column::RunId", to = "runs::Column::Id")]
+        #[sea_orm(belongs_to = "super::runs::Entity", from = "Column::Run", to = "runs::Column::Id")]
         Runs,
     }
 
