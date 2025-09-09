@@ -3,7 +3,10 @@
 //! Up to `DEFAULT_MAX_EVENTS` events are retained in memory. Set the
 //! `ARENA_ANALYTICS_MAX_EVENTS` environment variable to change this limit.
 
-use std::{net::SocketAddr, sync::{Arc, Mutex}};
+use std::{
+    net::SocketAddr,
+    sync::{Arc, Mutex},
+};
 
 #[cfg(feature = "otlp")]
 use opentelemetry::{KeyValue, global, metrics::Counter};
@@ -274,6 +277,19 @@ impl Analytics {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::ffi::OsStr;
+
+    // Safe wrappers around environment variable mutation used only in tests.
+    fn set_var<K: AsRef<OsStr>, V: AsRef<OsStr>>(key: K, value: V) {
+        // SAFETY: tests run in a controlled environment and no other threads
+        // modify environment variables concurrently.
+        unsafe { std::env::set_var(key, value) }
+    }
+
+    fn remove_var<K: AsRef<OsStr>>(key: K) {
+        // SAFETY: see `set_var` above.
+        unsafe { std::env::remove_var(key) }
+    }
 
     #[cfg(feature = "prometheus")]
     #[test]
@@ -294,13 +310,13 @@ mod tests {
 
     #[test]
     fn ring_buffer_limit() {
-        unsafe { std::env::set_var(MAX_EVENTS_ENV_VAR, "2") };
+        set_var(MAX_EVENTS_ENV_VAR, "2");
         let analytics = Analytics::new(true, None, None);
         analytics.dispatch(Event::ShotFired);
         analytics.dispatch(Event::TargetHit);
         analytics.dispatch(Event::Death);
         assert_eq!(analytics.events(), vec![Event::TargetHit, Event::Death]);
-        unsafe { std::env::remove_var(MAX_EVENTS_ENV_VAR) };
+        remove_var(MAX_EVENTS_ENV_VAR);
     }
 
     #[test]
@@ -324,9 +340,7 @@ mod tests {
             then.status(200);
         });
 
-        unsafe {
-            std::env::set_var("POSTHOG_ENDPOINT", server.url("/capture/"));
-        }
+        set_var("POSTHOG_ENDPOINT", server.url("/capture/"));
 
         let analytics = Analytics::new(true, Some("test_key".into()), None);
         analytics.dispatch(Event::ShotFired);
