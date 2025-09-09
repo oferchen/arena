@@ -6,7 +6,7 @@ use crate::email::{EmailService, SmtpConfig, StartTls};
 use ::payments::{Catalog, EntitlementList, Sku, UserId};
 use analytics::{Analytics, Event};
 use axum::{
-    Extension, Extension, Router, Router,
+    Extension, Router,
     extract::{
         Json, Path, Query, State,
         ws::{Message, WebSocket, WebSocketUpgrade},
